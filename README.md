@@ -1,6 +1,6 @@
 # Reddit Search Scraper (JSON workaround)
 
-Scrape Reddit search results—posts, links, scores, comment counts, and full comment content—using Reddit’s free `.json` URL workaround. **No API keys required.**
+Scrape Reddit search results—posts, links, scores, comment counts, and full comment content—using Reddit’s free `.json` URL workaround. **No API keys required** (for Reddit; OpenAI optional for MVP).
 
 ---
 
