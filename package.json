@@ -8,7 +8,10 @@
     "build": "tsc",
     "search": "tsx src/run.ts",
     "start": "node dist/run.js",
-    "db:verify": "tsx scripts/verify-db.ts"
+    "db:verify": "tsx scripts/verify-db.ts",
+    "keywords:test": "tsx scripts/test-keywords.ts",
+    "pipeline": "tsx src/run-pipeline.ts",
+    "report": "tsx src/report.ts"
   },
   "keywords": ["reddit", "scraper", "search"],
   "license": "MIT",

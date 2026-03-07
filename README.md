@@ -20,7 +20,24 @@ Requires **Node.js 18+** (for native `fetch`).
   2. Create a `.env` file in the project root and add: `OPENAI_API_KEY=sk-your-key-here`.  
   Do not commit `.env`; it is gitignored.
 
-- **Database** (no setup): The app uses **SQLite**—a single file, no server or install. On first run of the MVP pipeline, it creates `data/reddit-leads.db` (or the path in `DATABASE_URL` if you set it). You don’t need to create anything; just run the app.
+- **Database** (no setup): The app uses **SQLite**—a single file, no server or install. On first run of the MVP pipeline, it creates `data/reddit-leads.db` (or the path in `DATABASE_URL` if you set it). You don’t need to create anything; just run the app. **Everything is stored locally** in that file (runs, posts, comments, intent scores). **SQLite is free**—no cloud DB or cost.
+
+### Pipeline (MVP: keywords → search → comments → intent)
+
+```bash
+# Full run: 4 AI keywords → Reddit search → fetch comments → one intent score (0-100) per post
+npm run pipeline -- "social media scheduler"
+```
+
+Results are stored in `data/reddit-leads.db`: table `runs` (user input, keywords, status), `posts`, `comments`, and `post_intent` (one row per post with `label` high/medium/low and `score` 0-100). The database is **created automatically** on first use; **all data is stored locally** in that file; **SQLite is free** (no server, no subscription).
+
+Inspect results (posts ranked by buying intent, with Reddit links):
+
+```bash
+npm run report                 # all posts, all runs, ranked by intent
+npm run report -- --run <id>   # only posts from one run
+npm run report -- --limit 50   # limit number of rows
+```
 
 ### Usage
 

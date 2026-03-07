@@ -7,14 +7,26 @@ import type { RedditPost } from "./types.js";
 
 const BASE_URL = "https://www.reddit.com";
 export { BASE_URL };
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0";
+
+// Browser-like headers to reduce 403 (Reddit blocks bare/bot-like requests)
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+function headers(): HeadersInit {
+  return {
+    "User-Agent": USER_AGENT,
+    Accept: "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    Referer: "https://www.reddit.com/",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+  };
+}
+
 export const DEFAULT_DELAY_MS = 1000; // 1 s between requests; use --delay 0.5 for faster (risk of 429)
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF_MS = 5000;
-
-function headers(): HeadersInit {
-  return { "User-Agent": USER_AGENT };
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -27,14 +39,16 @@ async function request<T>(url: string, delayMs: number): Promise<T> {
         headers: headers(),
         signal: AbortSignal.timeout(30_000),
       });
-      if (res.status === 429 || res.status === 503) {
+      if (res.status === 429 || res.status === 503 || res.status === 403) {
         if (attempt < MAX_RETRIES - 1) {
           await delay(RETRY_BACKOFF_MS * (attempt + 1));
           continue;
         }
       }
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const body = await res.text();
+        const msg = body ? `${res.statusText}: ${body.slice(0, 200)}` : res.statusText;
+        throw new Error(`HTTP ${res.status}: ${msg}`);
       }
       return (await res.json()) as T;
     } catch (err) {
