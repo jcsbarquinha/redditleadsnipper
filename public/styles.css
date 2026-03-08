@@ -145,18 +145,6 @@ body {
   background: var(--bg);
   color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s;
-  animation: search-bar-pulse 5s ease-in-out infinite;
-}
-
-@keyframes search-bar-pulse {
-  0%, 6%, 100% {
-    border-color: #c4c8cc;
-    box-shadow: 0 0 0 0 transparent;
-  }
-  3% {
-    border-color: var(--reddit-orange);
-    box-shadow: 0 0 0 3px rgba(255, 69, 0, 0.15);
-  }
 }
 
 .search-input::placeholder {
@@ -171,7 +159,6 @@ body {
   outline: none;
   border-color: var(--reddit-orange);
   box-shadow: 0 0 0 3px rgba(255, 69, 0, 0.12);
-  animation: none;
 }
 
 .search-btn {
