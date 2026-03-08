@@ -72,6 +72,7 @@ body {
   letter-spacing: -0.03em;
   margin: 0 0 1rem;
   line-height: 1.25;
+  white-space: nowrap;
 }
 
 .headline-accent {
@@ -87,14 +88,10 @@ body {
 
 .hero-h3 {
   font-size: 1.125rem;
-  font-weight: 400;
+  font-weight: 600;
   margin: 0 0 2.5rem;
   line-height: 1.4;
   color: var(--text);
-}
-
-.hero-h3 .headline-accent {
-  font-weight: 600;
 }
 
 .search-form {
@@ -461,6 +458,12 @@ body {
 .error-message {
   color: #b5493e;
   font-size: 0.95rem;
+}
+
+@media (max-width: 639px) {
+  .headline {
+    white-space: normal;
+  }
 }
 
 @media (min-width: 640px) {
