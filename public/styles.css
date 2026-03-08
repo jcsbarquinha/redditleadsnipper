@@ -85,6 +85,14 @@ body {
   line-height: 1.5;
 }
 
+.hero-h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 2.5rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
 .search-form {
   display: flex;
   flex-direction: column;
