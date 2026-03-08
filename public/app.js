@@ -33,8 +33,18 @@
   const errorMessage = document.getElementById("errorMessage");
 
   function rotatePlaceholder() {
-    placeholderIndex = (placeholderIndex + 1) % PLACEHOLDERS.length;
-    placeholderRollerInner.style.transform = "translateY(" + (-placeholderIndex * 1.5) + "em)";
+    const el = placeholderRollerInner;
+    if (!el) return;
+    el.classList.add("out");
+    el.addEventListener("transitionend", function onOut() {
+      el.removeEventListener("transitionend", onOut);
+      placeholderIndex = (placeholderIndex + 1) % PLACEHOLDERS.length;
+      el.textContent = PLACEHOLDERS[placeholderIndex];
+      el.classList.remove("out");
+      el.classList.add("in");
+      el.offsetHeight;
+      el.classList.remove("in");
+    }, { once: true });
   }
 
   function updateRollerVisibility() {
@@ -203,10 +213,7 @@
   });
 
   if (placeholderRollerInner) {
-    placeholderRollerInner.innerHTML = PLACEHOLDERS.map(function (p) {
-      return "<span>" + escapeHtml(p) + "</span>";
-    }).join("");
-    placeholderRollerInner.style.transform = "translateY(0)";
+    placeholderRollerInner.textContent = PLACEHOLDERS[0];
   }
   searchInput.addEventListener("focus", updateRollerVisibility);
   searchInput.addEventListener("blur", updateRollerVisibility);

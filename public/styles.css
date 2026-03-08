@@ -105,6 +105,8 @@ body {
   line-height: 1.5;
   color: var(--text-muted);
   border-radius: 8px;
+  display: flex;
+  align-items: center;
 }
 
 .placeholder-roller.hidden {
@@ -113,17 +115,21 @@ body {
 }
 
 .placeholder-roller-inner {
-  transition: transform 0.35s ease-out;
-  will-change: transform;
-}
-
-.placeholder-roller-inner span {
-  display: block;
-  height: 1.5em;
-  line-height: 1.5;
+  transition: transform 0.3s ease-out, opacity 0.25s ease-out;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  width: 100%;
+}
+
+.placeholder-roller-inner.out {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.placeholder-roller-inner.in {
+  transform: translateY(100%);
+  opacity: 0;
 }
 
 .search-input {
