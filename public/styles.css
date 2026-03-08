@@ -455,8 +455,9 @@ body {
     flex-direction: row;
   }
 
-  .search-input {
+  .search-input-wrap {
     flex: 1;
+    min-width: 0;
   }
 
   .search-btn {
