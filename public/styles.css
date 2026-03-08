@@ -67,7 +67,7 @@ body {
 }
 
 .headline {
-  font-size: 2rem;
+  font-size: 2.5rem;
   font-weight: 600;
   letter-spacing: -0.03em;
   margin: 0 0 1rem;
@@ -87,10 +87,14 @@ body {
 
 .hero-h3 {
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 400;
   margin: 0 0 2.5rem;
   line-height: 1.4;
   color: var(--text);
+}
+
+.hero-h3 .headline-accent {
+  font-weight: 600;
 }
 
 .search-form {
@@ -461,7 +465,7 @@ body {
 
 @media (min-width: 640px) {
   .headline {
-    font-size: 2.5rem;
+    font-size: 3rem;
   }
 
   .subhead {
