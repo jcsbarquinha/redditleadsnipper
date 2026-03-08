@@ -1,0 +1,193 @@
+(function () {
+  const PLACEHOLDERS = [
+    "Paste your SaaS link or product name",
+    "Describe your product in a few words",
+    "What problem are you solving?",
+    "e.g. Notion alternative for developers",
+    "e.g. best calorie tracking app",
+    "e.g. SEO content automation tool",
+  ];
+
+  const STEPS = [
+    { id: 1, label: "Finding discussions" },
+    { id: 2, label: "Reading threads" },
+    { id: 3, label: "Scoring intent" },
+    { id: 4, label: "Almost there" },
+  ];
+
+  let placeholderIndex = 0;
+  let stepInterval = null;
+
+  const hero = document.getElementById("hero");
+  const searchForm = document.getElementById("searchForm");
+  const searchInput = document.getElementById("searchInput");
+  const searchBtn = document.getElementById("searchBtn");
+  const searchHint = document.getElementById("searchHint");
+  const loadingSection = document.getElementById("loadingSection");
+  const loadingSteps = document.getElementById("loadingSteps");
+  const loadingBarFill = document.getElementById("loadingBarFill");
+  const resultsSection = document.getElementById("resultsSection");
+  const resultsHeader = document.getElementById("resultsHeader");
+  const resultsList = document.getElementById("resultsList");
+  const errorSection = document.getElementById("errorSection");
+  const errorMessage = document.getElementById("errorMessage");
+
+  function rotatePlaceholder() {
+    searchInput.placeholder = PLACEHOLDERS[placeholderIndex];
+    placeholderIndex = (placeholderIndex + 1) % PLACEHOLDERS.length;
+  }
+
+  function formatAge(createdUtc) {
+    if (createdUtc == null) return "";
+    const now = Math.floor(Date.now() / 1000);
+    const days = Math.floor((now - createdUtc) / 86400);
+    if (days < 1) return "now";
+    if (days === 1) return "1d ago";
+    if (days < 30) return days + "d ago";
+    if (days < 365) return Math.floor(days / 30) + "mo ago";
+    return new Date(createdUtc * 1000).toLocaleDateString();
+  }
+
+  function setStep(activeIndex) {
+    const stepEls = loadingSteps.querySelectorAll(".step");
+    stepEls.forEach((el, i) => {
+      el.classList.remove("active", "done");
+      if (i < activeIndex) el.classList.add("done");
+      else if (i === activeIndex) el.classList.add("active");
+    });
+    loadingBarFill.style.width = ((activeIndex + 1) / STEPS.length) * 100 + "%";
+  }
+
+  function showLoading() {
+    errorSection.classList.add("hidden");
+    resultsSection.classList.add("hidden");
+    loadingSection.classList.remove("hidden");
+    setStep(0);
+    let step = 0;
+    stepInterval = setInterval(() => {
+      step = Math.min(step + 1, STEPS.length - 1);
+      setStep(step);
+      if (step >= STEPS.length - 1) clearInterval(stepInterval);
+    }, 8000);
+  }
+
+  function hideLoading() {
+    clearInterval(stepInterval);
+    setStep(STEPS.length);
+    setTimeout(() => {
+      loadingSection.classList.add("hidden");
+    }, 400);
+  }
+
+  function showError(msg) {
+    loadingSection.classList.add("hidden");
+    resultsSection.classList.add("hidden");
+    errorMessage.textContent = msg;
+    errorSection.classList.remove("hidden");
+  }
+
+  function showResults(data) {
+    hideLoading();
+    errorSection.classList.add("hidden");
+    resultsHeader.textContent =
+      data.leads.length > 0
+        ? `${data.totalPosts} posts · ${data.totalComments} comments · ${data.leads.length} leads`
+        : "No leads found in the last 30 days for that query.";
+    resultsList.innerHTML = "";
+
+    data.leads.forEach((lead, i) => {
+      const card = document.createElement("article");
+      card.className = "lead-card" + (i >= 2 ? " blurred" : "");
+      const sub = lead.subreddit ? `r/${lead.subreddit}` : "r/community";
+      const author = lead.author ? `u/${lead.author}` : "u/[unknown]";
+      const labelClass = lead.label === "high" ? "high" : lead.label === "medium" ? "medium" : "low";
+
+      let replyHtml = "";
+      if (lead.suggested_reply) {
+        replyHtml = `
+          <button type="button" class="reply-toggle" aria-expanded="false">Suggested reply</button>
+          <div class="reply-content hidden">${escapeHtml(lead.suggested_reply)}</div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="card-inner">
+          <div class="intent-badge ${labelClass}">
+            ${lead.score != null ? lead.score : "—"} · ${(lead.label || "low").toLowerCase()}
+          </div>
+          <p class="card-meta">
+            <a href="https://www.reddit.com/${sub.replace(/^r\//, "")}" target="_blank" rel="noopener">${escapeHtml(sub)}</a>
+            · Posted by ${escapeHtml(author)}
+            · ${formatAge(lead.created_utc)}
+          </p>
+          <h2 class="card-title">
+            <a href="${escapeHtml(lead.full_link || "#")}" target="_blank" rel="noopener">${escapeHtml(lead.title || "No title")}</a>
+          </h2>
+          ${lead.explanation ? `<p class="card-explanation">${escapeHtml(lead.explanation)}</p>` : ""}
+          ${replyHtml}
+        </div>
+        ${i >= 2 ? '<div class="paywall-overlay">Subscribe to unlock all leads</div>' : ""}
+      `;
+
+      const toggle = card.querySelector(".reply-toggle");
+      const replyContent = card.querySelector(".reply-content");
+      if (toggle && replyContent) {
+        toggle.addEventListener("click", () => {
+          const open = replyContent.classList.toggle("hidden");
+          toggle.setAttribute("aria-expanded", !open);
+        });
+      }
+
+      resultsList.appendChild(card);
+    });
+
+    resultsSection.classList.remove("hidden");
+    resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.getElementById("backToSearch").addEventListener("click", (e) => {
+    e.preventDefault();
+    resultsSection.classList.add("hidden");
+    errorSection.classList.add("hidden");
+    hero.scrollIntoView({ behavior: "smooth", block: "start" });
+    searchInput.focus();
+  });
+
+  function escapeHtml(s) {
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  searchForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const query = searchInput.value.trim();
+    if (!query) return;
+
+    searchBtn.disabled = true;
+    showLoading();
+
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, maxPages: 1 }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showError(data.error || "Search failed. Try again.");
+        return;
+      }
+
+      showResults(data);
+    } catch (err) {
+      showError("Network error. Is the API running?");
+    } finally {
+      searchBtn.disabled = false;
+    }
+  });
+
+  rotatePlaceholder();
+  setInterval(rotatePlaceholder, 3000);
+})();

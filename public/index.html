@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Leadsnipe – Find high-intent leads where they already ask</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="logo">
+      <span class="logo-text">leadsnipe.</span>
+      <span class="logo-dot" aria-hidden="true"></span>
+    </a>
+  </header>
+
+  <main class="main">
+    <section class="hero" id="hero">
+      <h1 class="headline">Find high-intent leads where they already ask</h1>
+      <p class="subhead">Search once. Get ranked leads, pain points, and reply drafts—no manual digging.</p>
+      <form class="search-form" id="searchForm" aria-label="Search">
+        <input
+          type="text"
+          name="q"
+          id="searchInput"
+          class="search-input"
+          autocomplete="off"
+          placeholder=""
+          required
+        />
+        <button type="submit" class="search-btn" id="searchBtn">Search</button>
+      </form>
+      <p class="search-hint" id="searchHint">e.g. Notion alternative for developers</p>
+    </section>
+
+    <section class="loading-section hidden" id="loadingSection" aria-live="polite">
+      <div class="loading-steps" id="loadingSteps">
+        <div class="step" data-step="1"><span class="step-label">Finding discussions</span></div>
+        <div class="step" data-step="2"><span class="step-label">Reading threads</span></div>
+        <div class="step" data-step="3"><span class="step-label">Scoring intent</span></div>
+        <div class="step" data-step="4"><span class="step-label">Almost there</span></div>
+      </div>
+      <div class="loading-bar" aria-hidden="true"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
+    </section>
+
+    <section class="results-section hidden" id="resultsSection">
+      <p class="back-link"><a href="#" id="backToSearch">← New search</a></p>
+      <div class="results-header" id="resultsHeader"></div>
+      <div class="results-list" id="resultsList"></div>
+    </section>
+
+    <section class="error-section hidden" id="errorSection">
+      <p class="error-message" id="errorMessage"></p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

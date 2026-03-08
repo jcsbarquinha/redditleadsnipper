@@ -1,13 +1,14 @@
 /**
  * API server for Leadsnipe MVP.
  * POST /api/search { "query": "..." } → runs pipeline, returns leads (for landing "wow" search).
- * Later: paid users have saved keywords; hourly job runs pipeline for those and updates dashboard.
+ * Serves landing page from public/ at GET /.
  */
 
 import { loadConfig } from "./config.js";
 loadConfig();
 
 import express from "express";
+import { join } from "node:path";
 import { runPipeline } from "./pipeline.js";
 import { getLeadsForRun } from "./db/index.js";
 
@@ -84,7 +85,11 @@ app.post("/api/search", async (req, res) => {
   }
 });
 
+// Landing page and static assets (API routes above take precedence)
+app.use(express.static(join(process.cwd(), "public")));
+
 app.listen(PORT, () => {
-  console.log(`Leadsnipe API listening on http://localhost:${PORT}`);
-  console.log("  POST /api/search with { \"query\": \"...\" }");
+  console.log(`Leadsnipe running at http://localhost:${PORT}`);
+  console.log("  Landing: GET /");
+  console.log("  API:     POST /api/search with { \"query\": \"...\" }");
 });

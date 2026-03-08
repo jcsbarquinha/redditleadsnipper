@@ -1,0 +1,380 @@
+/* Reddit orange for logo dot */
+:root {
+  --reddit-orange: #ff4500;
+  --text: #1a1a1a;
+  --text-muted: #71767b;
+  --border: #edeff1;
+  --bg: #ffffff;
+  --bg-card: #ffffff;
+  --link: #0079d3;
+  --link-visited: #8774b8;
+  --intent-high: #46d160;
+  --intent-medium: #ffb000;
+  --intent-low: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+.header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.logo-text {
+  font-weight: 600;
+}
+
+.logo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--reddit-orange);
+  flex-shrink: 0;
+}
+
+.main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.hero {
+  text-align: center;
+}
+
+.headline {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.5rem;
+  line-height: 1.25;
+}
+
+.subhead {
+  color: var(--text-muted);
+  margin: 0 0 2rem;
+  font-size: 1rem;
+}
+
+.search-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.search-input {
+  width: 100%;
+  padding: 1rem 1.25rem;
+  font: inherit;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-input:hover {
+  border-color: #c4c8cc;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--reddit-orange);
+  box-shadow: 0 0 0 3px rgba(255, 69, 0, 0.12);
+}
+
+.search-btn {
+  padding: 0.875rem 1.5rem;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--reddit-orange);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.search-btn:hover {
+  background: #e03e00;
+}
+
+.search-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.search-hint {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Loading */
+.loading-section {
+  margin-top: 2rem;
+}
+
+.loading-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.step.active {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.step.done {
+  color: var(--text-muted);
+}
+
+.step.done::after {
+  content: "✓";
+  color: var(--intent-high);
+  font-size: 0.85rem;
+}
+
+.loading-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.loading-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--reddit-orange);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Results */
+.results-section {
+  margin-top: 2rem;
+  text-align: left;
+}
+
+.back-link {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.back-link a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.back-link a:hover {
+  text-decoration: underline;
+}
+
+.results-header {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Reddit-style card */
+.lead-card {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.lead-card:first-child {
+  padding-top: 0;
+}
+
+.lead-card.blurred {
+  position: relative;
+  user-select: none;
+}
+
+.lead-card.blurred .card-inner {
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.lead-card.blurred .paywall-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.intent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.5rem;
+}
+
+.intent-badge.high {
+  color: var(--intent-high);
+}
+
+.intent-badge.medium {
+  color: var(--intent-medium);
+}
+
+.intent-badge.low {
+  color: var(--intent-low);
+}
+
+.card-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.card-meta a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.card-meta a:hover {
+  text-decoration: underline;
+}
+
+.card-title {
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0 0 0.5rem;
+  line-height: 1.35;
+}
+
+.card-title a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card-title a:hover {
+  color: var(--link);
+}
+
+.card-title a:visited {
+  color: var(--link-visited);
+}
+
+.card-explanation {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
+  line-height: 1.4;
+}
+
+.reply-toggle {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--link);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  margin: 0 0 0.5rem;
+}
+
+.reply-toggle:hover {
+  text-decoration: underline;
+}
+
+.reply-content {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  background: #f6f7f8;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-top: 0.25rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.error-section {
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.error-message {
+  color: #b5493e;
+  font-size: 0.95rem;
+}
+
+@media (min-width: 640px) {
+  .headline {
+    font-size: 2rem;
+  }
+
+  .search-form {
+    flex-direction: row;
+  }
+
+  .search-input {
+    flex: 1;
+  }
+
+  .search-btn {
+    flex-shrink: 0;
+    min-width: 120px;
+  }
+}
