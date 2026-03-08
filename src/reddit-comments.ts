@@ -100,23 +100,114 @@ export interface FetchCommentsOptions {
   delayMs?: number;
 }
 
+export interface FetchCommentsResult {
+  comments: RedditComment[];
+  /** Live post score from the post's page (use when present). */
+  postScore: number | null;
+  /** Live comment count from the post's page (use when present). */
+  numComments: number | null;
+}
+
 /**
- * Fetch all comments for a post. Returns a flat list of comment objects.
+ * Fetch all comments for a post. Returns comments plus live post score/num_comments from the post page.
+ * Uses short post id (strips t3_ prefix) for the URL so Reddit accepts it.
  */
 export async function fetchComments(
   subreddit: string,
   postId: string,
   options: FetchCommentsOptions = {}
-): Promise<RedditComment[]> {
+): Promise<FetchCommentsResult> {
   const { slug = "_", delayMs = DEFAULT_DELAY_MS } = options;
-  const url = `${BASE_URL}/r/${subreddit}/comments/${postId}/${slug}.json`;
+  const shortId = typeof postId === "string" && postId.startsWith("t3_") ? postId.slice(3) : postId;
+  const url = `${BASE_URL}/r/${subreddit}/comments/${shortId}/${slug}.json`;
   await delay(delayMs);
   const raw = await request<unknown>(url);
-  if (!Array.isArray(raw) || raw.length < 2) return [];
+  if (!Array.isArray(raw) || raw.length < 1) {
+    return { comments: [], postScore: null, numComments: null };
+  }
+
+  const { postScore, numComments } = parseEngagementFromCommentPageResponse(raw);
+
+  if (raw.length < 2) {
+    return { comments: [], postScore, numComments };
+  }
   const commentsListing = raw[1] as { data?: { children?: CommentNode[] } };
   const listingData = commentsListing?.data ?? {};
   const children = (listingData.children ?? []) as CommentNode[];
   const out: RedditComment[] = [];
   walkReplies(children, out);
-  return out;
+  return { comments: out, postScore, numComments };
+}
+
+/**
+ * Fetch only post engagement (score, num_comments) from the post's comment page.
+ * Use as fallback when fetchComments returns null for both (e.g. different response shape).
+ */
+export async function fetchPostEngagement(
+  subreddit: string,
+  postId: string,
+  options: FetchCommentsOptions = {}
+): Promise<{ postScore: number | null; numComments: number | null }> {
+  const { slug = "_", delayMs = DEFAULT_DELAY_MS } = options;
+  const shortId = typeof postId === "string" && postId.startsWith("t3_") ? postId.slice(3) : postId;
+  const url = `${BASE_URL}/r/${subreddit}/comments/${shortId}/${slug}.json`;
+  await delay(delayMs);
+  try {
+    const raw = await request<unknown>(url);
+    return parseEngagementFromCommentPageResponse(raw);
+  } catch {
+    return { postScore: null, numComments: null };
+  }
+}
+
+/**
+ * Parse score and num_comments from a Reddit comment-page JSON response.
+ * Handles both [ listing, listing ] and single listing; also tries raw[0].data as post data.
+ */
+function parseEngagementFromCommentPageResponse(raw: unknown): {
+  postScore: number | null;
+  numComments: number | null;
+} {
+  if (!Array.isArray(raw) || raw.length < 1) return { postScore: null, numComments: null };
+  const first = raw[0] as Record<string, unknown> | undefined;
+  if (!first || typeof first !== "object") return { postScore: null, numComments: null };
+
+  const children = (first as { data?: { children?: unknown[] } }).data?.children;
+  const postChild = Array.isArray(children) ? children[0] : null;
+  const postData = postChild && typeof postChild === "object" && (postChild as { kind?: string }).kind === "t3"
+    ? (postChild as { data?: Record<string, unknown> }).data
+    : (first as { data?: Record<string, unknown> }).data;
+
+  if (!postData || typeof postData !== "object") return { postScore: null, numComments: null };
+  const s = postData.score ?? postData.ups;
+  const n = postData.num_comments;
+  let postScore: number | null = null;
+  let numComments: number | null = null;
+  if (s !== undefined && s !== null) {
+    const v = typeof s === "number" ? s : Number(s);
+    if (!Number.isNaN(v)) postScore = v;
+  }
+  if (n !== undefined && n !== null) {
+    const v = typeof n === "number" ? n : Number(n);
+    if (!Number.isNaN(v)) numComments = v;
+  }
+  return { postScore, numComments };
+}
+
+/**
+ * Fetch post engagement using the post's permalink/full URL (e.g. when sub/id fetch fails).
+ */
+export async function fetchPostEngagementFromLink(
+  fullLink: string,
+  options: FetchCommentsOptions = {}
+): Promise<{ postScore: number | null; numComments: number | null }> {
+  const { delayMs = DEFAULT_DELAY_MS } = options;
+  const jsonUrl = fullLink.trim().replace(/\/*$/, "") + ".json";
+  await delay(delayMs);
+  try {
+    const raw = await request<unknown>(jsonUrl);
+    return parseEngagementFromCommentPageResponse(raw);
+  } catch {
+    return { postScore: null, numComments: null };
+  }
 }

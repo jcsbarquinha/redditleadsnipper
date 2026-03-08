@@ -107,7 +107,8 @@ export async function run(options: {
         continue;
       }
       try {
-        post.comments = await fetchComments(sub, pid, { delayMs });
+        const { comments } = await fetchComments(sub, pid, { delayMs });
+        post.comments = comments;
       } catch (err) {
         post.comments = [];
         console.error(`Warning: could not fetch comments for ${post.full_link}: ${err}`);

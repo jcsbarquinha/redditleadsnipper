@@ -79,6 +79,9 @@ app.post("/api/search", async (req, res) => {
         is_high_intent: row.is_high_intent === 1,
         explanation: row.reasoning ?? null,
         suggested_reply: row.suggested_reply ?? null,
+        selftext: row.selftext ?? null,
+        votes: row.post_score ?? 0,
+        num_comments: row.num_comments ?? 0,
       })),
     });
   } catch (err) {

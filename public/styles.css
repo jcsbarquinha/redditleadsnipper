@@ -276,9 +276,36 @@ body {
 }
 
 .card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-bottom: 0.25rem;
+}
+
+.subreddit-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--reddit-orange);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.meta-dot {
+  color: var(--text-muted);
+  margin: 0 0.15rem;
+}
+
+.meta-time {
+  color: var(--text-muted);
 }
 
 .card-meta a {
@@ -308,6 +335,19 @@ body {
 
 .card-title a:visited {
   color: var(--link-visited);
+}
+
+.card-body {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0 0 0.35rem;
+  line-height: 1.4;
+}
+
+.card-engagement {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
 }
 
 .card-explanation {

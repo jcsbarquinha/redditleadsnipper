@@ -76,12 +76,16 @@ function extractPost(child: ListingChild): RedditPost | null {
   const d = (child.data ?? {}) as Record<string, unknown>;
   const permalink = String(d.permalink ?? "").trim();
   const fullLink = permalink.startsWith("/") ? `${BASE_URL}${permalink}` : permalink;
+  const rawScore = d.score ?? d.ups;
+  const rawNumComments = d.num_comments;
+  const score = typeof rawScore === "number" && !Number.isNaN(rawScore) ? rawScore : (typeof rawScore === "string" ? Number(rawScore) : null);
+  const numComments = typeof rawNumComments === "number" && !Number.isNaN(rawNumComments) ? rawNumComments : (typeof rawNumComments === "string" ? Number(rawNumComments) : null);
   return {
     id: (d.id as string) ?? null,
     title: (d.title as string) ?? null,
     selftext: String(d.selftext ?? ""),
-    score: (d.score as number) ?? null,
-    num_comments: (d.num_comments as number) ?? null,
+    score: score != null && !Number.isNaN(score) ? score : null,
+    num_comments: numComments != null && !Number.isNaN(numComments) ? numComments : null,
     permalink,
     full_link: fullLink,
     subreddit: (d.subreddit as string) ?? null,

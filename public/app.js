@@ -3,7 +3,6 @@
     "Paste your SaaS link or product name",
     "Describe your product in a few words",
     "What problem are you solving?",
-    "e.g. Notion alternative for developers",
     "e.g. best calorie tracking app",
     "e.g. SEO content automation tool",
   ];
@@ -22,7 +21,6 @@
   const searchForm = document.getElementById("searchForm");
   const searchInput = document.getElementById("searchInput");
   const searchBtn = document.getElementById("searchBtn");
-  const searchHint = document.getElementById("searchHint");
   const loadingSection = document.getElementById("loadingSection");
   const loadingSteps = document.getElementById("loadingSteps");
   const loadingBarFill = document.getElementById("loadingBarFill");
@@ -89,9 +87,10 @@
   function showResults(data) {
     hideLoading();
     errorSection.classList.add("hidden");
+    const highIntentCount = data.leads.filter(function (l) { return l.is_high_intent; }).length;
     resultsHeader.textContent =
       data.leads.length > 0
-        ? `${data.totalPosts} posts · ${data.totalComments} comments · ${data.leads.length} leads`
+        ? highIntentCount + " high intent \uD83D\uDD25"
         : "No leads found in the last 30 days for that query.";
     resultsList.innerHTML = "";
 
@@ -99,8 +98,11 @@
       const card = document.createElement("article");
       card.className = "lead-card" + (i >= 2 ? " blurred" : "");
       const sub = lead.subreddit ? `r/${lead.subreddit}` : "r/community";
-      const author = lead.author ? `u/${lead.author}` : "u/[unknown]";
       const labelClass = lead.label === "high" ? "high" : lead.label === "medium" ? "medium" : "low";
+      const initial = (lead.subreddit || "r").charAt(0).toUpperCase();
+      const bodySnippet = (lead.selftext || "").trim().slice(0, 200);
+      const votes = lead.votes != null ? lead.votes : 0;
+      const comments = lead.num_comments != null ? lead.num_comments : 0;
 
       let replyHtml = "";
       if (lead.suggested_reply) {
@@ -116,13 +118,16 @@
             ${lead.score != null ? lead.score : "—"} · ${(lead.label || "low").toLowerCase()}
           </div>
           <p class="card-meta">
+            <span class="subreddit-icon" aria-hidden="true">${escapeHtml(initial)}</span>
             <a href="https://www.reddit.com/${sub.replace(/^r\//, "")}" target="_blank" rel="noopener">${escapeHtml(sub)}</a>
-            · Posted by ${escapeHtml(author)}
-            · ${formatAge(lead.created_utc)}
+            <span class="meta-dot">·</span>
+            <span class="meta-time">${formatAge(lead.created_utc)}</span>
           </p>
           <h2 class="card-title">
             <a href="${escapeHtml(lead.full_link || "#")}" target="_blank" rel="noopener">${escapeHtml(lead.title || "No title")}</a>
           </h2>
+          ${bodySnippet ? `<p class="card-body">${escapeHtml(bodySnippet)}${bodySnippet.length >= 200 ? "…" : ""}</p>` : ""}
+          <p class="card-engagement">${votes} vote${votes !== 1 ? "s" : ""} · ${comments} comment${comments !== 1 ? "s" : ""}</p>
           ${lead.explanation ? `<p class="card-explanation">${escapeHtml(lead.explanation)}</p>` : ""}
           ${replyHtml}
         </div>

@@ -7,7 +7,7 @@ import { getKeywordsForInput, DEFAULT_KEYWORD_COUNT } from "./ai-keywords.js";
 import { classifyPostWithComments } from "./ai-intent.js";
 import { insertRun, updateRunStatus, insertPost, insertComments, insertPostIntent } from "./db/index.js";
 import { search } from "./reddit-search.js";
-import { fetchComments } from "./reddit-comments.js";
+import { fetchComments, fetchPostEngagement, fetchPostEngagementFromLink } from "./reddit-comments.js";
 import type { RedditPost } from "./types.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 4; // 100 posts per keyword
@@ -18,6 +18,25 @@ const MAX_POST_AGE_DAYS = 30;
 
 /** Skip LLM for posts with too little content (cost protection per PRD). */
 const MIN_CONTENT_LENGTH = 20;
+
+/**
+ * If input looks like a URL, return a short product/domain hint for keyword generation.
+ * Avoids sending long UTM URLs to the AI so we get useful Reddit search phrases.
+ */
+function normalizeUserInputForKeywords(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return trimmed;
+  try {
+    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    if (url.hostname && url.hostname !== "localhost") {
+      const domain = url.hostname.replace(/^www\./i, "");
+      return domain;
+    }
+  } catch {
+    // not a URL, use as-is
+  }
+  return trimmed;
+}
 
 function isPostWithinMaxAge(post: RedditPost): boolean {
   const created = post.created_utc;
@@ -82,7 +101,8 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   } = options;
 
   const runId = randomUUID();
-  const keywords = await getKeywordsForInput(userInput, keywordCount);
+  const keywordInput = normalizeUserInputForKeywords(userInput);
+  const keywords = await getKeywordsForInput(keywordInput, keywordCount);
   insertRun(runId, userInput, keywords, "running");
 
   try {
@@ -105,9 +125,38 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
       if (includeComments && post.subreddit && post.id) {
         try {
-          post.comments = await fetchComments(post.subreddit, post.id, { delayMs });
+          const { comments, postScore, numComments } = await fetchComments(post.subreddit, post.id, { delayMs });
+          post.comments = comments;
+          if (postScore != null) post.score = postScore;
+          if (numComments != null) post.num_comments = numComments;
+          if (postScore == null && numComments == null) {
+            const fallback = await fetchPostEngagement(post.subreddit, post.id, { delayMs: 0 });
+            if (fallback.postScore != null) post.score = fallback.postScore;
+            if (fallback.numComments != null) post.num_comments = fallback.numComments;
+          }
+          if (post.score == null && post.num_comments == null && post.full_link) {
+            const fromLink = await fetchPostEngagementFromLink(post.full_link, { delayMs: 0 });
+            if (fromLink.postScore != null) post.score = fromLink.postScore;
+            if (fromLink.numComments != null) post.num_comments = fromLink.numComments;
+          }
         } catch {
           post.comments = [];
+          try {
+            const fallback = await fetchPostEngagement(post.subreddit, post.id, { delayMs });
+            if (fallback.postScore != null) post.score = fallback.postScore;
+            if (fallback.numComments != null) post.num_comments = fallback.numComments;
+          } catch {
+            /* keep search listing values */
+          }
+          if ((post.score == null || post.num_comments == null) && post.full_link) {
+            try {
+              const fromLink = await fetchPostEngagementFromLink(post.full_link, { delayMs });
+              if (fromLink.postScore != null) post.score = fromLink.postScore;
+              if (fromLink.numComments != null) post.num_comments = fromLink.numComments;
+            } catch {
+              /* keep whatever we have */
+            }
+          }
         }
       } else {
         post.comments = [];

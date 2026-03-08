@@ -184,6 +184,18 @@ export function insertPost(
       post.link_flair_text ?? null,
       JSON.stringify(matchedKeywords)
     );
+  updatePostEngagement(id, post.score, post.num_comments);
+}
+
+/** Update post vote/comment counts (e.g. after fetching from comment page). */
+export function updatePostEngagement(
+  postId: string,
+  score: number | null,
+  numComments: number | null
+): void {
+  getDb()
+    .prepare(`UPDATE posts SET score = ?, num_comments = ? WHERE id = ?`)
+    .run(score ?? null, numComments ?? null, postId);
 }
 
 export function insertComments(runId: string, post: RedditPost, comments: RedditComment[]): void {
@@ -250,13 +262,18 @@ export interface LeadRow {
   reasoning: string | null;
   suggested_reply: string | null;
   is_high_intent: number | null;
+  selftext: string | null;
+  post_score: number | null;
+  num_comments: number | null;
 }
 
 /** Leads for a run, ranked by intent (high first). For API and report. */
 export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
   const rows = getDb()
     .prepare(
-      `SELECT p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc, pi.reasoning, pi.suggested_reply, pi.is_high_intent
+      `SELECT p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc, pi.reasoning, pi.suggested_reply, pi.is_high_intent, p.selftext,
+       p.score AS post_score,
+       COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments
        FROM posts p
        JOIN runs r ON p.run_id = r.id
        LEFT JOIN post_intent pi ON p.id = pi.post_id
