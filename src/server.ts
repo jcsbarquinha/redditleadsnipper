@@ -8,9 +8,13 @@ import { loadConfig } from "./config.js";
 loadConfig();
 
 import express from "express";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { runPipeline } from "./pipeline.js";
 import { getLeadsForRun } from "./db/index.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const publicDir = join(__dirname, "..", "public");
 
 const app = express();
 app.use(express.json());
@@ -86,7 +90,7 @@ app.post("/api/search", async (req, res) => {
 });
 
 // Landing page and static assets (API routes above take precedence)
-app.use(express.static(join(process.cwd(), "public")));
+app.use(express.static(publicDir));
 
 app.listen(PORT, () => {
   console.log(`Leadsnipe running at http://localhost:${PORT}`);
