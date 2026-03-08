@@ -50,6 +50,8 @@ body {
 .logo-period {
   color: var(--reddit-orange);
   font-weight: 600;
+  font-size: 1.2em;
+  line-height: 1;
 }
 
 .main {
