@@ -70,6 +70,10 @@ body {
   line-height: 1.25;
 }
 
+.headline-accent {
+  color: var(--reddit-orange);
+}
+
 .subhead {
   color: var(--text-muted);
   margin: 0 0 2rem;
