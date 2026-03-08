@@ -21,6 +21,8 @@
   const searchForm = document.getElementById("searchForm");
   const searchInput = document.getElementById("searchInput");
   const searchBtn = document.getElementById("searchBtn");
+  const placeholderRoller = document.getElementById("placeholderRoller");
+  const placeholderRollerInner = document.getElementById("placeholderRollerInner");
   const loadingSection = document.getElementById("loadingSection");
   const loadingSteps = document.getElementById("loadingSteps");
   const loadingBarFill = document.getElementById("loadingBarFill");
@@ -31,8 +33,14 @@
   const errorMessage = document.getElementById("errorMessage");
 
   function rotatePlaceholder() {
-    searchInput.placeholder = PLACEHOLDERS[placeholderIndex];
     placeholderIndex = (placeholderIndex + 1) % PLACEHOLDERS.length;
+    placeholderRollerInner.style.transform = "translateY(" + (-placeholderIndex * 1.5) + "em)";
+  }
+
+  function updateRollerVisibility() {
+    const hasValue = searchInput.value.trim().length > 0;
+    const isFocused = document.activeElement === searchInput;
+    placeholderRoller.classList.toggle("hidden", hasValue || isFocused);
   }
 
   function formatAge(createdUtc) {
@@ -156,6 +164,7 @@
     errorSection.classList.add("hidden");
     hero.scrollIntoView({ behavior: "smooth", block: "start" });
     searchInput.focus();
+    updateRollerVisibility();
   });
 
   function escapeHtml(s) {
@@ -193,6 +202,15 @@
     }
   });
 
-  rotatePlaceholder();
+  if (placeholderRollerInner) {
+    placeholderRollerInner.innerHTML = PLACEHOLDERS.map(function (p) {
+      return "<span>" + escapeHtml(p) + "</span>";
+    }).join("");
+    placeholderRollerInner.style.transform = "translateY(0)";
+  }
+  searchInput.addEventListener("focus", updateRollerVisibility);
+  searchInput.addEventListener("blur", updateRollerVisibility);
+  searchInput.addEventListener("input", updateRollerVisibility);
+  updateRollerVisibility();
   setInterval(rotatePlaceholder, 3000);
 })();

@@ -87,6 +87,45 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.search-input-wrap {
+  position: relative;
+}
+
+.placeholder-roller {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+  padding: 1rem 1.25rem;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  border-radius: 8px;
+}
+
+.placeholder-roller.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.placeholder-roller-inner {
+  transition: transform 0.35s ease-out;
+  will-change: transform;
+}
+
+.placeholder-roller-inner span {
+  display: block;
+  height: 1.5em;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .search-input {
   width: 100%;
   padding: 1rem 1.25rem;
@@ -100,7 +139,7 @@ body {
 }
 
 .search-input::placeholder {
-  color: var(--text-muted);
+  color: transparent;
 }
 
 .search-input:hover {

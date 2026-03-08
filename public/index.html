@@ -21,7 +21,11 @@
       <h1 class="headline">Find paying customers on <span class="headline-accent">Subreddits</span>.</h1>
       <p class="subhead">Stop manually scrolling Subreddits. Tell us what you build, and we'll hand you ranked potential buyers for you to organically reply to.</p>
       <form class="search-form" id="searchForm" aria-label="Search">
-        <input
+        <div class="search-input-wrap">
+          <div class="placeholder-roller" id="placeholderRoller" aria-hidden="true">
+            <div class="placeholder-roller-inner" id="placeholderRollerInner"></div>
+          </div>
+          <input
           type="text"
           name="q"
           id="searchInput"
@@ -30,6 +34,7 @@
           placeholder=""
           required
         />
+        </div>
         <button type="submit" class="search-btn" id="searchBtn">Search</button>
       </form>
     </section>
