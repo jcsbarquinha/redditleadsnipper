@@ -1,6 +1,6 @@
 /**
  * AI keyword expansion: user input → N Reddit search phrases via OpenAI.
- * Default 4 keywords for fast initial runs; can be increased for paid/deep runs.
+ * Default 10 keywords for broader coverage; pipeline takes longer but finds more leads.
  */
 
 import { requireOpenAIKey } from "./config.js";
@@ -8,8 +8,8 @@ import { requireOpenAIKey } from "./config.js";
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 
-/** Number of keywords to request (4 = ~2 min pipeline; 10 = deeper run for paid/alerts). */
-export const DEFAULT_KEYWORD_COUNT = 4;
+/** Number of keywords to request (10 = broader search; more Reddit + intent calls = ~2–3× slower). */
+export const DEFAULT_KEYWORD_COUNT = 10;
 
 function buildSystemPrompt(keywordCount: number): string {
   return `You are a search expert. Given a product, SaaS, or problem description, you output exactly ${keywordCount} Reddit search phrases that potential buyers or people with that problem would use when searching on Reddit. Include the exact phrase the user gave (if short) plus ${keywordCount - 1} very similar alternatives (e.g. product type, "X alternative", use case). Return only a JSON object with a single key "keywords" whose value is an array of exactly ${keywordCount} strings. No other text or markdown.`;
@@ -32,7 +32,7 @@ function parseKeywordsResponse(content: string, maxKeywords: number): string[] {
 
 /**
  * Returns Reddit search keywords for the given user input (product, problem, or "X alternative").
- * Default count is 4 for fast initial runs. Uses OPENAI_API_KEY from env.
+ * Default count is 10 for broader coverage. Uses OPENAI_API_KEY from env.
  */
 export async function getKeywordsForInput(
   userInput: string,

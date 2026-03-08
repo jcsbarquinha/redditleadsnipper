@@ -103,9 +103,9 @@ function runSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_comment_intent_comment_id ON comment_intent(comment_id);
     CREATE INDEX IF NOT EXISTS idx_post_intent_label ON post_intent(label);
     CREATE INDEX IF NOT EXISTS idx_comment_intent_label ON comment_intent(label);
-    CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent);
   `);
   migratePostIntent(database);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
 
 function migratePostIntent(database: Database.Database): void {
@@ -233,4 +233,37 @@ export function insertCommentIntent(
       `INSERT OR REPLACE INTO comment_intent (id, comment_id, label, score, reasoning) VALUES (?, ?, ?, ?, ?)`
     )
     .run(commentId, commentId, label, score ?? null, reasoning ?? null);
+}
+
+// --- API / report: fetch leads for a run ---
+
+export interface LeadRow {
+  run_id: string;
+  user_input: string;
+  score: number | null;
+  label: string | null;
+  title: string | null;
+  full_link: string;
+  subreddit: string | null;
+  author: string | null;
+  created_utc: number | null;
+  reasoning: string | null;
+  suggested_reply: string | null;
+  is_high_intent: number | null;
+}
+
+/** Leads for a run, ranked by intent (high first). For API and report. */
+export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc, pi.reasoning, pi.suggested_reply, pi.is_high_intent
+       FROM posts p
+       JOIN runs r ON p.run_id = r.id
+       LEFT JOIN post_intent pi ON p.id = pi.post_id
+       WHERE p.run_id = ?
+       ORDER BY pi.score DESC NULLS LAST, p.created_at DESC
+       LIMIT ?`
+    )
+    .all(runId, limit) as LeadRow[];
+  return rows;
 }

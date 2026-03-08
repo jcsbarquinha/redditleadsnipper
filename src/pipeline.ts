@@ -1,5 +1,5 @@
 /**
- * Full pipeline: user input → AI keywords (4 by default) → Reddit search (100 posts/keyword, dedupe) → comments → DB.
+ * Full pipeline: user input → AI keywords (10 by default) → Reddit search (100 posts/keyword, dedupe) → comments → DB.
  */
 
 import { randomUUID } from "node:crypto";
@@ -37,7 +37,7 @@ export interface PipelineOptions {
   includeComments?: boolean;
   maxPagesPerKeyword?: number;
   delayMs?: number;
-  /** Number of AI-generated keywords (default 4 for speed; use 10 for paid/deep runs). */
+  /** Number of AI-generated keywords (default 10 for broader coverage; use 4 for faster runs). */
   keywordCount?: number;
 }
 

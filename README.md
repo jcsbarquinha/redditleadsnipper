@@ -39,6 +39,21 @@ npm run report -- --run <id>   # only posts from one run
 npm run report -- --limit 50   # limit number of rows
 ```
 
+### API (Leadsnipe MVP – landing "wow" search)
+
+HTTP API for the landing-page search bar (one-off search; paid users later get saved keywords + hourly runs).
+
+```bash
+npm run api
+```
+
+- **GET /api/health** — `{ "ok": true }`
+- **POST /api/search** — Body: `{ "query": "SEO content automation", "maxPages": 1 }`  
+  Runs the full pipeline, then returns `{ runId, query, keywords, totalPosts, totalComments, leads }`.  
+  Each lead has `title`, `full_link`, `subreddit`, `author`, `created_utc`, `score`, `label`, `is_high_intent`, `explanation`, `suggested_reply`.
+
+Set `PORT` (default 3001) and optionally `CORS_ORIGIN` in `.env`.
+
 ### Usage
 
 ```bash

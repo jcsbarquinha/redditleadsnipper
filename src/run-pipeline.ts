@@ -39,7 +39,7 @@ function parseArgs(): {
 
 async function main(): Promise<void> {
   const { userInput, includeComments, maxPages, delayMs } = parseArgs();
-  console.log("Pipeline: user input → 4 keywords → search → comments → DB");
+  console.log("Pipeline: user input → 10 keywords → search → comments → DB");
   console.log("Input:", userInput);
   try {
     const result = await runPipeline({
