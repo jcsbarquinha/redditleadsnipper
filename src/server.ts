@@ -21,6 +21,39 @@ app.use(express.json());
 
 const PORT = Number(process.env.PORT) || 3001;
 
+/** IP-based rate limit: max requests per window (default 10 per 60s). */
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 10;
+
+const ipRequestTimestamps = new Map<string, number[]>();
+
+function getClientIp(req: express.Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
+  return req.ip ?? req.socket?.remoteAddress ?? "unknown";
+}
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const cutoff = now - RATE_LIMIT_WINDOW_MS;
+  let timestamps = ipRequestTimestamps.get(ip) ?? [];
+  timestamps = timestamps.filter((t) => t > cutoff);
+  if (timestamps.length >= RATE_LIMIT_MAX) return true;
+  timestamps.push(now);
+  ipRequestTimestamps.set(ip, timestamps);
+  return false;
+}
+
+// Prune old entries every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - RATE_LIMIT_WINDOW_MS;
+  for (const [ip, timestamps] of ipRequestTimestamps.entries()) {
+    const kept = timestamps.filter((t) => t > cutoff);
+    if (kept.length === 0) ipRequestTimestamps.delete(ip);
+    else ipRequestTimestamps.set(ip, kept);
+  }
+}, 5 * 60 * 1000);
+
 // Allow frontend (any origin for MVP; restrict later)
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", process.env.CORS_ORIGIN || "*");
@@ -40,8 +73,19 @@ app.get("/api/health", (_req, res) => {
  * POST /api/search
  * Body: { "query": "SEO content automation", "maxPages"?: number }
  * Runs the full pipeline (keywords → search → comments → intent), then returns leads ranked by intent.
+ * Rate limited by IP (default 10 requests per minute).
  */
-app.post("/api/search", async (req, res) => {
+app.post("/api/search", (req, res, next) => {
+  const ip = getClientIp(req);
+  if (isRateLimited(ip)) {
+    res.setHeader("Retry-After", String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)));
+    res.status(429).json({
+      error: "Too many searches. Please try again in a minute.",
+    });
+    return;
+  }
+  next();
+}, async (req, res) => {
   const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
   if (!query) {
     res.status(400).json({ error: "Missing or empty query. Send { \"query\": \"your search\" }." });
@@ -97,6 +141,7 @@ app.use(express.static(publicDir));
 
 app.listen(PORT, () => {
   console.log(`Leadsnipe running at http://localhost:${PORT}`);
+  console.log(`  Rate limit: ${RATE_LIMIT_MAX} searches per IP per minute`);
   console.log("  Landing: GET /");
   console.log("  API:     POST /api/search with { \"query\": \"...\" }");
 });
