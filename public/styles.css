@@ -47,12 +47,9 @@ body {
   font-weight: 600;
 }
 
-.logo-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--reddit-orange);
-  flex-shrink: 0;
+.logo-period {
+  color: var(--reddit-orange);
+  font-weight: 600;
 }
 
 .main {
