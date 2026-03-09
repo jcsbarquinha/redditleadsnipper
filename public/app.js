@@ -2,6 +2,7 @@
   const PLACEHOLDERS = [
     "Paste your SaaS link or product name",
     "Describe your product in a few words",
+    "The better the description the better the result",
     "What problem are you solving?",
     "e.g. best calorie tracking app",
     "e.g. SEO content automation tool",
@@ -9,9 +10,9 @@
 
   const STEPS = [
     { id: 1, label: "Finding discussions" },
-    { id: 2, label: "Reading threads" },
+    { id: 2, label: "Filtering posts" },
     { id: 3, label: "Scoring intent" },
-    { id: 4, label: "Almost there" },
+    { id: 4, label: "Enriching top leads" },
   ];
 
   let placeholderIndex = 0;
@@ -106,9 +107,9 @@
     hideLoading();
     errorSection.classList.add("hidden");
     const highIntentCount = data.leads.filter(function (l) { return l.is_high_intent; }).length;
-    resultsHeader.textContent =
+    resultsHeader.innerHTML =
       data.leads.length > 0
-        ? highIntentCount + " high intent \uD83D\uDD25"
+        ? `<strong>Results:</strong> ${highIntentCount} high intent posts for you to interact with \uD83D\uDD25`
         : "No leads found in the last 30 days for that query.";
     resultsList.innerHTML = "";
 
@@ -121,14 +122,13 @@
       const bodySnippet = (lead.selftext || "").trim().slice(0, 200);
       const votes = lead.votes != null ? lead.votes : 0;
       const comments = lead.num_comments != null ? lead.num_comments : 0;
-
-      let replyHtml = "";
-      if (lead.suggested_reply) {
-        replyHtml = `
-          <button type="button" class="reply-toggle" aria-expanded="false">Suggested reply</button>
-          <div class="reply-content hidden">${escapeHtml(lead.suggested_reply)}</div>
-        `;
-      }
+      const whyThisPost = summarizeWhyThisPost(lead);
+      const whyThisPostHtml = whyThisPost
+        ? `
+          <button type="button" class="reply-toggle" aria-expanded="false">Why this post</button>
+          <div class="reply-content hidden">${escapeHtml(whyThisPost)}</div>
+        `
+        : "";
 
       card.innerHTML = `
         <div class="card-inner">
@@ -146,8 +146,7 @@
           </h2>
           ${bodySnippet ? `<p class="card-body">${escapeHtml(bodySnippet)}${bodySnippet.length >= 200 ? "…" : ""}</p>` : ""}
           <p class="card-engagement">${votes} vote${votes !== 1 ? "s" : ""} · ${comments} comment${comments !== 1 ? "s" : ""}</p>
-          ${lead.explanation ? `<p class="card-explanation">${escapeHtml(lead.explanation)}</p>` : ""}
-          ${replyHtml}
+          ${whyThisPostHtml}
         </div>
         ${i >= 2 ? '<div class="paywall-overlay">Subscribe to unlock all leads</div>' : ""}
       `;
@@ -156,8 +155,8 @@
       const replyContent = card.querySelector(".reply-content");
       if (toggle && replyContent) {
         toggle.addEventListener("click", () => {
-          const open = replyContent.classList.toggle("hidden");
-          toggle.setAttribute("aria-expanded", !open);
+          const isHidden = replyContent.classList.toggle("hidden");
+          toggle.setAttribute("aria-expanded", String(!isHidden));
         });
       }
 
@@ -183,6 +182,19 @@
     return div.innerHTML;
   }
 
+  function summarizeWhyThisPost(lead) {
+    const explanation = (lead.explanation || "").trim();
+    if (explanation) {
+      return explanation;
+    }
+
+    if (lead.is_high_intent) {
+      return "They are actively looking for a solution or recommendation.";
+    }
+
+    return "It matches your search and shows a relevant pain point.";
+  }
+
   searchForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const query = searchInput.value.trim();
@@ -195,7 +207,7 @@
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, maxPages: 1 }),
+        body: JSON.stringify({ query, maxPages: 10 }),
       });
       const data = await res.json().catch(() => ({}));
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Run full pipeline: user input → AI keywords → Reddit search → comments → DB.
+ * Run full pipeline: user input → AI keywords → Reddit search → shortlist → rank → optional top-post comment enrichment → DB.
  *
  *   npx tsx src/run-pipeline.ts "social media scheduler"
  *   npx tsx src/run-pipeline.ts "Notion alternative" --no-comments --max-pages 2
@@ -39,7 +39,7 @@ function parseArgs(): {
 
 async function main(): Promise<void> {
   const { userInput, includeComments, maxPages, delayMs } = parseArgs();
-  console.log("Pipeline: user input → 10 keywords → search → comments → DB");
+  console.log("Pipeline: validate → keywords → search → shortlist → rank → optional top-post enrichment");
   console.log("Input:", userInput);
   try {
     const result = await runPipeline({

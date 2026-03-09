@@ -1,44 +1,64 @@
 /**
- * AI intent: one rating (0-100) per post, using the full post + comments as context.
+ * AI intent: post-centric lead scoring, with optional top-post comment enrichment.
  */
 
 import { requireOpenAIKey } from "./config.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
-
-/** Max total characters for comments to stay within context. */
 const MAX_COMMENTS_CHARS = 4000;
 
 export type IntentLabel = "high" | "medium" | "low";
 
 export interface PostIntentResult {
-  /** 0-100 buying intent score. */
   score: number;
-  /** Derived from score: high >= 70, medium 40-69, low < 40. */
   label: IntentLabel;
-  /** True when score > 70 (per PRD). */
   is_high_intent: boolean;
-  /** One-sentence summary of the user's pain point (per PRD). */
   explanation: string | null;
-  /** Drafted reply for the founder to copy-paste (per PRD). */
   suggested_reply: string | null;
 }
 
-const SYSTEM_PROMPT = `You are a sales lead qualifier. Given a product/context and a Reddit post (title + body) plus its comments and the post date, you must return a structured response.
+const POST_CENTRIC_SYSTEM_PROMPT = `You are a sales lead qualifier for a founder looking for Reddit threads to reply to.
 
-1. Rate the overall buying intent of the thread from 0 to 100.
-   - 70-100: strong intent (actively looking, comparing tools, "which one should I get?", frustrated with current solution)
-   - 40-69: some intent (interested, asking for recommendations)
-   - 0-39: low/no intent (casual mention, off-topic, no purchase intent)
-   Consider recency: very old posts are more likely stale leads—downscore them unless intent is clearly still relevant.
+Prioritize the ORIGINAL POST much more than the comments.
+- The title and body are the primary signal.
+- Upvotes and comment count are secondary signals that indicate visibility and validation.
+- Freshness matters a lot: recent posts are much more actionable than older ones.
+- A low-engagement post can still be a strong lead if the pain point is clear.
+- Do not over-reward broad discussion threads unless the original post shows clear buying or problem-solving intent.
 
-2. explanation: One short sentence summarizing the user's specific pain point or what they are looking for.
+Score the post from 0 to 100 based on how promising it is as a founder reply opportunity.
+- 70-100: strong intent or clear pain point with reply potential
+- 40-69: relevant but softer intent or weaker urgency
+- 0-39: weak fit, vague, casual mention, or no real opportunity
 
-3. suggested_reply: A drafted, high-value, non-spammy reply (2-4 sentences) that a founder could copy-paste to engage this lead. Be helpful and personal, not salesy. Do not use placeholders like [Product Name]—write as if the founder knows their own product.
+Return JSON only:
+{ "score": 0-100, "explanation": "1-2 short sentences on why this post is a promising lead" }`;
 
-Reply with JSON only, no markdown. Use this exact shape:
-{ "score": 0-100, "explanation": "one sentence", "suggested_reply": "drafted reply text" }`;
+const COMMENT_ENRICHMENT_PROMPT = `You are summarizing why a Reddit thread is worth replying to.
+
+The explanation must stay POST-CENTRIC:
+- focus first on the original post's pain point or buying intent
+- use comments only as supporting evidence
+- mention comments only if they validate the same pain point, add urgency, or show the thread has active eyeballs
+- keep it concise and specific
+
+Return JSON only:
+{ "explanation": "1-2 short sentences" }`;
+
+function buildAgeLine(createdUtc?: number | null): string {
+  if (createdUtc == null || !Number.isFinite(createdUtc)) return "";
+  const d = new Date(createdUtc * 1000);
+  const iso = d.toISOString().slice(0, 10);
+  const now = Date.now() / 1000;
+  const daysAgo = Math.floor((now - createdUtc) / 86400);
+  const ageStr = daysAgo < 30
+    ? `${daysAgo}d ago`
+    : daysAgo < 365
+      ? `${Math.floor(daysAgo / 30)}mo ago`
+      : `${(daysAgo / 365).toFixed(1)}y ago`;
+  return `Post date: ${iso} (${ageStr}).`;
+}
 
 function scoreToLabel(score: number): IntentLabel {
   if (score >= 70) return "high";
@@ -46,7 +66,6 @@ function scoreToLabel(score: number): IntentLabel {
   return "low";
 }
 
-/** is_high_intent = score > 70 (per PRD). */
 function isHighIntent(score: number): boolean {
   return score > 70;
 }
@@ -62,7 +81,7 @@ function parseIntentResponse(content: string): PostIntentResult {
   if (score > 100) score = 100;
   const explanation =
     typeof parsed.explanation === "string" && parsed.explanation.trim()
-      ? parsed.explanation.trim().slice(0, 500)
+      ? parsed.explanation.trim().slice(0, 700)
       : null;
   const suggested_reply =
     typeof parsed.suggested_reply === "string" && parsed.suggested_reply.trim()
@@ -77,48 +96,44 @@ function parseIntentResponse(content: string): PostIntentResult {
   };
 }
 
-/**
- * Classify buying intent for the whole post + comments in one call. Returns a single score 0-100.
- * Pass createdUtc (Unix seconds) so the model can factor post recency into the score.
- */
-export async function classifyPostWithComments(
+function parseExplanationResponse(content: string): string | null {
+  const trimmed = content.trim();
+  let jsonStr = trimmed;
+  const codeBlock = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/);
+  if (codeBlock) jsonStr = codeBlock[1].trim();
+  const parsed = JSON.parse(jsonStr) as { explanation?: string };
+  if (typeof parsed.explanation !== "string") return null;
+  const explanation = parsed.explanation.trim();
+  return explanation ? explanation.slice(0, 700) : null;
+}
+
+export async function classifyPostIntent(
   context: string,
   title: string | null,
   selftext: string,
-  commentBodies: string[],
-  createdUtc?: number | null
+  postScore: number | null,
+  numComments: number | null,
+  createdUtc?: number | null,
+  matchedKeywords: string[] = []
 ): Promise<PostIntentResult> {
   const key = requireOpenAIKey();
   const titleStr = (title ?? "").trim().slice(0, 500);
   const bodyStr = (selftext ?? "").trim().slice(0, 2000);
-  let commentsStr = commentBodies
-    .map((b) => (b ?? "").trim())
-    .filter(Boolean)
-    .join("\n---\n");
-  if (commentsStr.length > MAX_COMMENTS_CHARS) {
-    commentsStr = commentsStr.slice(0, MAX_COMMENTS_CHARS) + "\n... (truncated)";
-  }
+  const dateLine = buildAgeLine(createdUtc);
+  const keywordsLine = matchedKeywords.length > 0
+    ? `Matched Reddit search phrases: ${matchedKeywords.slice(0, 6).join(", ")}.`
+    : "";
 
-  let dateLine = "";
-  if (createdUtc != null && Number.isFinite(createdUtc)) {
-    const d = new Date(createdUtc * 1000);
-    const iso = d.toISOString().slice(0, 10);
-    const now = Date.now() / 1000;
-    const daysAgo = Math.floor((now - createdUtc) / 86400);
-    const ageStr = daysAgo < 30 ? `${daysAgo}d ago` : daysAgo < 365 ? `${Math.floor(daysAgo / 30)}mo ago` : `${(daysAgo / 365).toFixed(1)}y ago`;
-    dateLine = `\nPost date: ${iso} (${ageStr}). `;
-  }
-
-  const userContent = `Product/context: "${context.trim()}"${dateLine}
+  const userContent = `Product/context: "${context.trim()}"
+${dateLine}
+Engagement: ${postScore ?? 0} votes, ${numComments ?? 0} comments.
+${keywordsLine}
 
 Reddit POST
 Title: ${titleStr || "(no title)"}
 Body: ${bodyStr || "(no body)"}
 
-Comments:
-${commentsStr || "(no comments)"}
-
-Rate overall buying intent 0-100 and provide explanation and suggested_reply. JSON only: { "score": number, "explanation": "one sentence", "suggested_reply": "drafted reply" }`;
+Return JSON only: { "score": number, "explanation": "1-2 short sentences" }`;
 
   const res = await fetch(OPENAI_API_URL, {
     method: "POST",
@@ -129,7 +144,7 @@ Rate overall buying intent 0-100 and provide explanation and suggested_reply. JS
     body: JSON.stringify({
       model: MODEL,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: POST_CENTRIC_SYSTEM_PROMPT },
         { role: "user", content: userContent },
       ],
       temperature: 0.2,
@@ -151,4 +166,68 @@ Rate overall buying intent 0-100 and provide explanation and suggested_reply. JS
   if (!content) throw new Error("OpenAI returned no content");
 
   return parseIntentResponse(content);
+}
+
+export async function explainPostWithComments(
+  context: string,
+  title: string | null,
+  selftext: string,
+  commentBodies: string[],
+  createdUtc?: number | null
+): Promise<string | null> {
+  const key = requireOpenAIKey();
+  const titleStr = (title ?? "").trim().slice(0, 500);
+  const bodyStr = (selftext ?? "").trim().slice(0, 2000);
+  const dateLine = buildAgeLine(createdUtc);
+  let commentsStr = commentBodies
+    .map((b) => (b ?? "").trim())
+    .filter(Boolean)
+    .join("\n---\n");
+  if (commentsStr.length > MAX_COMMENTS_CHARS) {
+    commentsStr = commentsStr.slice(0, MAX_COMMENTS_CHARS) + "\n... (truncated)";
+  }
+
+  const userContent = `Product/context: "${context.trim()}"
+${dateLine}
+
+Original Reddit post
+Title: ${titleStr || "(no title)"}
+Body: ${bodyStr || "(no body)"}
+
+Comments:
+${commentsStr || "(no comments)"}
+
+Return JSON only: { "explanation": "1-2 short sentences" }`;
+
+  const res = await fetch(OPENAI_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [
+        { role: "system", content: COMMENT_ENRICHMENT_PROMPT },
+        { role: "user", content: userContent },
+      ],
+      temperature: 0.2,
+    }),
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`OpenAI API error ${res.status}: ${errBody || res.statusText}`);
+  }
+
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    error?: { message?: string };
+  };
+  if (data.error?.message) throw new Error(`OpenAI: ${data.error.message}`);
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error("OpenAI returned no enrichment explanation");
+
+  return parseExplanationResponse(content);
 }

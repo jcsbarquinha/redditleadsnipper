@@ -276,9 +276,9 @@ export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
        COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments
        FROM posts p
        JOIN runs r ON p.run_id = r.id
-       LEFT JOIN post_intent pi ON p.id = pi.post_id
+       JOIN post_intent pi ON p.id = pi.post_id
        WHERE p.run_id = ?
-       ORDER BY pi.score DESC NULLS LAST, p.created_at DESC
+       ORDER BY pi.score DESC NULLS LAST, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST
        LIMIT ?`
     )
     .all(runId, limit) as LeadRow[];

@@ -12,6 +12,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runPipeline } from "./pipeline.js";
 import { getLeadsForRun } from "./db/index.js";
+import { InvalidSearchInputError } from "./input-validation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, "..", "public");
@@ -72,7 +73,7 @@ app.get("/api/health", (_req, res) => {
 /**
  * POST /api/search
  * Body: { "query": "SEO content automation", "maxPages"?: number }
- * Runs the full pipeline (keywords → search → comments → intent), then returns leads ranked by intent.
+ * Runs the full pipeline (validation → keywords → search → shortlist → rank), then returns leads ranked by intent.
  * Rate limited by IP (default 10 requests per minute).
  */
 app.post("/api/search", (req, res, next) => {
@@ -94,7 +95,7 @@ app.post("/api/search", (req, res, next) => {
 
   const maxPages = typeof req.body?.maxPages === "number" && req.body.maxPages >= 1 && req.body.maxPages <= 10
     ? Math.floor(req.body.maxPages)
-    : 1;
+    : 10;
 
   try {
     const result = await runPipeline({
@@ -129,6 +130,10 @@ app.post("/api/search", (req, res, next) => {
       })),
     });
   } catch (err) {
+    if (err instanceof InvalidSearchInputError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
     console.error("Pipeline error:", err);
     res.status(500).json({
       error: err instanceof Error ? err.message : "Pipeline failed",

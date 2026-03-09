@@ -7,20 +7,24 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="header">
     <a href="/" class="logo">
-      <span class="logo-text">leadsnipe</span><span class="logo-period">.</span>
+      <img src="/logo.png" alt="" class="logo-mark" />
+      <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
     </a>
   </header>
 
-  <main class="main">
-    <section class="hero" id="hero">
-      <h1 class="headline">Find paying customers on <span class="headline-accent">Subreddits</span>.</h1>
+  <section class="hero" id="hero">
+    <h1 class="headline">Find paying customers on <span class="headline-accent">Subreddits</span>.</h1>
+    <div class="hero-inner">
       <p class="subhead">Stop manually scrolling Subreddits. Tell us what you build, and we'll hand you ranked potential buyers for you to organically reply to.</p>
-      <h3 class="hero-h3">Engage with people who are begging for your product <span class="headline-accent">(10x higher conversion)</span>.</h3>
+    </div>
+    <h3 class="hero-h3">Engage with people who are begging for your product <span class="headline-accent">(10x higher conversion)</span>.</h3>
+    <div class="hero-inner hero-search">
       <form class="search-form" id="searchForm" aria-label="Search">
         <div class="search-input-wrap">
           <div class="placeholder-roller" id="placeholderRoller" aria-hidden="true">
@@ -38,14 +42,16 @@
         </div>
         <button type="submit" class="search-btn" id="searchBtn">Search</button>
       </form>
-    </section>
+    </div>
+  </section>
 
+  <main class="main">
     <section class="loading-section hidden" id="loadingSection" aria-live="polite">
       <div class="loading-steps" id="loadingSteps">
         <div class="step" data-step="1"><span class="step-label">Finding discussions</span></div>
-        <div class="step" data-step="2"><span class="step-label">Reading threads</span></div>
+        <div class="step" data-step="2"><span class="step-label">Filtering posts</span></div>
         <div class="step" data-step="3"><span class="step-label">Scoring intent</span></div>
-        <div class="step" data-step="4"><span class="step-label">Almost there</span></div>
+        <div class="step" data-step="4"><span class="step-label">Enriching top leads</span></div>
       </div>
       <div class="loading-bar" aria-hidden="true"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
     </section>
