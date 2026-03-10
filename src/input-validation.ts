@@ -2,10 +2,6 @@ import { requireOpenAIKey } from "./config.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
-const MAX_INPUT_LENGTH = 240;
-
-const PROFANITY_PATTERN =
-  /\b(fuck|fucking|shit|bitch|cunt|asshole|motherfucker|dick|pussy|bastard|slut|whore|nigger|nigga|retard)\b/i;
 
 const INVALID_INPUT_MESSAGE =
   'Please enter a real product, service, or business use case. For example: "social media scheduler for agencies".';
@@ -20,23 +16,6 @@ export class InvalidSearchInputError extends Error {
 interface ValidationResult {
   is_valid: boolean;
   reason?: string;
-}
-
-function looksLikeValidUrl(input: string): boolean {
-  try {
-    const candidate = input.startsWith("http://") || input.startsWith("https://")
-      ? input
-      : `https://${input}`;
-    const url = new URL(candidate);
-    return Boolean(url.hostname && url.hostname.includes(".") && url.hostname !== "localhost");
-  } catch {
-    return false;
-  }
-}
-
-function hasMinimumSignal(input: string): boolean {
-  const letters = (input.match(/[a-z]/gi) ?? []).length;
-  return letters >= 3;
 }
 
 function parseValidationResponse(content: string): ValidationResult {
@@ -55,28 +34,57 @@ async function validateWithAI(userInput: string): Promise<ValidationResult> {
   const key = requireOpenAIKey();
   const systemPrompt = `You validate search queries for a B2B lead discovery tool.
 
-Accept inputs that describe a real:
-- product
-- SaaS
-- service
-- agency
-- tool
-- business workflow
-- business use case
-- company URL or product URL
+Your job is to decide whether the input is a valid search for finding potential customers on Reddit.
 
-Reject inputs that are:
-- profanity or abusive
-- generic nouns with no business use case (example: "dog")
-- random words, gibberish, or overly vague topics
-- obviously not something with potential customers looking for solutions
+ACCEPT only if the input clearly refers to at least one of these:
+- a product
+- a SaaS
+- a software tool
+- a service
+- an agency offering
+- a productized service
+- a business workflow
+- a business use case
+- a company URL or product URL
+
+REJECT if the input is:
+- a generic noun or broad topic with no clear business use case
+- something a founder cannot realistically sell or offer
+- profanity, abuse, or sexual content
+- random text, gibberish, or meme/joke input
+- too vague to infer a concrete business offer or customer pain point
+
+VERY IMPORTANT:
+- Be reasonably strict, but do not over-reject.
+- Accept broad but valid product or service categories if they plausibly describe something a business could sell.
+- Reject clearly generic consumer nouns and topics with no business offer behind them.
+- Single generic nouns should usually be rejected unless they clearly describe a sellable product or service category.
+- URLs should be accepted only if they plausibly look like a company/product site.
+
+Examples to REJECT:
+- "dog"
+- "marketing"
+- "money"
+- "reddit"
+- "hello"
+- profanity
+
+Examples to ACCEPT:
+- "social media scheduler"
+- "social media scheduler for agencies"
+- "invoice automation for accountants"
+- "AI headshots for teams"
+- "SEO content writing service"
+- "https://headshotpro.com"
 
 Return JSON only with this exact shape:
 { "is_valid": true/false, "reason": "short reason" }`;
 
   const userPrompt = `Input: "${userInput.trim()}"
 
-Would this be a valid search for finding potential customers on Reddit?`;
+Would this be a valid search for finding potential customers on Reddit?
+
+Allow broad but legitimate product/service categories. Reject only if the input is clearly too generic, abusive, nonsensical, or unrelated to something a business could actually offer.`;
 
   const res = await fetch(OPENAI_API_URL, {
     method: "POST",
@@ -114,12 +122,6 @@ Would this be a valid search for finding potential customers on Reddit?`;
 export async function validateUserInput(userInput: string): Promise<void> {
   const trimmed = userInput.trim();
   if (!trimmed) throw new InvalidSearchInputError();
-  if (trimmed.length > MAX_INPUT_LENGTH) throw new InvalidSearchInputError();
-  if (!hasMinimumSignal(trimmed)) throw new InvalidSearchInputError();
-  if (PROFANITY_PATTERN.test(trimmed)) throw new InvalidSearchInputError();
-
-  // Legitimate URLs/domains should pass without forcing a brittle LLM validation step.
-  if (looksLikeValidUrl(trimmed)) return;
 
   const result = await validateWithAI(trimmed);
   if (!result.is_valid) throw new InvalidSearchInputError();

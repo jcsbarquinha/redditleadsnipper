@@ -19,14 +19,15 @@ import { InvalidSearchInputError, validateUserInput } from "./input-validation.j
 import type { RedditPost } from "./types.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 10;
-const DEFAULT_DELAY_MS = 500;
+const DEFAULT_DELAY_MS = 1000;
 const MAX_POST_AGE_DAYS = 30;
 const MIN_CONTENT_LENGTH = 20;
-const SEARCH_KEYWORD_CONCURRENCY = 2;
+const SEARCH_KEYWORD_CONCURRENCY = 1;
 const INTENT_CONCURRENCY = 4;
 const COMMENT_ENRICHMENT_CONCURRENCY = 2;
 const MAX_AI_RANKED_POSTS = 80;
 const TOP_POST_COMMENT_ENRICHMENT_COUNT = 10;
+const FALLBACK_MAX_PAGES_PER_QUERY = 2;
 
 const STOPWORDS = new Set([
   "a",
@@ -46,6 +47,13 @@ const STOPWORDS = new Set([
   "tool",
   "service",
 ]);
+
+const PROMO_CALL_TO_ACTION_PATTERN =
+  /\b(find it here|check it out|try it|try this|sign up|signup|get started|learn more|visit|available here|here's my|here is my|our tool|our product|my tool|my product|i built|we built|i made|we made)\b/i;
+const SELF_PROMO_IDENTITY_PATTERN =
+  /\b(i built|we built|i made|we made|my tool|my product|our tool|our product|my startup|our startup|my app|our app)\b/i;
+const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/ig;
+const MARKDOWN_LINK_PATTERN = /\[[^\]]+\]\((https?:\/\/|www\.)[^)]+\)/i;
 
 interface CandidatePost {
   post: RedditPost;
@@ -112,6 +120,45 @@ function hasEnoughContentForIntent(post: RedditPost): boolean {
   return title.length >= 1 || body.length >= MIN_CONTENT_LENGTH;
 }
 
+function normalizeDomain(input: string): string | null {
+  const candidate = input.trim();
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate.startsWith("http://") || candidate.startsWith("https://") ? candidate : `https://${candidate}`);
+    return url.hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function isLikelySelfPromotionalPost(post: RedditPost): boolean {
+  const title = (post.title ?? "").trim();
+  const body = (post.selftext ?? "").trim();
+  const combined = `${title}\n${body}`.trim();
+  if (!combined) return false;
+
+  const markdownLink = MARKDOWN_LINK_PATTERN.test(body);
+  const rawUrls = body.match(URL_PATTERN) ?? [];
+  const hasExplicitLink = markdownLink || rawUrls.length > 0;
+  const linkedDomains = [
+    ...rawUrls.map((url) => normalizeDomain(url)),
+    normalizeDomain(post.url ?? ""),
+  ].filter((domain): domain is string => Boolean(domain));
+
+  const mentionsLinkedBrand = linkedDomains.some((domain) => {
+    const brand = domain.split(".")[0];
+    return Boolean(brand && combined.toLowerCase().includes(brand.toLowerCase()));
+  });
+
+  if (PROMO_CALL_TO_ACTION_PATTERN.test(combined) && hasExplicitLink) return true;
+  if (SELF_PROMO_IDENTITY_PATTERN.test(combined)) return true;
+  if (mentionsLinkedBrand && /(find it here|check it out|my tool|our tool|my product|our product|i built|we built)/i.test(combined) && hasExplicitLink) {
+    return true;
+  }
+
+  return false;
+}
+
 function tokenize(text: string): string[] {
   return [...new Set(
     text
@@ -121,6 +168,19 @@ function tokenize(text: string): string[] {
       .map((token) => token.trim())
       .filter((token) => token.length >= 3 && !STOPWORDS.has(token))
   )];
+}
+
+function buildBuyerIntentFallbackQueries(userInput: string): string[] {
+  const trimmed = userInput.trim();
+  if (!trimmed) return [];
+  const candidates = [
+    `${trimmed} recommendation`,
+    `best ${trimmed}`,
+    `${trimmed} alternative`,
+    `looking for ${trimmed}`,
+    `need ${trimmed}`,
+  ];
+  return [...new Set(candidates.map((query) => query.trim()).filter(Boolean))];
 }
 
 function computeShortlistScore(post: RedditPost, matchedKeywords: string[], userInput: string): number {
@@ -248,13 +308,40 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     );
 
     const uniquePosts = dedupePosts(keywordResults);
-    const recentCandidates: CandidatePost[] = [...uniquePosts.values()]
+    let recentCandidates: CandidatePost[] = [...uniquePosts.values()]
       .filter(({ post }) => isPostWithinMaxAge(post))
+      .filter(({ post }) => !isLikelySelfPromotionalPost(post))
       .map(({ post, matchedKeywords }) => ({
         post: { ...post, comments: [] },
         matchedKeywords,
         shortlistScore: computeShortlistScore(post, matchedKeywords, userInput),
       }));
+
+    if (recentCandidates.length === 0) {
+      const fallbackQueries = buildBuyerIntentFallbackQueries(userInput);
+      const fallbackResults = await mapWithConcurrency(
+        fallbackQueries,
+        SEARCH_KEYWORD_CONCURRENCY,
+        async (query) => ({
+          keyword: query,
+          posts: await search(query, {
+            maxPages: FALLBACK_MAX_PAGES_PER_QUERY,
+            delayMs,
+            exactPhrase: false,
+          }),
+        })
+      );
+
+      const mergedResults = dedupePosts([...keywordResults, ...fallbackResults]);
+      recentCandidates = [...mergedResults.values()]
+        .filter(({ post }) => isPostWithinMaxAge(post))
+        .filter(({ post }) => !isLikelySelfPromotionalPost(post))
+        .map(({ post, matchedKeywords }) => ({
+          post: { ...post, comments: [] },
+          matchedKeywords,
+          shortlistScore: computeShortlistScore(post, matchedKeywords, userInput),
+        }));
+    }
 
     for (const candidate of recentCandidates) {
       insertPost(runId, candidate.post, candidate.matchedKeywords);
