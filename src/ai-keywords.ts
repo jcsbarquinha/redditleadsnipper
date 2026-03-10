@@ -1,6 +1,6 @@
 /**
- * AI keyword expansion: user input → N Reddit search phrases via OpenAI.
- * Default 10 keywords for broader coverage; pipeline takes longer but finds more leads.
+ * AI conversational query expansion: user input → N Reddit-style search queries via OpenAI.
+ * These are short, frustration-oriented phrases meant for broad Reddit matching.
  */
 
 import { requireOpenAIKey } from "./config.js";
@@ -8,15 +8,42 @@ import { requireOpenAIKey } from "./config.js";
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 
-/** Number of keywords to request (10 = broader search; more Reddit + intent calls = ~2–3× slower). */
-export const DEFAULT_KEYWORD_COUNT = 10;
+/** Number of LLM-generated conversational seed queries. */
+export const DEFAULT_KEYWORD_COUNT = 20;
 
 function buildSystemPrompt(keywordCount: number): string {
-  return `You are a search expert. Given a product, SaaS, or problem description, you output exactly ${keywordCount} Reddit search phrases that potential buyers or people with that problem would use when searching on Reddit. Include the exact phrase the user gave (if short) plus ${keywordCount - 1} very similar alternatives (e.g. product type, "X alternative", use case). Return only a JSON object with a single key "keywords" whose value is an array of exactly ${keywordCount} strings. No other text or markdown.`;
+  return `You are generating conversational Reddit search queries for a founder looking for high-intent leads.
+
+Given a product, service, workflow, or business use case, output exactly ${keywordCount} SHORT search queries that reflect how frustrated or solution-seeking people actually write on Reddit.
+
+Good queries are:
+- conversational
+- pain-oriented
+- switching-oriented
+- recommendation-oriented
+- broad enough for Reddit search to match variations
+- usually 2 to 6 words
+
+Avoid:
+- generic taxonomy phrases
+- long sentences
+- quotation marks
+- hashtags
+- marketing jargon
+
+Examples of good style:
+- mailchimp expensive
+- hate mailchimp
+- switch from hubspot
+- recommend email newsletter tool
+- looking for crm
+- need scheduling software
+
+Return only a JSON object with a single key "keywords" whose value is an array of exactly ${keywordCount} strings. No other text or markdown.`;
 }
 
 function buildUserPrompt(userInput: string, keywordCount: number): string {
-  return `Product/description from the user:\n\n"${userInput.trim()}"\n\nReturn a JSON object: { "keywords": ["phrase1", "phrase2", ... ] } with exactly ${keywordCount} Reddit search phrases.`;
+  return `User input:\n\n"${userInput.trim()}"\n\nReturn a JSON object: { "keywords": ["query1", "query2", ... ] } with exactly ${keywordCount} conversational Reddit search queries.`;
 }
 
 function parseKeywordsResponse(content: string, maxKeywords: number): string[] {
@@ -31,8 +58,8 @@ function parseKeywordsResponse(content: string, maxKeywords: number): string[] {
 }
 
 /**
- * Returns Reddit search keywords for the given user input (product, problem, or "X alternative").
- * Default count is 10 for broader coverage. Uses OPENAI_API_KEY from env.
+ * Returns conversational Reddit search queries for the given user input.
+ * Default count is 20. Uses OPENAI_API_KEY from env.
  */
 export async function getKeywordsForInput(
   userInput: string,

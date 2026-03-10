@@ -39,7 +39,7 @@ function parseArgs(): {
 
 async function main(): Promise<void> {
   const { userInput, includeComments, maxPages, delayMs } = parseArgs();
-  console.log("Pipeline: validate → keywords → search → shortlist → rank → optional top-post enrichment");
+  console.log("Pipeline: validate → conversational queries → expanded Reddit search → shortlist → rank → optional top-post enrichment");
   console.log("Input:", userInput);
   try {
     const result = await runPipeline({

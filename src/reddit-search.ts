@@ -105,11 +105,12 @@ export interface SearchOptions {
   limit?: number;
   delayMs?: number;
   exactPhrase?: boolean;
+  sort?: "relevance" | "new";
 }
 
 /**
  * Fetch Reddit search results for `query`, paginating up to `maxPages` pages.
- * If exactPhrase is true (default), the query is wrapped in double quotes for better relevance.
+ * If exactPhrase is true, the query is wrapped in double quotes.
  */
 export async function search(
   query: string,
@@ -119,7 +120,8 @@ export async function search(
     maxPages = 10,
     limit = 25,
     delayMs = DEFAULT_DELAY_MS,
-    exactPhrase = true,
+    exactPhrase = false,
+    sort = "new",
   } = options;
 
   let q = query.trim();
@@ -132,7 +134,7 @@ export async function search(
   let page = 0;
 
   while (page < maxPages) {
-    let url = `${BASE_URL}/search.json?q=${encoded}&limit=${limit}&sort=relevance&type=link`;
+    let url = `${BASE_URL}/search.json?q=${encoded}&limit=${limit}&sort=${sort}&type=link`;
     if (after) url += `&after=${after}`;
     await delay(delayMs);
     const data = await request<RedditListing>(url, delayMs);

@@ -18,7 +18,7 @@ import { fetchComments } from "./reddit-comments.js";
 import { InvalidSearchInputError, validateUserInput } from "./input-validation.js";
 import type { RedditPost } from "./types.js";
 
-const DEFAULT_MAX_PAGES_PER_KEYWORD = 10;
+const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 const DEFAULT_DELAY_MS = 1000;
 const MAX_POST_AGE_DAYS = 30;
 const MIN_CONTENT_LENGTH = 20;
@@ -27,7 +27,20 @@ const INTENT_CONCURRENCY = 4;
 const COMMENT_ENRICHMENT_CONCURRENCY = 2;
 const MAX_AI_RANKED_POSTS = 80;
 const TOP_POST_COMMENT_ENRICHMENT_COUNT = 10;
-const FALLBACK_MAX_PAGES_PER_QUERY = 2;
+const TARGET_QUERY_COUNT = 30;
+const MAX_PAGES_PER_QUERY = 2;
+const CONVERSATIONAL_QUERY_MODIFIERS = [
+  "alternative",
+  "expensive",
+  "hate",
+  "recommend",
+  "looking for",
+  "need",
+  "switch from",
+  "frustrated with",
+  "tired of",
+  "any good",
+];
 
 const STOPWORDS = new Set([
   "a",
@@ -170,17 +183,40 @@ function tokenize(text: string): string[] {
   )];
 }
 
-function buildBuyerIntentFallbackQueries(userInput: string): string[] {
-  const trimmed = userInput.trim();
-  if (!trimmed) return [];
-  const candidates = [
-    `${trimmed} recommendation`,
-    `best ${trimmed}`,
-    `${trimmed} alternative`,
-    `looking for ${trimmed}`,
-    `need ${trimmed}`,
-  ];
-  return [...new Set(candidates.map((query) => query.trim()).filter(Boolean))];
+function normalizeQuery(query: string): string {
+  return query
+    .toLowerCase()
+    .replace(/[“”"']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildExpandedSearchQueries(userInput: string, conversationalQueries: string[]): string[] {
+  const baseInput = normalizeQuery(userInput);
+  const baseQueries = [baseInput, ...conversationalQueries.map(normalizeQuery)].filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  function addQuery(query: string): void {
+    const normalized = normalizeQuery(query);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+
+  for (const query of baseQueries) addQuery(query);
+
+  for (const modifier of CONVERSATIONAL_QUERY_MODIFIERS) {
+    addQuery(`${baseInput} ${modifier}`);
+    if (out.length >= TARGET_QUERY_COUNT) return out;
+  }
+
+  for (const modifier of CONVERSATIONAL_QUERY_MODIFIERS) {
+    addQuery(`${modifier} ${baseInput}`);
+    if (out.length >= TARGET_QUERY_COUNT) return out;
+  }
+
+  return out.slice(0, TARGET_QUERY_COUNT);
 }
 
 function computeShortlistScore(post: RedditPost, matchedKeywords: string[], userInput: string): number {
@@ -290,19 +326,21 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   const runId = randomUUID();
   const keywordInput = normalizeUserInputForKeywords(userInput);
-  const keywords = await getKeywordsForInput(keywordInput, keywordCount);
-  insertRun(runId, userInput, keywords, "running");
+  const conversationalQueries = await getKeywordsForInput(keywordInput, keywordCount);
+  const searchQueries = buildExpandedSearchQueries(keywordInput, conversationalQueries);
+  insertRun(runId, userInput, searchQueries, "running");
 
   try {
     const keywordResults = await mapWithConcurrency(
-      keywords,
+      searchQueries,
       SEARCH_KEYWORD_CONCURRENCY,
-      async (keyword) => ({
-        keyword,
-        posts: await search(keyword, {
-          maxPages: maxPagesPerKeyword,
+      async (query) => ({
+        keyword: query,
+        posts: await search(query, {
+          maxPages: Math.min(maxPagesPerKeyword, MAX_PAGES_PER_QUERY),
           delayMs,
-          exactPhrase: true,
+          exactPhrase: false,
+          sort: "new",
         }),
       })
     );
@@ -316,32 +354,6 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
         matchedKeywords,
         shortlistScore: computeShortlistScore(post, matchedKeywords, userInput),
       }));
-
-    if (recentCandidates.length === 0) {
-      const fallbackQueries = buildBuyerIntentFallbackQueries(userInput);
-      const fallbackResults = await mapWithConcurrency(
-        fallbackQueries,
-        SEARCH_KEYWORD_CONCURRENCY,
-        async (query) => ({
-          keyword: query,
-          posts: await search(query, {
-            maxPages: FALLBACK_MAX_PAGES_PER_QUERY,
-            delayMs,
-            exactPhrase: false,
-          }),
-        })
-      );
-
-      const mergedResults = dedupePosts([...keywordResults, ...fallbackResults]);
-      recentCandidates = [...mergedResults.values()]
-        .filter(({ post }) => isPostWithinMaxAge(post))
-        .filter(({ post }) => !isLikelySelfPromotionalPost(post))
-        .map(({ post, matchedKeywords }) => ({
-          post: { ...post, comments: [] },
-          matchedKeywords,
-          shortlistScore: computeShortlistScore(post, matchedKeywords, userInput),
-        }));
-    }
 
     for (const candidate of recentCandidates) {
       insertPost(runId, candidate.post, candidate.matchedKeywords);
@@ -499,7 +511,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     updateRunStatus(runId, "completed");
     return {
       runId,
-      keywords,
+      keywords: searchQueries,
       totalPosts: recentCandidates.length,
       totalComments,
       totalPostIntents: rankedCandidates.length,

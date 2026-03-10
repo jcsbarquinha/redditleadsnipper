@@ -22,7 +22,7 @@ Requires **Node.js 18+** (for native `fetch`).
 
 - **Database** (no setup): The app uses **SQLite**—a single file, no server or install. On first run of the MVP pipeline, it creates `data/reddit-leads.db` (or the path in `DATABASE_URL` if you set it). You don’t need to create anything; just run the app. **Everything is stored locally** in that file (runs, posts, comments, intent scores). **SQLite is free**—no cloud DB or cost.
 
-### Pipeline (MVP: validate → keywords → search → shortlist → intent)
+### Pipeline (MVP: validate → conversational queries → search → shortlist → intent)
 
 ```bash
 # Full run: validate input → AI keywords → Reddit search → shortlist → one intent score (0-100) per ranked post
@@ -48,7 +48,7 @@ npm run api
 ```
 
 - **GET /api/health** — `{ "ok": true }`
-- **POST /api/search** — Body: `{ "query": "SEO content automation", "maxPages": 10 }`  
+- **POST /api/search** — Body: `{ "query": "SEO content automation", "maxPages": 1 }`
   Runs the full pipeline, then returns `{ runId, query, keywords, totalPosts, totalComments, leads }`.  
   Each lead has `title`, `full_link`, `subreddit`, `author`, `created_utc`, `score`, `label`, `is_high_intent`, `explanation`, `suggested_reply`.
 
@@ -114,7 +114,7 @@ Appending `.json` to Reddit URLs returns JSON instead of HTML. This tool:
 2. Fetches comments for each post from `www.reddit.com/r/{subreddit}/comments/{id}/_.json` (one request per post; all comments returned in that response are included). No official API or API keys—only these public .json URLs. For very deep threads, Reddit’s response may omit some nested “load more” branches; we include everything that response contains.
 3. Writes everything to a timestamped JSON file in `output/`.
 
-For the **warm-lead MVP** (multi-keyword flow): we validate the search input, run 10 keywords × up to 250 posts per keyword (10 pages), dedupe by post, keep the last 30 days, shortlist the strongest candidates, rank posts primarily from the original post + engagement + recency, then fetch comments only for the top ranked posts to enrich the explanation.
+For the current **warm-lead flow**: we validate the search input, ask the LLM for conversational Reddit-style queries, expand them into a broader 30-query search set with intent modifiers, search Reddit with broad matching and `sort=new`, dedupe by post, keep only the last 30 days, shortlist the strongest candidates, rank posts primarily from the original post + engagement + recency, then fetch comments only for the top ranked posts to enrich the explanation.
 
 ---
 

@@ -93,9 +93,9 @@ app.post("/api/search", (req, res, next) => {
     return;
   }
 
-  const maxPages = typeof req.body?.maxPages === "number" && req.body.maxPages >= 1 && req.body.maxPages <= 10
+  const maxPages = typeof req.body?.maxPages === "number" && req.body.maxPages >= 1 && req.body.maxPages <= 2
     ? Math.floor(req.body.maxPages)
-    : 10;
+    : 1;
 
   try {
     const result = await runPipeline({
