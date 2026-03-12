@@ -1,9 +1,9 @@
 (function () {
   const PLACEHOLDERS = [
     "Enter your product's link",
-    "Describe your product in a few words",
     "The better the description the better the result",
     "What problem are you solving?",
+    "Describe your product in a few words",
     "e.g. SEO content automation tool",
   ];
 

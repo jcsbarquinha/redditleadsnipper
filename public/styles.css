@@ -154,10 +154,7 @@ body {
 .search-form {
   --search-control-height: 5rem;
   --search-row-width: 46rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
+  display: block;
   margin-bottom: 0;
   width: min(100%, var(--search-row-width));
   min-width: 0;
@@ -176,9 +173,9 @@ body {
   bottom: 0;
   pointer-events: none;
   overflow: hidden;
-  padding: 0 1.75rem;
+  padding: 0 10rem 0 1.75rem;
   font: inherit;
-  font-size: 1rem;
+  font-size: 1.3rem;
   line-height: 1.5;
   color: var(--text-muted);
   border-radius: 10px;
@@ -212,11 +209,11 @@ body {
 .search-input {
   width: 100%;
   height: var(--search-control-height);
-  padding: 0 1.75rem;
+  padding: 0 10rem 0 1.75rem;
   font: inherit;
-  font-size: 1rem;
+  font-size: 1.3rem;
   border: 2px solid #c4c8cc;
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--bg);
   color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -237,18 +234,22 @@ body {
 }
 
 .search-btn {
-  height: var(--search-control-height);
-  padding: 0 2rem;
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  height: calc(var(--search-control-height) - 1rem);
+  min-width: 8.5rem;
+  padding: 0 1.75rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font: inherit;
-  font-size: 1rem;
-  font-weight: 500;
+  font-size: 1.3rem;
+  font-weight: 600;
   color: #fff;
   background: var(--reddit-orange);
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
 }
@@ -538,20 +539,23 @@ body {
     margin-bottom: 3rem;
   }
 
-  .search-form {
-    flex-direction: row;
-    width: min(100%, var(--search-row-width));
-    margin-left: auto;
-    margin-right: auto;
+  .search-btn {
+    min-width: 9.25rem;
+    padding: 0 2rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .placeholder-roller {
+    padding-right: 8rem;
   }
 
-  .search-input-wrap {
-    flex: 1;
-    min-width: 0;
+  .search-input {
+    padding-right: 8rem;
   }
 
   .search-btn {
-    flex-shrink: 0;
-    min-width: 8.5rem;
+    min-width: 6.75rem;
+    padding: 0 1.25rem;
   }
 }
