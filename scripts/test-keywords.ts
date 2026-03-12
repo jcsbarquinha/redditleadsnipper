@@ -1,12 +1,12 @@
 /**
- * Test AI keyword expansion. Run: npx tsx scripts/test-keywords.ts [ "product or problem" ]
+ * Test AI search query generation. Run: npx tsx scripts/test-keywords.ts [ "product description or URL" ]
  */
 import { loadConfig } from "../src/config.js";
 import { getKeywordsForInput } from "../src/ai-keywords.js";
 
 loadConfig();
-const input = process.argv[2] ?? "Notion alternative for developers";
+const input = process.argv[2] ?? "https://notion.so";
 console.log("Input:", input);
-const keywords = await getKeywordsForInput(input);
-console.log("Keywords:", keywords);
-console.log("Count:", keywords.length);
+const queries = await getKeywordsForInput(input);
+console.log("Queries:", queries);
+console.log("Count:", queries.length);

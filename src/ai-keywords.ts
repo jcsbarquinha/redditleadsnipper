@@ -1,49 +1,195 @@
 /**
- * AI conversational query expansion: user input → N Reddit-style search queries via OpenAI.
- * These are short, frustration-oriented phrases meant for broad Reddit matching.
+ * AI search query generation: user input → Reddit-style search queries via OpenAI.
+ * URL inputs are first analyzed from the website itself; descriptions go straight to the model.
  */
 
 import { requireOpenAIKey } from "./config.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
+const WEBSITE_FETCH_TIMEOUT_MS = 15_000;
+const MAX_WEBSITE_TEXT_LENGTH = 4000;
 
-/** Number of LLM-generated conversational seed queries. */
-export const DEFAULT_KEYWORD_COUNT = 20;
+/** Number of final LLM-generated search queries. */
+export const DEFAULT_KEYWORD_COUNT = 16;
 
-function buildSystemPrompt(keywordCount: number): string {
-  return `You are generating conversational Reddit search queries for a founder looking for high-intent leads.
-
-Given a product, service, workflow, or business use case, output exactly ${keywordCount} SHORT search queries that reflect how frustrated or solution-seeking people actually write on Reddit.
-
-Good queries are:
-- conversational
-- pain-oriented
-- switching-oriented
-- recommendation-oriented
-- broad enough for Reddit search to match variations
-- usually 2 to 6 words
-
-Avoid:
-- generic taxonomy phrases
-- long sentences
-- quotation marks
-- hashtags
-- marketing jargon
-
-Examples of good style:
-- mailchimp expensive
-- hate mailchimp
-- switch from hubspot
-- recommend email newsletter tool
-- looking for crm
-- need scheduling software
-
-Return only a JSON object with a single key "keywords" whose value is an array of exactly ${keywordCount} strings. No other text or markdown.`;
+interface WebsiteContext {
+  url: string;
+  title: string;
+  metaDescription: string;
+  headings: string[];
+  bodyExcerpt: string;
 }
 
-function buildUserPrompt(userInput: string, keywordCount: number): string {
-  return `User input:\n\n"${userInput.trim()}"\n\nReturn a JSON object: { "keywords": ["query1", "query2", ... ] } with exactly ${keywordCount} conversational Reddit search queries.`;
+function normalizeSearchQuery(query: string): string {
+  return cleanText(query)
+    .toLowerCase()
+    .replace(/[“”"']/g, "")
+    .trim();
+}
+
+function looksLikeUrl(input: string): boolean {
+  const trimmed = input.trim();
+  if (!trimmed || /\s/.test(trimmed)) return false;
+  try {
+    const url = new URL(trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`);
+    return Boolean(url.hostname && url.hostname.includes("."));
+  } catch {
+    return false;
+  }
+}
+
+function normalizeUrl(input: string): string {
+  const trimmed = input.trim();
+  const url = new URL(trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`);
+  return url.toString();
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function cleanText(text: string): string {
+  return decodeHtmlEntities(text)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractFirstMatch(html: string, regex: RegExp): string {
+  const match = html.match(regex);
+  return cleanText(match?.[1] ?? "");
+}
+
+function stripTags(html: string): string {
+  return cleanText(
+    html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+      .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  );
+}
+
+function extractHeadings(html: string): string[] {
+  const matches = [...html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)];
+  const headings = matches
+    .map((match) => stripTags(match[1] ?? ""))
+    .filter(Boolean);
+  return [...new Set(headings)].slice(0, 6);
+}
+
+async function fetchWebsiteContext(input: string): Promise<WebsiteContext | null> {
+  if (!looksLikeUrl(input)) return null;
+
+  const url = normalizeUrl(input);
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; LeadsnipeBot/1.0; +https://leadsnipe.com)",
+      Accept: "text/html,application/xhtml+xml",
+    },
+    signal: AbortSignal.timeout(WEBSITE_FETCH_TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Website fetch failed with HTTP ${res.status}`);
+  }
+
+  const html = await res.text();
+  const title = extractFirstMatch(html, /<title[^>]*>([\s\S]*?)<\/title>/i);
+  const metaDescription =
+    extractFirstMatch(html, /<meta[^>]+name=["']description["'][^>]+content=["']([\s\S]*?)["'][^>]*>/i) ||
+    extractFirstMatch(html, /<meta[^>]+content=["']([\s\S]*?)["'][^>]+name=["']description["'][^>]*>/i) ||
+    extractFirstMatch(html, /<meta[^>]+property=["']og:description["'][^>]+content=["']([\s\S]*?)["'][^>]*>/i);
+  const headings = extractHeadings(html);
+  const bodyExcerpt = stripTags(html).slice(0, MAX_WEBSITE_TEXT_LENGTH);
+
+  return {
+    url,
+    title,
+    metaDescription,
+    headings,
+    bodyExcerpt,
+  };
+}
+
+function buildSystemPrompt(keywordCount: number): string {
+  return `You are generating Reddit search queries for a founder who wants to find potential paying users.
+
+The user will provide either:
+- a SaaS or product URL
+- a plain-English description of their product
+
+Your job:
+1. Understand what the product actually does
+2. Infer the target customer and the pain/problem it solves
+3. Generate exactly ${keywordCount} FINAL Reddit search queries that are most likely to surface people who need that product
+
+Important:
+- For URL inputs, rely heavily on the provided website content
+- Prioritize the problem/use case over the brand name
+- Include brand/competitor searches only when they are genuinely useful
+- Focus on buyer-intent, pain, alternatives, recommendations, workflow frustration, and active solution seeking
+- Queries should be short and realistic for Reddit search
+- Usually 2 to 6 words
+- No quotation marks
+- No hashtags
+- No long sentences
+- No generic category fluff
+
+Good query styles:
+- mailchimp expensive
+- looking for crm
+- need scheduling software
+- best tool for cold email
+- tired of manual invoicing
+- alternative to hubspot
+
+Return JSON only in this exact shape:
+{
+  "product_summary": "short summary",
+  "target_customer": "short summary",
+  "problem_solved": "short summary",
+  "keywords": ["query1", "query2"]
+}`;
+}
+
+function buildUserPrompt(userInput: string, keywordCount: number, websiteContext: WebsiteContext | null): string {
+  if (!websiteContext) {
+    return `Input type: product description
+
+Original input:
+"${userInput.trim()}"
+
+Generate exactly ${keywordCount} final Reddit search queries to find people who would pay for this product.`;
+  }
+
+  return `Input type: website URL
+
+Original input:
+"${userInput.trim()}"
+
+Website URL:
+${websiteContext.url}
+
+Website title:
+${websiteContext.title || "(none)"}
+
+Meta description:
+${websiteContext.metaDescription || "(none)"}
+
+Headings:
+${websiteContext.headings.length > 0 ? websiteContext.headings.map((heading) => `- ${heading}`).join("\n") : "- (none)"}
+
+Website copy excerpt:
+${websiteContext.bodyExcerpt || "(none)"}
+
+Generate exactly ${keywordCount} final Reddit search queries to find people who would pay for this product.`;
 }
 
 function parseKeywordsResponse(content: string, maxKeywords: number): string[] {
@@ -54,18 +200,38 @@ function parseKeywordsResponse(content: string, maxKeywords: number): string[] {
   const parsed = JSON.parse(jsonStr) as { keywords?: string[] };
   const list = parsed?.keywords ?? (Array.isArray(parsed) ? parsed : []);
   if (!Array.isArray(list)) throw new Error("Expected keywords array");
-  return list.slice(0, maxKeywords).filter((k): k is string => typeof k === "string" && k.trim().length > 0);
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+
+  for (const item of list) {
+    if (typeof item !== "string") continue;
+    const normalized = normalizeSearchQuery(item);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    deduped.push(normalized);
+    if (deduped.length >= maxKeywords) break;
+  }
+
+  return deduped;
 }
 
 /**
- * Returns conversational Reddit search queries for the given user input.
- * Default count is 20. Uses OPENAI_API_KEY from env.
+ * Returns final Reddit search queries for the given user input.
+ * URL inputs are enriched with website content first. Uses OPENAI_API_KEY from env.
  */
 export async function getKeywordsForInput(
   userInput: string,
   keywordCount: number = DEFAULT_KEYWORD_COUNT
 ): Promise<string[]> {
   const key = requireOpenAIKey();
+  let websiteContext: WebsiteContext | null = null;
+
+  try {
+    websiteContext = await fetchWebsiteContext(userInput);
+  } catch (err) {
+    console.warn("Website analysis fallback:", err instanceof Error ? err.message : err);
+  }
+
   const res = await fetch(OPENAI_API_URL, {
     method: "POST",
     headers: {
@@ -76,9 +242,9 @@ export async function getKeywordsForInput(
       model: MODEL,
       messages: [
         { role: "system", content: buildSystemPrompt(keywordCount) },
-        { role: "user", content: buildUserPrompt(userInput, keywordCount) },
+        { role: "user", content: buildUserPrompt(userInput, keywordCount, websiteContext) },
       ],
-      temperature: 0.3,
+      temperature: 0.2,
     }),
     signal: AbortSignal.timeout(30_000),
   });

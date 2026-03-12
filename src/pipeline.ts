@@ -1,5 +1,5 @@
 /**
- * Full pipeline: validate input → AI keywords → Reddit search → shortlist → post-centric ranking → top-post comment enrichment → DB.
+ * Full pipeline: validate input → AI search queries → Reddit search → shortlist → post-centric ranking → top-post comment enrichment → DB.
  */
 
 import { randomUUID } from "node:crypto";
@@ -27,20 +27,7 @@ const INTENT_CONCURRENCY = 4;
 const COMMENT_ENRICHMENT_CONCURRENCY = 2;
 const MAX_AI_RANKED_POSTS = 80;
 const TOP_POST_COMMENT_ENRICHMENT_COUNT = 10;
-const TARGET_QUERY_COUNT = 30;
 const MAX_PAGES_PER_QUERY = 2;
-const CONVERSATIONAL_QUERY_MODIFIERS = [
-  "alternative",
-  "expensive",
-  "hate",
-  "recommend",
-  "looking for",
-  "need",
-  "switch from",
-  "frustrated with",
-  "tired of",
-  "any good",
-];
 
 const STOPWORDS = new Set([
   "a",
@@ -83,19 +70,15 @@ interface RankedCandidate extends CandidatePost {
   suggestedReply: string | null;
 }
 
-function normalizeUserInputForKeywords(input: string): string {
+function isLikelyUrlInput(input: string): boolean {
   const trimmed = input.trim();
-  if (!trimmed) return trimmed;
+  if (!trimmed || /\s/.test(trimmed)) return false;
   try {
-    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
-    if (url.hostname && url.hostname !== "localhost") {
-      const domain = url.hostname.replace(/^www\./i, "");
-      return domain;
-    }
+    const url = new URL(trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`);
+    return Boolean(url.hostname && url.hostname.includes("."));
   } catch {
-    // not a URL, use as-is
+    return false;
   }
-  return trimmed;
 }
 
 function postRowId(runId: string, redditId: string | null): string {
@@ -183,48 +166,13 @@ function tokenize(text: string): string[] {
   )];
 }
 
-function normalizeQuery(query: string): string {
-  return query
-    .toLowerCase()
-    .replace(/[“”"']/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function buildExpandedSearchQueries(userInput: string, conversationalQueries: string[]): string[] {
-  const baseInput = normalizeQuery(userInput);
-  const baseQueries = [baseInput, ...conversationalQueries.map(normalizeQuery)].filter(Boolean);
-  const seen = new Set<string>();
-  const out: string[] = [];
-
-  function addQuery(query: string): void {
-    const normalized = normalizeQuery(query);
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
-    out.push(normalized);
-  }
-
-  for (const query of baseQueries) addQuery(query);
-
-  for (const modifier of CONVERSATIONAL_QUERY_MODIFIERS) {
-    addQuery(`${baseInput} ${modifier}`);
-    if (out.length >= TARGET_QUERY_COUNT) return out;
-  }
-
-  for (const modifier of CONVERSATIONAL_QUERY_MODIFIERS) {
-    addQuery(`${modifier} ${baseInput}`);
-    if (out.length >= TARGET_QUERY_COUNT) return out;
-  }
-
-  return out.slice(0, TARGET_QUERY_COUNT);
-}
-
 function computeShortlistScore(post: RedditPost, matchedKeywords: string[], userInput: string): number {
   const title = (post.title ?? "").toLowerCase();
   const body = (post.selftext ?? "").toLowerCase();
   const haystack = `${title} ${body}`.trim();
-  const normalizedInput = userInput.toLowerCase().replace(/[^a-z0-9\s]+/g, " ").trim();
-  const userTerms = tokenize(userInput);
+  const searchContext = isLikelyUrlInput(userInput) ? matchedKeywords.join(" ") : userInput;
+  const normalizedInput = searchContext.toLowerCase().replace(/[^a-z0-9\s]+/g, " ").trim();
+  const userTerms = tokenize(searchContext);
   const exactPhraseBoost = normalizedInput && haystack.includes(normalizedInput) ? 20 : 0;
   const termMatchCount = userTerms.reduce((count, term) => count + (haystack.includes(term) ? 1 : 0), 0);
   const termBoost = Math.min(24, termMatchCount * 6);
@@ -325,9 +273,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   await validateUserInput(userInput);
 
   const runId = randomUUID();
-  const keywordInput = normalizeUserInputForKeywords(userInput);
-  const conversationalQueries = await getKeywordsForInput(keywordInput, keywordCount);
-  const searchQueries = buildExpandedSearchQueries(keywordInput, conversationalQueries);
+  const searchQueries = await getKeywordsForInput(userInput, keywordCount);
   insertRun(runId, userInput, searchQueries, "running");
 
   try {
