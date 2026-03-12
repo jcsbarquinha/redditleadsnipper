@@ -1,10 +1,9 @@
 (function () {
   const PLACEHOLDERS = [
-    "Paste your SaaS link or product name",
+    "Enter your product's link",
     "Describe your product in a few words",
     "The better the description the better the result",
     "What problem are you solving?",
-    "e.g. best calorie tracking app",
     "e.g. SEO content automation tool",
   ];
 
