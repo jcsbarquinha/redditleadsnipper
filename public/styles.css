@@ -85,7 +85,7 @@ body {
 
 .hero-inner {
   width: 100%;
-  max-width: 700px;
+  max-width: 900px;
   margin: 0 auto;
   text-align: center;
   display: flex;
@@ -127,6 +127,22 @@ body {
   text-align: center;
 }
 
+.headline-scribble {
+  position: relative;
+  display: inline-block;
+}
+
+.headline-scribble::after {
+  content: "";
+  position: absolute;
+  left: -2%;
+  right: -12%;
+  bottom: 0.06em;
+  height: 0.14em;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 14' fill='none' preserveAspectRatio='none'%3E%3Cpath d='M2 9c30-6 60 3 90-1.5s60-7 90-1.5 60 7 90 1.5 60-6 90-1.5' stroke='%23ff4500' stroke-width='3' stroke-linecap='round' fill='none' opacity='0.45'/%3E%3Cpath d='M2 12c30-5 60 2.5 90-1s60-6 90-1 60 6 90 1 60-5 90-1' stroke='%23ff4500' stroke-width='2' stroke-linecap='round' fill='none' opacity='0.3'/%3E%3C/svg%3E") no-repeat center / 100% 100%;
+  pointer-events: none;
+}
+
 .headline-accent {
   color: var(--reddit-orange);
 }
@@ -134,7 +150,7 @@ body {
 .subhead {
   color: var(--text-muted);
   margin: 0 0 2.5rem;
-  font-size: 1.125rem;
+  font-size: 1.46rem;
   line-height: 1.5;
 }
 
@@ -142,7 +158,7 @@ body {
   display: block;
   width: max-content;
   max-width: none;
-  font-size: 1.35rem;
+  font-size: 1.76rem;
   font-weight: 600;
   margin: 0 auto 2.5rem;
   line-height: 1.4;
@@ -569,7 +585,7 @@ body {
   }
 
   .subhead {
-    font-size: 1.25rem;
+    font-size: 1.63rem;
     margin-bottom: 3rem;
   }
 
