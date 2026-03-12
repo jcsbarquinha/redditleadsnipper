@@ -131,7 +131,7 @@
     const highIntentCount = data.leads.filter(function (l) { return l.is_high_intent; }).length;
     resultsHeader.innerHTML =
       data.leads.length > 0
-        ? `<strong>Results:</strong> ${highIntentCount} high intent posts for you to interact with \uD83D\uDD25`
+        ? `<strong>Results:</strong> ${highIntentCount} high-intent leads found in the last 30 days \uD83D\uDD25`
         : "No leads found in the last 30 days for that query.";
     resultsList.innerHTML = "";
 

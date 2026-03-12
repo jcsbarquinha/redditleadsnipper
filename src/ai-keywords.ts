@@ -11,7 +11,7 @@ const WEBSITE_FETCH_TIMEOUT_MS = 15_000;
 const MAX_WEBSITE_TEXT_LENGTH = 4000;
 
 /** Number of final LLM-generated search queries. */
-export const DEFAULT_KEYWORD_COUNT = 15;
+export const DEFAULT_KEYWORD_COUNT = 8;
 
 interface WebsiteContext {
   url: string;
