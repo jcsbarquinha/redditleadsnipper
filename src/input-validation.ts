@@ -4,7 +4,7 @@ const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 
 const INVALID_INPUT_MESSAGE =
-  'Please enter a real product, service, or business use case. For example: "social media scheduler for agencies".';
+  "Please enter a real product, service, product category, or business use case.";
 
 export class InvalidSearchInputError extends Error {
   constructor(message: string = INVALID_INPUT_MESSAGE) {
@@ -41,6 +41,9 @@ ACCEPT only if the input clearly refers to at least one of these:
 - a SaaS
 - a software tool
 - a service
+- a product category
+- an AI product category
+- a media or content generation product
 - an agency offering
 - a productized service
 - a business workflow
@@ -56,7 +59,9 @@ REJECT if the input is:
 
 VERY IMPORTANT:
 - Be reasonably strict, but do not over-reject.
-- Accept broad but valid product or service categories if they plausibly describe something a business could sell.
+- Accept short product-category phrases if they plausibly describe something a founder could sell.
+- Accept AI/media/content/product-generation phrases even when they are short, as long as they still sound like a real sellable product category.
+- Accept inputs even if they do not already include the exact buyer segment, as long as they still clearly describe a plausible product or service.
 - Reject clearly generic consumer nouns and topics with no business offer behind them.
 - Single generic nouns should usually be rejected unless they clearly describe a sellable product or service category.
 - URLs should be accepted only if they plausibly look like a company/product site.
@@ -70,10 +75,14 @@ Examples to REJECT:
 - profanity
 
 Examples to ACCEPT:
+- "AI realistic photo"
+- "AI product photos"
+- "AI headshot generator"
 - "social media scheduler"
 - "social media scheduler for agencies"
 - "invoice automation for accountants"
 - "AI headshots for teams"
+- "SEO content automation"
 - "SEO content writing service"
 - "https://headshotpro.com"
 
@@ -84,7 +93,7 @@ Return JSON only with this exact shape:
 
 Would this be a valid search for finding potential customers on Reddit?
 
-Allow broad but legitimate product/service categories. Reject only if the input is clearly too generic, abusive, nonsensical, or unrelated to something a business could actually offer.`;
+Allow broad but legitimate product, service, and product-category inputs. Accept if the phrase plausibly describes something a founder could sell, even if it is short. Reject only if the input is clearly too generic, abusive, nonsensical, or unrelated to something a business could actually offer.`;
 
   const res = await fetch(OPENAI_API_URL, {
     method: "POST",

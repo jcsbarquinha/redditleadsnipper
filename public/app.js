@@ -1,9 +1,10 @@
 (function () {
+  const INLINE_VALIDATION_MESSAGE = "Please enter a real product, service, product category, or business use case.";
   const PLACEHOLDERS = [
     "Enter your product's link",
-    "The better the description the better the result",
-    "What problem are you solving?",
     "Describe your product in a few words",
+    "What problem are you solving?",
+    "The better the description the better the result",
     "e.g. SEO content automation tool",
   ];
 
@@ -21,6 +22,7 @@
   const searchForm = document.getElementById("searchForm");
   const searchInput = document.getElementById("searchInput");
   const searchBtn = document.getElementById("searchBtn");
+  const searchInlineError = document.getElementById("searchInlineError");
   const placeholderRoller = document.getElementById("placeholderRoller");
   const placeholderRollerInner = document.getElementById("placeholderRollerInner");
   const loadingSection = document.getElementById("loadingSection");
@@ -50,7 +52,27 @@
   function updateRollerVisibility() {
     const hasValue = searchInput.value.trim().length > 0;
     const isFocused = document.activeElement === searchInput;
-    placeholderRoller.classList.toggle("hidden", hasValue || isFocused);
+    const hasInlineError = searchInlineError && !searchInlineError.classList.contains("hidden");
+    placeholderRoller.classList.toggle("hidden", hasValue || isFocused || hasInlineError);
+  }
+
+  function hideSearchError() {
+    if (!searchInlineError) return;
+    searchInlineError.classList.add("hidden");
+    searchInlineError.textContent = "";
+    searchInput.classList.remove("error-state");
+    searchInput.parentElement.classList.remove("has-error");
+    updateRollerVisibility();
+  }
+
+  function showSearchError(msg) {
+    if (!searchInlineError) return;
+    searchInput.value = "";
+    searchInlineError.textContent = msg;
+    searchInlineError.classList.remove("hidden");
+    searchInput.classList.add("error-state");
+    searchInput.parentElement.classList.add("has-error");
+    updateRollerVisibility();
   }
 
   function formatAge(createdUtc) {
@@ -75,6 +97,7 @@
   }
 
   function showLoading() {
+    hideSearchError();
     errorSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
     loadingSection.classList.remove("hidden");
@@ -98,8 +121,8 @@
   function showError(msg) {
     loadingSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
-    errorMessage.textContent = msg;
-    errorSection.classList.remove("hidden");
+    errorSection.classList.add("hidden");
+    showSearchError(msg);
   }
 
   function showResults(data) {
@@ -170,6 +193,7 @@
     e.preventDefault();
     resultsSection.classList.add("hidden");
     errorSection.classList.add("hidden");
+    hideSearchError();
     hero.scrollIntoView({ behavior: "smooth", block: "start" });
     searchInput.focus();
     updateRollerVisibility();
@@ -211,6 +235,10 @@
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
+        if (res.status === 400) {
+          showError(INLINE_VALIDATION_MESSAGE);
+          return;
+        }
         showError(data.error || "Search failed. Try again.");
         return;
       }
@@ -226,9 +254,21 @@
   if (placeholderRollerInner) {
     placeholderRollerInner.textContent = PLACEHOLDERS[0];
   }
-  searchInput.addEventListener("focus", updateRollerVisibility);
+  searchInput.addEventListener("focus", () => {
+    hideSearchError();
+    updateRollerVisibility();
+  });
   searchInput.addEventListener("blur", updateRollerVisibility);
-  searchInput.addEventListener("input", updateRollerVisibility);
+  searchInput.addEventListener("input", () => {
+    hideSearchError();
+    updateRollerVisibility();
+  });
+  if (searchInlineError) {
+    searchInlineError.addEventListener("click", () => {
+      hideSearchError();
+      searchInput.focus();
+    });
+  }
   updateRollerVisibility();
   setInterval(rotatePlaceholder, 3000);
 })();
