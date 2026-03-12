@@ -19,7 +19,7 @@ import { InvalidSearchInputError, validateUserInput } from "./input-validation.j
 import type { RedditPost } from "./types.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
-const DEFAULT_DELAY_MS = 1000;
+const DEFAULT_DELAY_MS = 500;
 const MAX_POST_AGE_DAYS = 30;
 const MIN_CONTENT_LENGTH = 20;
 const SEARCH_KEYWORD_CONCURRENCY = 1;
