@@ -52,6 +52,13 @@ const PROMO_CALL_TO_ACTION_PATTERN =
   /\b(find it here|check it out|try it|try this|sign up|signup|get started|learn more|visit|available here|here's my|here is my|our tool|our product|my tool|my product|i built|we built|i made|we made)\b/i;
 const SELF_PROMO_IDENTITY_PATTERN =
   /\b(i built|we built|i made|we made|my tool|my product|our tool|our product|my startup|our startup|my app|our app)\b/i;
+const PRODUCT_OWNER_PATTERN =
+  /\b(i am the owner of|i'm the owner of|owner of|founder of|cofounder of|co-founder of|creator of|maker of|maintainer of|i'm building|i am building|we're building|we are building|i launched|we launched|i created|we created)\b/i;
+/** Only exclude when post clearly shares author's own setup/tutorial, not "looking for" or "does X work with". */
+const PRODUCT_USER_TUTORIAL_PATTERN =
+  /\b(full breakdown|here's exactly how|heres exactly how|my setup|step by step|self hosted|self-hosted|how it works)\b/i;
+const DISCOUNT_RESELLER_PATTERN =
+  /\b(dm me|whatsapp|join my community|instant delivery|payment methods|discount|annual subscriptions|secure your slot|lifetime deal)\b/i;
 const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/ig;
 const MARKDOWN_LINK_PATTERN = /\[[^\]]+\]\((https?:\/\/|www\.)[^)]+\)/i;
 
@@ -127,10 +134,24 @@ function normalizeDomain(input: string): string | null {
   }
 }
 
-function isLikelySelfPromotionalPost(post: RedditPost): boolean {
+function getInputBrandTokens(input: string): string[] {
+  if (!isLikelyUrlInput(input)) return [];
+  const domain = normalizeDomain(input);
+  if (!domain) return [];
+  return [...new Set(
+    domain
+      .split(".")
+      .flatMap((part) => part.split("-"))
+      .map((part) => part.trim().toLowerCase())
+      .filter((part) => part.length >= 4 && !["www", "app", "com", "io", "ai", "co"].includes(part))
+  )];
+}
+
+function isLikelySelfPromotionalPost(post: RedditPost, userInput: string): boolean {
   const title = (post.title ?? "").trim();
   const body = (post.selftext ?? "").trim();
   const combined = `${title}\n${body}`.trim();
+  const combinedLower = combined.toLowerCase();
   if (!combined) return false;
 
   const markdownLink = MARKDOWN_LINK_PATTERN.test(body);
@@ -143,14 +164,19 @@ function isLikelySelfPromotionalPost(post: RedditPost): boolean {
 
   const mentionsLinkedBrand = linkedDomains.some((domain) => {
     const brand = domain.split(".")[0];
-    return Boolean(brand && combined.toLowerCase().includes(brand.toLowerCase()));
+    return Boolean(brand && combinedLower.includes(brand.toLowerCase()));
   });
+  const inputBrandTokens = getInputBrandTokens(userInput);
+  const mentionsInputBrand = inputBrandTokens.some((token) => combinedLower.includes(token));
 
   if (PROMO_CALL_TO_ACTION_PATTERN.test(combined) && hasExplicitLink) return true;
   if (SELF_PROMO_IDENTITY_PATTERN.test(combined)) return true;
+  if (PRODUCT_OWNER_PATTERN.test(combined)) return true;
+  if (DISCOUNT_RESELLER_PATTERN.test(combined) && hasExplicitLink) return true;
   if (mentionsLinkedBrand && /(find it here|check it out|my tool|our tool|my product|our product|i built|we built)/i.test(combined) && hasExplicitLink) {
     return true;
   }
+  if (mentionsInputBrand && PRODUCT_USER_TUTORIAL_PATTERN.test(combined)) return true;
 
   return false;
 }
@@ -294,7 +320,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     const uniquePosts = dedupePosts(keywordResults);
     let recentCandidates: CandidatePost[] = [...uniquePosts.values()]
       .filter(({ post }) => isPostWithinMaxAge(post))
-      .filter(({ post }) => !isLikelySelfPromotionalPost(post))
+      .filter(({ post }) => !isLikelySelfPromotionalPost(post, userInput))
       .map(({ post, matchedKeywords }) => ({
         post: { ...post, comments: [] },
         matchedKeywords,

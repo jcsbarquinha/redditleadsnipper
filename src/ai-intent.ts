@@ -27,6 +27,12 @@ Prioritize the ORIGINAL POST much more than the comments.
 - A low-engagement post can still be a strong lead if the pain point is clear.
 - Do not over-reward broad discussion threads unless the original post shows clear buying or problem-solving intent.
 
+Treat these as weak or non-leads:
+- posts written by the product owner, founder, or creator
+- posts from someone already using the exact product and sharing a setup, tutorial, review, or breakdown
+- self-promotional announcements, case studies, or launch posts
+- discount/reseller posts and generic software deal threads
+
 Score the post from 0 to 100 based on how promising it is as a founder reply opportunity.
 - 70-100: strong intent or clear pain point with reply potential
 - 40-69: relevant but softer intent or weaker urgency
