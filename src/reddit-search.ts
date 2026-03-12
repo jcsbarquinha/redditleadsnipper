@@ -105,7 +105,7 @@ export interface SearchOptions {
   limit?: number;
   delayMs?: number;
   exactPhrase?: boolean;
-  sort?: "relevance" | "new";
+  sort?: "relevance" | "new" | "hot";
 }
 
 /**

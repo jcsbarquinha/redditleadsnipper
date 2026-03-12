@@ -254,16 +254,21 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   insertRun(runId, userInput, searchQueries, "running");
 
   try {
+    const SORT_MODES: Array<"new" | "relevance" | "hot"> = ["new", "relevance", "hot"];
+    const searchTasks = searchQueries.flatMap((query) =>
+      SORT_MODES.map((sort) => ({ query, sort }))
+    );
+
     const keywordResults = await mapWithConcurrency(
-      searchQueries,
+      searchTasks,
       SEARCH_KEYWORD_CONCURRENCY,
-      async (query) => ({
+      async ({ query, sort }) => ({
         keyword: query,
         posts: await search(query, {
           maxPages: Math.min(maxPagesPerKeyword, MAX_PAGES_PER_QUERY),
           delayMs,
           exactPhrase: false,
-          sort: "new",
+          sort,
         }),
       })
     );
