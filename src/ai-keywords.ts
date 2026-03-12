@@ -141,6 +141,7 @@ Important:
 - No hashtags
 - No long sentences
 - No generic category fluff
+- Avoid single-topic queries that match generic discussion (e.g. avoid "social media" or "AI" alone; prefer "looking for social media scheduler", "need AI headshot tool")
 
 Good query styles:
 - mailchimp expensive
@@ -192,12 +193,21 @@ ${websiteContext.bodyExcerpt || "(none)"}
 Generate exactly ${keywordCount} final Reddit search queries to find people who would pay for this product.`;
 }
 
-function parseKeywordsResponse(content: string, maxKeywords: number): string[] {
+interface ParsedKeywordResponse {
+  keywords: string[];
+  productSummary?: string;
+}
+
+function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeywordResponse {
   const trimmed = content.trim();
   let jsonStr = trimmed;
   const codeBlock = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/);
   if (codeBlock) jsonStr = codeBlock[1].trim();
-  const parsed = JSON.parse(jsonStr) as { keywords?: string[] };
+  const parsed = JSON.parse(jsonStr) as {
+    keywords?: string[];
+    product_summary?: string;
+    problem_solved?: string;
+  };
   const list = parsed?.keywords ?? (Array.isArray(parsed) ? parsed : []);
   if (!Array.isArray(list)) throw new Error("Expected keywords array");
   const seen = new Set<string>();
@@ -212,17 +222,27 @@ function parseKeywordsResponse(content: string, maxKeywords: number): string[] {
     if (deduped.length >= maxKeywords) break;
   }
 
-  return deduped;
+  const productSummary =
+    typeof parsed?.product_summary === "string" && parsed.product_summary.trim()
+      ? parsed.product_summary.trim().slice(0, 500)
+      : undefined;
+
+  return { keywords: deduped, productSummary };
+}
+
+export interface KeywordResult {
+  keywords: string[];
+  productSummary?: string;
 }
 
 /**
- * Returns final Reddit search queries for the given user input.
+ * Returns final Reddit search queries and optional product summary for the given user input.
  * URL inputs are enriched with website content first. Uses OPENAI_API_KEY from env.
  */
 export async function getKeywordsForInput(
   userInput: string,
   keywordCount: number = DEFAULT_KEYWORD_COUNT
-): Promise<string[]> {
+): Promise<KeywordResult> {
   const key = requireOpenAIKey();
   let websiteContext: WebsiteContext | null = null;
 
@@ -263,7 +283,7 @@ export async function getKeywordsForInput(
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenAI returned no content");
 
-  const keywords = parseKeywordsResponse(content, keywordCount);
+  const { keywords, productSummary } = parseKeywordsResponse(content, keywordCount);
   if (keywords.length === 0) throw new Error("OpenAI returned no valid keywords");
-  return keywords.slice(0, keywordCount);
+  return { keywords: keywords.slice(0, keywordCount), productSummary };
 }

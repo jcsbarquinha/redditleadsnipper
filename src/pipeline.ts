@@ -23,30 +23,11 @@ const DEFAULT_DELAY_MS = 1000;
 const MAX_POST_AGE_DAYS = 30;
 const MIN_CONTENT_LENGTH = 20;
 const SEARCH_KEYWORD_CONCURRENCY = 1;
-const INTENT_CONCURRENCY = 4;
+const INTENT_CONCURRENCY = 10;
 const COMMENT_ENRICHMENT_CONCURRENCY = 2;
-const MAX_AI_RANKED_POSTS = 80;
 const TOP_POST_COMMENT_ENRICHMENT_COUNT = 10;
 const MAX_PAGES_PER_QUERY = 2;
 
-const STOPWORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "the",
-  "for",
-  "with",
-  "from",
-  "that",
-  "this",
-  "your",
-  "you",
-  "how",
-  "what",
-  "into",
-  "tool",
-  "service",
-]);
 
 const PROMO_CALL_TO_ACTION_PATTERN =
   /\b(find it here|check it out|try it|try this|sign up|signup|get started|learn more|visit|available here|here's my|here is my|our tool|our product|my tool|my product|i built|we built|i made|we made)\b/i;
@@ -65,7 +46,6 @@ const MARKDOWN_LINK_PATTERN = /\[[^\]]+\]\((https?:\/\/|www\.)[^)]+\)/i;
 interface CandidatePost {
   post: RedditPost;
   matchedKeywords: string[];
-  shortlistScore: number;
 }
 
 interface RankedCandidate extends CandidatePost {
@@ -181,36 +161,6 @@ function isLikelySelfPromotionalPost(post: RedditPost, userInput: string): boole
   return false;
 }
 
-function tokenize(text: string): string[] {
-  return [...new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]+/g, " ")
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 3 && !STOPWORDS.has(token))
-  )];
-}
-
-function computeShortlistScore(post: RedditPost, matchedKeywords: string[], userInput: string): number {
-  const title = (post.title ?? "").toLowerCase();
-  const body = (post.selftext ?? "").toLowerCase();
-  const haystack = `${title} ${body}`.trim();
-  const searchContext = isLikelyUrlInput(userInput) ? matchedKeywords.join(" ") : userInput;
-  const normalizedInput = searchContext.toLowerCase().replace(/[^a-z0-9\s]+/g, " ").trim();
-  const userTerms = tokenize(searchContext);
-  const exactPhraseBoost = normalizedInput && haystack.includes(normalizedInput) ? 20 : 0;
-  const termMatchCount = userTerms.reduce((count, term) => count + (haystack.includes(term) ? 1 : 0), 0);
-  const termBoost = Math.min(24, termMatchCount * 6);
-  const keywordBoost = Math.min(18, matchedKeywords.length * 6);
-  const contentBoost = Math.min(15, ((post.title ?? "").length / 16) + ((post.selftext ?? "").length / 140));
-  const ageDays = getPostAgeDays(post);
-  const recencyBoost = Number.isFinite(ageDays) ? Math.max(0, 30 - ageDays) : 0;
-  const votes = Math.max(0, post.score ?? 0);
-  const numComments = Math.max(0, post.num_comments ?? 0);
-  const engagementBoost = Math.min(12, Math.log1p(votes) * 1.5 + Math.log1p(numComments) * 2.7);
-  return exactPhraseBoost + termBoost + keywordBoost + contentBoost + recencyBoost + engagementBoost;
-}
 
 function applyFinalScoreAdjustments(rawScore: number, post: RedditPost): number {
   const ageDays = Math.min(MAX_POST_AGE_DAYS, getPostAgeDays(post));
@@ -299,7 +249,8 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   await validateUserInput(userInput);
 
   const runId = randomUUID();
-  const searchQueries = await getKeywordsForInput(userInput, keywordCount);
+  const { keywords: searchQueries, productSummary } = await getKeywordsForInput(userInput, keywordCount);
+  const productContext = (productSummary && productSummary.trim()) ? productSummary.trim() : userInput;
   insertRun(runId, userInput, searchQueries, "running");
 
   try {
@@ -324,20 +275,14 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       .map(({ post, matchedKeywords }) => ({
         post: { ...post, comments: [] },
         matchedKeywords,
-        shortlistScore: computeShortlistScore(post, matchedKeywords, userInput),
       }));
 
     for (const candidate of recentCandidates) {
       insertPost(runId, candidate.post, candidate.matchedKeywords);
     }
 
-    const shortlisted = recentCandidates
-      .slice()
-      .sort((a, b) => b.shortlistScore - a.shortlistScore)
-      .slice(0, MAX_AI_RANKED_POSTS);
-
     const rankedCandidates = await mapWithConcurrency(
-      shortlisted,
+      recentCandidates,
       INTENT_CONCURRENCY,
       async (candidate): Promise<RankedCandidate> => {
         const rowId = postRowId(runId, candidate.post.id);
@@ -365,7 +310,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
         try {
           const intent = await classifyPostIntent(
-            userInput,
+            productContext,
             candidate.post.title,
             candidate.post.selftext ?? "",
             candidate.post.score,
@@ -394,7 +339,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
           };
         } catch (err) {
           console.warn(`Intent fallback (post ${rowId}):`, err instanceof Error ? err.message : err);
-          const fallbackScore = clampScore(Math.min(60, candidate.shortlistScore));
+          const fallbackScore = clampScore(40);
           const fallback = finalizeIntent(
             fallbackScore,
             "Relevant recent post with a likely pain point; detailed AI ranking was unavailable.",
@@ -447,7 +392,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
           const enrichedExplanation = comments.length > 0
             ? await explainPostWithComments(
-              userInput,
+              productContext,
               candidate.post.title,
               candidate.post.selftext ?? "",
               comments.map((comment) => comment.body ?? ""),
