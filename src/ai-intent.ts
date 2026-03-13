@@ -26,11 +26,17 @@ STRICT RELEVANCE RULE:
 - If the post is only loosely in the same broad category (e.g. same industry or topic) but NOT about this product's core use case or pain point, score 0-39.
 - When in doubt, score low. Wrong leads are worse than missing a lead.
 
+INTENT DIRECTION RULE:
+- Only score high when the author is SEEKING help, asking for recommendations, comparing tools, or expressing frustration with a problem.
+- Posts where the author is sharing their own strategy, results, experience, advice, or tips are NOT leads — the author is GIVING, not SEEKING. Score 0-39.
+- If the post reads like a tutorial, case study, success story, or advice thread, the author is not a buyer — score low regardless of keyword overlap.
+
 Treat these as weak or non-leads (score 0-39):
 - posts written by the product owner, founder, or creator
 - posts from someone already using the exact product and sharing a setup, tutorial, or breakdown
 - self-promotional announcements, case studies, or launch posts
 - discount/reseller posts and generic software deal threads
+- posts where the author shares their own strategy, growth results, or experience
 - posts that are merely about the same broad topic but not about the specific problem this product solves
 
 Score each post from 0 to 100:

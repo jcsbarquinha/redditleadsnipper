@@ -46,18 +46,47 @@
   </section>
 
   <main class="main">
+    <section class="teaser-section" id="teaserSection">
+      <div class="teaser-card-wrap">
+        <div class="lead-card">
+          <div class="card-inner" style="pointer-events:none;user-select:none;">
+            <div class="intent-badge high">97 - High-intent Lead</div>
+            <p class="card-meta">
+              <span class="subreddit-icon" aria-hidden="true" style="filter:blur(3px);">S</span>
+              <span style="filter:blur(3px);">r/SaaS</span>
+              <span class="meta-dot" style="filter:blur(3px);">·</span>
+              <span class="meta-time" style="filter:blur(0.5px);">3 hr. ago</span>
+            </p>
+            <h2 class="card-title"><span style="filter:blur(0.5px);">Looking for</span><span style="filter:blur(4px);"> a tool that does exactly what you built</span></h2>
+            <p class="card-body" style="filter:blur(4px);">I've been searching for weeks and nothing quite fits what I need. Does anyone know a good solution for this? Happy to pay if it actually works well…</p>
+            <p class="card-engagement" style="filter:blur(0.5px);">123 votes · 25 comments</p>
+          </div>
+        </div>
+        <div class="teaser-overlay">
+          <p class="teaser-text">You have potential customers waiting for your reply on Reddit</p>
+          <p class="teaser-subtext">Search your product and find users ready to buy</p>
+        </div>
+      </div>
+    </section>
+
     <section class="loading-section hidden" id="loadingSection" aria-live="polite">
       <div class="loading-steps" id="loadingSteps">
-        <div class="step" data-step="1"><span class="step-label">Finding discussions</span></div>
-        <div class="step" data-step="2"><span class="step-label">Filtering posts</span></div>
-        <div class="step" data-step="3"><span class="step-label">Scoring intent</span></div>
-        <div class="step" data-step="4"><span class="step-label">Enriching top leads</span></div>
+        <div class="step" data-step="1"><span class="step-label">Deploying search agents</span></div>
+        <div class="step" data-step="2"><span class="step-label">Finding discussions</span></div>
+        <div class="step" data-step="3"><span class="step-label">Trashing spam &amp; old threads</span></div>
+        <div class="step" data-step="4"><span class="step-label">Model scoring buying intent</span></div>
       </div>
       <div class="loading-bar" aria-hidden="true"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
+      <p class="scanning-counter" id="scanningCounter">Scanning 0 threads...</p>
+      <div class="skeleton-cards" id="skeletonCards">
+        <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
+        <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
+        <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
+        <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
+      </div>
     </section>
 
     <section class="results-section hidden" id="resultsSection">
-      <p class="back-link"><a href="#" id="backToSearch">← New search</a></p>
       <div class="results-header" id="resultsHeader"></div>
       <div class="results-list" id="resultsList"></div>
     </section>

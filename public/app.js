@@ -9,14 +9,16 @@
   ];
 
   const STEPS = [
-    { id: 1, label: "Finding discussions" },
-    { id: 2, label: "Filtering posts" },
-    { id: 3, label: "Scoring intent" },
-    { id: 4, label: "Enriching top leads" },
+    { id: 1, label: "Deploying search agents" },
+    { id: 2, label: "Finding discussions" },
+    { id: 3, label: "Trashing spam & old threads" },
+    { id: 4, label: "Model scoring buying intent" },
   ];
 
   let placeholderIndex = 0;
   let stepInterval = null;
+  let counterInterval = null;
+  let scanCount = 0;
 
   const hero = document.getElementById("hero");
   const searchForm = document.getElementById("searchForm");
@@ -33,6 +35,9 @@
   const resultsList = document.getElementById("resultsList");
   const errorSection = document.getElementById("errorSection");
   const errorMessage = document.getElementById("errorMessage");
+  const scanningCounter = document.getElementById("scanningCounter");
+  const skeletonCards = document.getElementById("skeletonCards");
+  const teaserSection = document.getElementById("teaserSection");
 
   function rotatePlaceholder() {
     const el = placeholderRollerInner;
@@ -96,83 +101,94 @@
     loadingBarFill.style.width = ((activeIndex + 1) / STEPS.length) * 100 + "%";
   }
 
+  function startScanCounter() {
+    scanCount = 0;
+    if (scanningCounter) scanningCounter.textContent = "Scanning 0 threads...";
+    counterInterval = setInterval(() => {
+      const bump = Math.floor(Math.random() * 14) + 3;
+      scanCount += bump;
+      if (scanningCounter) scanningCounter.textContent = `Scanning ${scanCount.toLocaleString()} threads...`;
+    }, 80 + Math.random() * 60);
+  }
+
+  function stopScanCounter(finalCount) {
+    clearInterval(counterInterval);
+    if (finalCount != null && finalCount > 0) {
+      scanCount = finalCount;
+    }
+    if (scanningCounter) scanningCounter.textContent = `Scanned ${scanCount.toLocaleString()} threads`;
+  }
+
   function showLoading() {
     hideSearchError();
+    if (teaserSection) teaserSection.classList.add("hidden");
     errorSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
     loadingSection.classList.remove("hidden");
+    if (skeletonCards) skeletonCards.classList.remove("hidden");
     setStep(0);
+    startScanCounter();
     let step = 0;
     stepInterval = setInterval(() => {
       step = Math.min(step + 1, STEPS.length - 1);
       setStep(step);
       if (step >= STEPS.length - 1) clearInterval(stepInterval);
-    }, 8000);
+    }, 5000);
   }
 
-  function hideLoading() {
+  function completeLoading() {
     clearInterval(stepInterval);
     setStep(STEPS.length);
-    setTimeout(() => {
-      loadingSection.classList.add("hidden");
-    }, 400);
+    if (skeletonCards) skeletonCards.classList.add("hidden");
+    clearInterval(counterInterval);
+    if (scanningCounter) scanningCounter.innerHTML = `${scanCount.toLocaleString()} threads scanned &#x2705;`;
   }
 
   function showError(msg) {
+    clearInterval(stepInterval);
+    stopScanCounter();
     loadingSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
     errorSection.classList.add("hidden");
     showSearchError(msg);
   }
 
-  function showResults(data) {
-    hideLoading();
-    errorSection.classList.add("hidden");
-    const highIntentCount = data.leads.filter(function (l) { return l.is_high_intent; }).length;
-    resultsHeader.innerHTML =
-      data.leads.length > 0
-        ? `<strong>Results:</strong> ${highIntentCount} high-intent leads found in the last 30 days \uD83D\uDD25`
-        : "No leads found in the last 30 days for that query.";
-    resultsList.innerHTML = "";
+  function buildLeadCard(lead, blurred) {
+    const card = document.createElement("article");
+    card.className = "lead-card" + (blurred ? " blurred" : "");
+    const sub = lead.subreddit ? `r/${lead.subreddit}` : "r/community";
+    const labelClass = lead.label === "high" ? "high" : lead.label === "medium" ? "medium" : "low";
+    const initial = (lead.subreddit || "r").charAt(0).toUpperCase();
+    const bodySnippet = (lead.selftext || "").trim().slice(0, 200);
+    const votes = lead.votes != null ? lead.votes : 0;
+    const comments = lead.num_comments != null ? lead.num_comments : 0;
+    const whyThisPost = summarizeWhyThisPost(lead);
+    const whyThisPostHtml = !blurred && whyThisPost
+      ? `<button type="button" class="reply-toggle" aria-expanded="false">Why this post</button>
+         <div class="reply-content hidden">${escapeHtml(whyThisPost)}</div>`
+      : "";
 
-    data.leads.forEach((lead, i) => {
-      const card = document.createElement("article");
-      card.className = "lead-card" + (i >= 2 ? " blurred" : "");
-      const sub = lead.subreddit ? `r/${lead.subreddit}` : "r/community";
-      const labelClass = lead.label === "high" ? "high" : lead.label === "medium" ? "medium" : "low";
-      const initial = (lead.subreddit || "r").charAt(0).toUpperCase();
-      const bodySnippet = (lead.selftext || "").trim().slice(0, 200);
-      const votes = lead.votes != null ? lead.votes : 0;
-      const comments = lead.num_comments != null ? lead.num_comments : 0;
-      const whyThisPost = summarizeWhyThisPost(lead);
-      const whyThisPostHtml = whyThisPost
-        ? `
-          <button type="button" class="reply-toggle" aria-expanded="false">Why this post</button>
-          <div class="reply-content hidden">${escapeHtml(whyThisPost)}</div>
-        `
-        : "";
-
-      card.innerHTML = `
-        <div class="card-inner">
-          <div class="intent-badge ${labelClass}">
-            ${lead.score != null ? lead.score : "—"} · ${(lead.label || "low").toLowerCase()}
-          </div>
-          <p class="card-meta">
-            <span class="subreddit-icon" aria-hidden="true">${escapeHtml(initial)}</span>
-            <a href="https://www.reddit.com/${sub.replace(/^r\//, "")}" target="_blank" rel="noopener">${escapeHtml(sub)}</a>
-            <span class="meta-dot">·</span>
-            <span class="meta-time">${formatAge(lead.created_utc)}</span>
-          </p>
-          <h2 class="card-title">
-            <a href="${escapeHtml(lead.full_link || "#")}" target="_blank" rel="noopener">${escapeHtml(lead.title || "No title")}</a>
-          </h2>
-          ${bodySnippet ? `<p class="card-body">${escapeHtml(bodySnippet)}${bodySnippet.length >= 200 ? "…" : ""}</p>` : ""}
-          <p class="card-engagement">${votes} vote${votes !== 1 ? "s" : ""} · ${comments} comment${comments !== 1 ? "s" : ""}</p>
-          ${whyThisPostHtml}
+    card.innerHTML = `
+      <div class="card-inner">
+        <div class="intent-badge ${labelClass}">
+          ${lead.score != null ? lead.score : "\u2014"} \u00B7 ${(lead.label || "low").toUpperCase()}
         </div>
-        ${i >= 2 ? '<div class="paywall-overlay">Subscribe to unlock all leads</div>' : ""}
-      `;
+        <p class="card-meta">
+          <span class="subreddit-icon" aria-hidden="true">${escapeHtml(initial)}</span>
+          <a href="https://www.reddit.com/${sub.replace(/^r\//, "")}" target="_blank" rel="noopener">${escapeHtml(sub)}</a>
+          <span class="meta-dot">\u00B7</span>
+          <span class="meta-time">${formatAge(lead.created_utc)}</span>
+        </p>
+        <h2 class="card-title">
+          <a href="${escapeHtml(lead.full_link || "#")}" target="_blank" rel="noopener">${escapeHtml(lead.title || "No title")}</a>
+        </h2>
+        ${bodySnippet ? `<p class="card-body">${escapeHtml(bodySnippet)}${bodySnippet.length >= 200 ? "\u2026" : ""}</p>` : ""}
+        <p class="card-engagement">${votes} vote${votes !== 1 ? "s" : ""} \u00B7 ${comments} comment${comments !== 1 ? "s" : ""}</p>
+        ${whyThisPostHtml}
+      </div>
+    `;
 
+    if (!blurred) {
       const toggle = card.querySelector(".reply-toggle");
       const replyContent = card.querySelector(".reply-content");
       if (toggle && replyContent) {
@@ -181,23 +197,45 @@
           toggle.setAttribute("aria-expanded", String(!isHidden));
         });
       }
+    }
 
-      resultsList.appendChild(card);
-    });
+    return card;
+  }
+
+  function showResults(data) {
+    completeLoading();
+    errorSection.classList.add("hidden");
+
+    const highIntentLeads = data.leads.filter(function (l) { return l.is_high_intent; });
+    const highIntentCount = highIntentLeads.length;
+    const remainingCount = Math.max(0, highIntentCount - 1);
+
+    resultsHeader.innerHTML =
+      highIntentCount > 0
+        ? `<span class="results-count">${highIntentCount} high-intent leads</span> found in the last 30 days \uD83D\uDD25`
+        : "No high-intent leads found in the last 30 days for that query.";
+    resultsList.innerHTML = "";
+
+    if (highIntentLeads.length > 0) {
+      resultsList.appendChild(buildLeadCard(highIntentLeads[0], false));
+    }
+
+    if (highIntentLeads.length > 1) {
+      resultsList.appendChild(buildLeadCard(highIntentLeads[1], true));
+
+      const cta = document.createElement("div");
+      cta.className = "paywall-cta";
+      cta.innerHTML = `
+        <p class="paywall-cta-text">Subscribe to <strong>unblock the other ${remainingCount} lead${remainingCount !== 1 ? "s" : ""}</strong> and get notified when a new one shows up.</p>
+        <button class="paywall-cta-btn">Unlock all leads</button>
+      `;
+      resultsList.appendChild(cta);
+    }
 
     resultsSection.classList.remove("hidden");
     resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  document.getElementById("backToSearch").addEventListener("click", (e) => {
-    e.preventDefault();
-    resultsSection.classList.add("hidden");
-    errorSection.classList.add("hidden");
-    hideSearchError();
-    hero.scrollIntoView({ behavior: "smooth", block: "start" });
-    searchInput.focus();
-    updateRollerVisibility();
-  });
 
   function escapeHtml(s) {
     const div = document.createElement("div");
