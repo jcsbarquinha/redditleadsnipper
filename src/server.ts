@@ -100,9 +100,7 @@ app.post("/api/search", (req, res, next) => {
   try {
     const result = await runPipeline({
       userInput: query,
-      includeComments: true,
       maxPagesPerKeyword: maxPages,
-      keywordCount: undefined, // use default (10)
     });
 
     const leads = getLeadsForRun(result.runId, 100);
@@ -112,7 +110,7 @@ app.post("/api/search", (req, res, next) => {
       query,
       keywords: result.keywords,
       totalPosts: result.totalPosts,
-      totalComments: result.totalComments,
+      totalComments: 0,
       leads: leads.map((row) => ({
         title: row.title,
         full_link: row.full_link,

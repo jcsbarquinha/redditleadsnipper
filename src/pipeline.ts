@@ -1,20 +1,17 @@
 /**
- * Full pipeline: validate input → AI search queries → Reddit search → shortlist → post-centric ranking → top-post comment enrichment → DB.
+ * Full pipeline: validate input → AI search queries → Reddit search → dedup/filter → batch intent ranking → DB.
  */
 
 import { randomUUID } from "node:crypto";
 import { getKeywordsForInput, DEFAULT_KEYWORD_COUNT } from "./ai-keywords.js";
-import { classifyPostIntent, explainPostWithComments, type IntentLabel } from "./ai-intent.js";
+import { classifyPostIntentBatch, type IntentLabel } from "./ai-intent.js";
 import {
   insertRun,
   updateRunStatus,
   insertPost,
-  insertComments,
   insertPostIntent,
-  updatePostEngagement,
 } from "./db/index.js";
 import { search } from "./reddit-search.js";
-import { fetchComments } from "./reddit-comments.js";
 import { InvalidSearchInputError, validateUserInput } from "./input-validation.js";
 import type { RedditPost } from "./types.js";
 
@@ -22,10 +19,9 @@ const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 const DEFAULT_DELAY_MS = 500;
 const MAX_POST_AGE_DAYS = 30;
 const MIN_CONTENT_LENGTH = 20;
-const SEARCH_KEYWORD_CONCURRENCY = 1;
+const SEARCH_KEYWORD_CONCURRENCY = 2;
 const INTENT_CONCURRENCY = 10;
-const COMMENT_ENRICHMENT_CONCURRENCY = 2;
-const TOP_POST_COMMENT_ENRICHMENT_COUNT = 10;
+const INTENT_BATCH_SIZE = 5;
 const MAX_PAGES_PER_QUERY = 2;
 
 
@@ -204,7 +200,6 @@ async function mapWithConcurrency<T, R>(
 
 export interface PipelineOptions {
   userInput: string;
-  includeComments?: boolean;
   maxPagesPerKeyword?: number;
   delayMs?: number;
   keywordCount?: number;
@@ -214,7 +209,6 @@ export interface PipelineResult {
   runId: string;
   keywords: string[];
   totalPosts: number;
-  totalComments: number;
   totalPostIntents: number;
 }
 
@@ -240,7 +234,6 @@ function dedupePosts(
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
   const {
     userInput,
-    includeComments = true,
     maxPagesPerKeyword = DEFAULT_MAX_PAGES_PER_KEYWORD,
     delayMs = DEFAULT_DELAY_MS,
     keywordCount = DEFAULT_KEYWORD_COUNT,
@@ -286,156 +279,92 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       insertPost(runId, candidate.post, candidate.matchedKeywords);
     }
 
-    const rankedCandidates = await mapWithConcurrency(
-      recentCandidates,
-      INTENT_CONCURRENCY,
-      async (candidate): Promise<RankedCandidate> => {
-        const rowId = postRowId(runId, candidate.post.id);
+    const scorableCandidates = recentCandidates.filter((c) => hasEnoughContentForIntent(c.post));
+    const thinCandidates = recentCandidates.filter((c) => !hasEnoughContentForIntent(c.post));
 
-        if (!hasEnoughContentForIntent(candidate.post)) {
-          const fallback = finalizeIntent(0, "Post is too thin to show a clear buying signal.", null);
-          insertPostIntent(
-            rowId,
-            fallback.label,
-            fallback.score,
-            fallback.explanation,
-            fallback.suggested_reply,
-            fallback.is_high_intent
-          );
-          return {
-            ...candidate,
-            baseIntentScore: 0,
-            finalScore: 0,
-            label: fallback.label,
-            isHighIntent: fallback.is_high_intent,
-            explanation: fallback.explanation,
-            suggestedReply: null,
-          };
+    for (const candidate of thinCandidates) {
+      const rowId = postRowId(runId, candidate.post.id);
+      const fallback = finalizeIntent(0, "Post is too thin to show a clear buying signal.", null);
+      insertPostIntent(rowId, fallback.label, fallback.score, fallback.explanation, fallback.suggested_reply, fallback.is_high_intent);
+    }
+
+    const batches: CandidatePost[][] = [];
+    for (let i = 0; i < scorableCandidates.length; i += INTENT_BATCH_SIZE) {
+      batches.push(scorableCandidates.slice(i, i + INTENT_BATCH_SIZE));
+    }
+
+    const rankedCandidates: RankedCandidate[] = [];
+
+    await mapWithConcurrency(batches, INTENT_CONCURRENCY, async (batch) => {
+      const posts = batch.map((c) => ({
+        id: c.post.id ?? "",
+        title: (c.post.title ?? "").trim().slice(0, 500),
+        body: (c.post.selftext ?? "").trim().slice(0, 1500),
+        score: c.post.score,
+        num_comments: c.post.num_comments,
+        created_utc: c.post.created_utc,
+        matchedKeywords: c.matchedKeywords,
+      }));
+
+      try {
+        const results = await classifyPostIntentBatch(productContext, posts);
+
+        for (let i = 0; i < batch.length; i++) {
+          const candidate = batch[i];
+          const intent = results[i];
+          const rowId = postRowId(runId, candidate.post.id);
+
+          if (intent) {
+            const finalScore = applyFinalScoreAdjustments(intent.score, candidate.post);
+            const finalized = finalizeIntent(finalScore, intent.explanation, intent.suggested_reply);
+            insertPostIntent(rowId, finalized.label, finalized.score, finalized.explanation, finalized.suggested_reply, finalized.is_high_intent);
+            rankedCandidates.push({
+              ...candidate,
+              baseIntentScore: intent.score,
+              finalScore: finalized.score,
+              label: finalized.label,
+              isHighIntent: finalized.is_high_intent,
+              explanation: finalized.explanation,
+              suggestedReply: finalized.suggested_reply,
+            });
+          } else {
+            const fallback = finalizeIntent(clampScore(40), "Relevant recent post; batch scoring unavailable.", null);
+            insertPostIntent(rowId, fallback.label, fallback.score, fallback.explanation, fallback.suggested_reply, fallback.is_high_intent);
+            rankedCandidates.push({
+              ...candidate,
+              baseIntentScore: 40,
+              finalScore: 40,
+              label: fallback.label,
+              isHighIntent: fallback.is_high_intent,
+              explanation: fallback.explanation,
+              suggestedReply: null,
+            });
+          }
         }
-
-        try {
-          const intent = await classifyPostIntent(
-            productContext,
-            candidate.post.title,
-            candidate.post.selftext ?? "",
-            candidate.post.score,
-            candidate.post.num_comments,
-            candidate.post.created_utc,
-            candidate.matchedKeywords
-          );
-          const finalScore = applyFinalScoreAdjustments(intent.score, candidate.post);
-          const finalized = finalizeIntent(finalScore, intent.explanation, intent.suggested_reply);
-          insertPostIntent(
-            rowId,
-            finalized.label,
-            finalized.score,
-            finalized.explanation,
-            finalized.suggested_reply,
-            finalized.is_high_intent
-          );
-          return {
+      } catch (err) {
+        console.warn("Batch intent fallback:", err instanceof Error ? err.message : err);
+        for (const candidate of batch) {
+          const rowId = postRowId(runId, candidate.post.id);
+          const fallback = finalizeIntent(clampScore(40), "Relevant recent post; batch scoring unavailable.", null);
+          insertPostIntent(rowId, fallback.label, fallback.score, fallback.explanation, fallback.suggested_reply, fallback.is_high_intent);
+          rankedCandidates.push({
             ...candidate,
-            baseIntentScore: intent.score,
-            finalScore: finalized.score,
-            label: finalized.label,
-            isHighIntent: finalized.is_high_intent,
-            explanation: finalized.explanation,
-            suggestedReply: finalized.suggested_reply,
-          };
-        } catch (err) {
-          console.warn(`Intent fallback (post ${rowId}):`, err instanceof Error ? err.message : err);
-          const fallbackScore = clampScore(40);
-          const fallback = finalizeIntent(
-            fallbackScore,
-            "Relevant recent post with a likely pain point; detailed AI ranking was unavailable.",
-            null
-          );
-          insertPostIntent(
-            rowId,
-            fallback.label,
-            fallback.score,
-            fallback.explanation,
-            fallback.suggested_reply,
-            fallback.is_high_intent
-          );
-          return {
-            ...candidate,
-            baseIntentScore: fallback.score,
-            finalScore: fallback.score,
+            baseIntentScore: 40,
+            finalScore: 40,
             label: fallback.label,
             isHighIntent: fallback.is_high_intent,
             explanation: fallback.explanation,
             suggestedReply: null,
-          };
+          });
         }
       }
-    );
-
-    let totalComments = 0;
-
-    if (includeComments) {
-      const topForEnrichment = rankedCandidates
-        .slice()
-        .sort((a, b) => b.finalScore - a.finalScore)
-        .filter((candidate) => Boolean(candidate.post.subreddit && candidate.post.id))
-        .slice(0, TOP_POST_COMMENT_ENRICHMENT_COUNT);
-
-      await mapWithConcurrency(topForEnrichment, COMMENT_ENRICHMENT_CONCURRENCY, async (candidate) => {
-        if (!candidate.post.subreddit || !candidate.post.id) return;
-        const rowId = postRowId(runId, candidate.post.id);
-        try {
-          const { comments, postScore, numComments } = await fetchComments(candidate.post.subreddit, candidate.post.id, {
-            delayMs,
-          });
-          candidate.post.comments = comments;
-          if (postScore != null) candidate.post.score = postScore;
-          if (numComments != null) candidate.post.num_comments = numComments;
-
-          updatePostEngagement(rowId, candidate.post.score ?? null, candidate.post.num_comments ?? null);
-          insertComments(runId, candidate.post, comments);
-          totalComments += comments.length;
-
-          const enrichedExplanation = comments.length > 0
-            ? await explainPostWithComments(
-              productContext,
-              candidate.post.title,
-              candidate.post.selftext ?? "",
-              comments.map((comment) => comment.body ?? ""),
-              candidate.post.created_utc
-            )
-            : candidate.explanation;
-
-          const refreshedFinalScore = applyFinalScoreAdjustments(candidate.baseIntentScore, candidate.post);
-          const finalized = finalizeIntent(
-            refreshedFinalScore,
-            enrichedExplanation ?? candidate.explanation,
-            candidate.suggestedReply
-          );
-          candidate.finalScore = finalized.score;
-          candidate.label = finalized.label;
-          candidate.isHighIntent = finalized.is_high_intent;
-          candidate.explanation = finalized.explanation;
-
-          insertPostIntent(
-            rowId,
-            finalized.label,
-            finalized.score,
-            finalized.explanation,
-            finalized.suggested_reply,
-            finalized.is_high_intent
-          );
-        } catch (err) {
-          console.warn(`Comment enrichment skip (post ${rowId}):`, err instanceof Error ? err.message : err);
-        }
-      });
-    }
+    });
 
     updateRunStatus(runId, "completed");
     return {
       runId,
       keywords: searchQueries,
       totalPosts: recentCandidates.length,
-      totalComments,
       totalPostIntents: rankedCandidates.length,
     };
   } catch (err) {
