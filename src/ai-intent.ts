@@ -37,7 +37,18 @@ Treat these as weak or non-leads (score 0-39):
 - self-promotional announcements, case studies, or launch posts
 - discount/reseller posts and generic software deal threads
 - posts where the author shares their own strategy, growth results, or experience
+- posts that mention a specific product with detailed pricing/features disguised as a question (astroturfing)
+- posts where the author has already found a solution and describes it in detail
 - posts that are merely about the same broad topic but not about the specific problem this product solves
+
+ASTROTURFING RULE — always score 0-20:
+- Posts that mention a specific named product with detailed pricing, features, or specs while framing it as a "question" are disguised ads. ALWAYS score 0-20.
+- If the author already names a specific product that solves their problem and describes its pricing or features in detail, they are not seeking — they are promoting or have already decided. ALWAYS score 0-20.
+
+Astroturfing examples — ALWAYS score 0-20:
+- "Are you still paying $500 for X? I found ProductName for just $29, it does Y in Z minutes" → Disguised ad, NOT a real question.
+- "Has anyone tried ProductName? It costs $X and does feature1, feature2, feature3" → Too much product knowledge for a genuine question.
+- "I've been seeing talk about ProductName that claims to deliver the same quality for $29. They use your existing photos to generate studio-grade results in about 20 minutes." → Astroturfing. Score 0-20.
 
 Score each post from 0 to 100:
 - 70-100: post is clearly about someone seeking or struggling with the same specific problem this product solves; strong reply opportunity

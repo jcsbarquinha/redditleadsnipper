@@ -561,7 +561,9 @@ body {
 .intent-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -569,16 +571,19 @@ body {
   margin-bottom: 0.5rem;
 }
 
-.intent-badge.high {
-  color: var(--intent-high);
+.intent-badge.hot {
+  background: #e8f5e9;
+  color: #2e7d32;
 }
 
-.intent-badge.medium {
-  color: var(--intent-medium);
+.intent-badge.warm {
+  background: #fff3e0;
+  color: #e65100;
 }
 
-.intent-badge.low {
-  color: var(--intent-low);
+.intent-badge.lead {
+  background: #f3f4f6;
+  color: #6b7280;
 }
 
 .card-meta {

@@ -153,11 +153,18 @@
     showSearchError(msg);
   }
 
+  function getIntentBadge(score) {
+    const s = score != null ? Math.round(score) : 0;
+    if (s >= 90) return { cls: "hot", label: `\uD83D\uDD25 ${s}% Hot Match` };
+    if (s >= 75) return { cls: "warm", label: `\uD83C\uDFAF ${s}% Warm Match` };
+    return { cls: "lead", label: `\u2728 ${s}% Lead` };
+  }
+
   function buildLeadCard(lead, blurred) {
     const card = document.createElement("article");
     card.className = "lead-card" + (blurred ? " blurred" : "");
     const sub = lead.subreddit ? `r/${lead.subreddit}` : "r/community";
-    const labelClass = lead.label === "high" ? "high" : lead.label === "medium" ? "medium" : "low";
+    const badge = getIntentBadge(lead.score);
     const initial = (lead.subreddit || "r").charAt(0).toUpperCase();
     const bodySnippet = (lead.selftext || "").trim().slice(0, 200);
     const votes = lead.votes != null ? lead.votes : 0;
@@ -170,8 +177,8 @@
 
     card.innerHTML = `
       <div class="card-inner">
-        <div class="intent-badge ${labelClass}">
-          ${lead.score != null ? lead.score : "\u2014"} \u00B7 ${(lead.label || "low").toUpperCase()}
+        <div class="intent-badge ${badge.cls}">
+          ${badge.label}
         </div>
         <p class="card-meta">
           <span class="subreddit-icon" aria-hidden="true">${escapeHtml(initial)}</span>
@@ -226,7 +233,7 @@
       const cta = document.createElement("div");
       cta.className = "paywall-cta";
       cta.innerHTML = `
-        <p class="paywall-cta-text">Subscribe to <strong>unblock the other ${remainingCount} lead${remainingCount !== 1 ? "s" : ""}</strong> and get notified when a new one shows up.</p>
+        <p class="paywall-cta-text">Subscribe to <strong style="color:#ff4500;font-size:1.3em;">unblock the other ${remainingCount} lead${remainingCount !== 1 ? "s" : ""}</strong> and get notified when a new one shows up.</p>
         <button class="paywall-cta-btn">Unlock all leads</button>
       `;
       resultsList.appendChild(cta);
