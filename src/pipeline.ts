@@ -21,7 +21,7 @@ const MAX_POST_AGE_DAYS = 30;
 const MIN_CONTENT_LENGTH = 20;
 const SEARCH_KEYWORD_CONCURRENCY = 3;
 const INTENT_CONCURRENCY = 10;
-const INTENT_BATCH_SIZE = 6;
+const INTENT_BATCH_SIZE = 1;
 const MAX_PAGES_PER_QUERY = 2;
 
 
@@ -298,8 +298,8 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     await mapWithConcurrency(batches, INTENT_CONCURRENCY, async (batch) => {
       const posts = batch.map((c) => ({
         id: c.post.id ?? "",
-        title: (c.post.title ?? "").trim().slice(0, 500),
-        body: (c.post.selftext ?? "").trim().slice(0, 5000),
+        title: (c.post.title ?? "").trim(),
+        body: (c.post.selftext ?? "").trim(),
         score: c.post.score,
         num_comments: c.post.num_comments,
         created_utc: c.post.created_utc,
