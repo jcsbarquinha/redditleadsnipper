@@ -19,9 +19,9 @@ const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 const DEFAULT_DELAY_MS = 500;
 const MAX_POST_AGE_DAYS = 30;
 const MIN_CONTENT_LENGTH = 20;
-const SEARCH_KEYWORD_CONCURRENCY = 2;
+const SEARCH_KEYWORD_CONCURRENCY = 3;
 const INTENT_CONCURRENCY = 10;
-const INTENT_BATCH_SIZE = 5;
+const INTENT_BATCH_SIZE = 8;
 const MAX_PAGES_PER_QUERY = 2;
 
 
@@ -299,7 +299,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       const posts = batch.map((c) => ({
         id: c.post.id ?? "",
         title: (c.post.title ?? "").trim().slice(0, 500),
-        body: (c.post.selftext ?? "").trim().slice(0, 1500),
+        body: (c.post.selftext ?? "").trim().slice(0, 5000),
         score: c.post.score,
         num_comments: c.post.num_comments,
         created_utc: c.post.created_utc,
