@@ -242,8 +242,11 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   await validateUserInput(userInput);
 
   const runId = randomUUID();
-  const { keywords: searchQueries, productSummary } = await getKeywordsForInput(userInput, keywordCount);
-  const productContext = (productSummary && productSummary.trim()) ? productSummary.trim() : userInput;
+  const { keywords: searchQueries, productSummary, whatProductDoes, whatProblemItSolves } = await getKeywordsForInput(userInput, keywordCount);
+  const intentContext =
+    whatProductDoes && whatProblemItSolves
+      ? `What the product does:\n${whatProductDoes}\n\nWhat problem it solves:\n${whatProblemItSolves}`
+      : (productSummary && productSummary.trim() ? productSummary.trim() : userInput);
   insertRun(runId, userInput, searchQueries, "running");
 
   try {
@@ -307,7 +310,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       }));
 
       try {
-        const results = await classifyPostIntentBatch(productContext, posts);
+        const results = await classifyPostIntentBatch(intentContext, posts);
 
         for (let i = 0; i < batch.length; i++) {
           const candidate = batch[i];

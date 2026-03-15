@@ -151,11 +151,15 @@ Good query styles:
 - tired of manual invoicing
 - alternative to hubspot
 
+You must also provide two descriptions that will be used to score lead intent later (be detailed but concise):
+- "what_product_does": 2–4 sentences describing what the product actually is and does (e.g. "AI SEO content generator that plugs into your existing CMS and publishes blog posts at scale.").
+- "what_problem_it_solves": 2–4 sentences describing the pain or need it addresses (e.g. "Solves the problem of producing enough quality blog/SEO content without hiring writers. For teams that already have a site and need to fill it with content.").
+
 Return JSON only in this exact shape:
 {
   "product_summary": "short summary",
-  "target_customer": "short summary",
-  "problem_solved": "short summary",
+  "what_product_does": "2-4 sentences: what the product is and does",
+  "what_problem_it_solves": "2-4 sentences: the pain or need it addresses",
   "keywords": ["query1", "query2"]
 }`;
 }
@@ -196,6 +200,8 @@ Generate exactly ${keywordCount} final Reddit search queries to find people who 
 interface ParsedKeywordResponse {
   keywords: string[];
   productSummary?: string;
+  whatProductDoes?: string;
+  whatProblemItSolves?: string;
 }
 
 function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeywordResponse {
@@ -206,7 +212,8 @@ function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeyw
   const parsed = JSON.parse(jsonStr) as {
     keywords?: string[];
     product_summary?: string;
-    problem_solved?: string;
+    what_product_does?: string;
+    what_problem_it_solves?: string;
   };
   const list = parsed?.keywords ?? (Array.isArray(parsed) ? parsed : []);
   if (!Array.isArray(list)) throw new Error("Expected keywords array");
@@ -227,12 +234,24 @@ function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeyw
       ? parsed.product_summary.trim().slice(0, 500)
       : undefined;
 
-  return { keywords: deduped, productSummary };
+  const whatProductDoes =
+    typeof parsed?.what_product_does === "string" && parsed.what_product_does.trim()
+      ? parsed.what_product_does.trim().slice(0, 600)
+      : undefined;
+
+  const whatProblemItSolves =
+    typeof parsed?.what_problem_it_solves === "string" && parsed.what_problem_it_solves.trim()
+      ? parsed.what_problem_it_solves.trim().slice(0, 600)
+      : undefined;
+
+  return { keywords: deduped, productSummary, whatProductDoes, whatProblemItSolves };
 }
 
 export interface KeywordResult {
   keywords: string[];
   productSummary?: string;
+  whatProductDoes?: string;
+  whatProblemItSolves?: string;
 }
 
 /**
@@ -283,7 +302,7 @@ export async function getKeywordsForInput(
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenAI returned no content");
 
-  const { keywords, productSummary } = parseKeywordsResponse(content, keywordCount);
+  const { keywords, productSummary, whatProductDoes, whatProblemItSolves } = parseKeywordsResponse(content, keywordCount);
   if (keywords.length === 0) throw new Error("OpenAI returned no valid keywords");
-  return { keywords: keywords.slice(0, keywordCount), productSummary };
+  return { keywords: keywords.slice(0, keywordCount), productSummary, whatProductDoes, whatProblemItSolves };
 }

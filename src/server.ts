@@ -37,9 +37,10 @@ const PORT = Number(process.env.PORT) || 3001;
 const SESSION_COOKIE_NAME = getSessionCookieName();
 const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-/** IP-based rate limit: max requests per window (default 10 per 60s). */
+/** IP-based rate limit: max requests per window. 0 = no limit (for testing). */
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 10;
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX);
+const RATE_LIMIT_ENABLED = RATE_LIMIT_MAX > 0;
 
 const ipRequestTimestamps = new Map<string, number[]>();
 
@@ -50,6 +51,7 @@ function getClientIp(req: express.Request): string {
 }
 
 function isRateLimited(ip: string): boolean {
+  if (!RATE_LIMIT_ENABLED) return false;
   const now = Date.now();
   const cutoff = now - RATE_LIMIT_WINDOW_MS;
   let timestamps = ipRequestTimestamps.get(ip) ?? [];
@@ -349,7 +351,7 @@ app.listen(PORT, () => {
   console.log(`Leadsnipe running at http://localhost:${PORT}`);
   console.log(`  Base URL (for Stripe redirects): ${baseUrl}`);
   console.log(`  Stripe: ${stripeEnabled ? "enabled" : "not configured (set STRIPE_SECRET_KEY in .env)"}`);
-  console.log(`  Rate limit: ${RATE_LIMIT_MAX} searches per IP per minute`);
+  console.log(RATE_LIMIT_ENABLED ? `  Rate limit: ${RATE_LIMIT_MAX} searches per IP per minute` : "  Rate limit: disabled");
   console.log("  Landing: GET /");
   console.log("  API:     POST /api/search with { \"query\": \"...\" }");
   if (stripeEnabled) console.log("  Unlock:   POST /api/create-checkout → Stripe → GET /welcome → /dashboard");

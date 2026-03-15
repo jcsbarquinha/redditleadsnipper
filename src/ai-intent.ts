@@ -19,7 +19,7 @@ export interface PostIntentResult {
 
 const BATCH_SYSTEM_PROMPT = `You are an expert B2B sales lead qualifier. Your job is to read Reddit posts and score them from 0 to 100 based on BUYER INTENT for a specific product.
 
-The "Product Context" describes what the founder sells. You will evaluate multiple Reddit posts and score EACH post strictly on how likely the author is to buy or need THIS specific product.
+You will receive two descriptions: (1) what the product does, (2) what problem it solves. Score each post based on whether the author is actively seeking that type of product or experiencing that type of problem. Score 70+ only when the author is clearly seeking this kind of product or experiencing this kind of problem. If they are seeking a different type of solution (e.g. a new CMS when the product is a content add-on for an existing CMS), score 0-39.
 
 CRITICAL RULE: Wrong leads are worse than missing a lead. When in doubt, score brutally low. Always read title AND body; if the body reveals self-promotion, a tutorial, or the author as a creator/launcher, the title cannot override it — score 0-20.
 
@@ -42,15 +42,19 @@ If the post matches ANY of these criteria, it is NOT a lead. Score it 0-20 immed
 
 8. ACADEMIC/STUDENT: The author is asking for help with a school project or purely theoretical research.
 
+9. WRONG PRODUCT CATEGORY / STAGE MISMATCH (SCORE 0-39): The author is asking for or complaining about a *different type* of product than the one in the Product Context. Same industry or shared buzzwords (e.g. "SEO", "CMS") are not enough — the author must be in the market for *this specific category* of solution. Examples:
+- Product Context = an add-on that works *with* or *on top of* X (e.g. "SEO content generator that plugs into your CMS", "autoblogger for your site"). Author is asking for "a new CMS", "a website builder", "alternatives to [current platform]" — they need the *foundation* (platform, host, builder), not the add-on. Score 0-39.
+- Product Context = a tool that improves or extends an existing setup. Author is explicitly looking to *replace* or *choose* that setup (e.g. "What CMS should I use?", "Best website builder?"). Score 0-39.
+
 ### BRAND REJECTION CLARIFICATION
 - If the Product Context IS a specific brand (e.g., "Le Creuset"), and the author wants an alternative to it, score 0-39.
 - HOWEVER, if the Product Context is an ALTERNATIVE, and the author is complaining about the main brand, score 80-100.
 
 ### SCORING TIERS (BE STRICT)
 
-🟢 90-100 (HOT BUYER): The author is ACTIVELY and CURRENTLY asking for a tool, software, or recommendation that exactly matches the Product Context. They have an unsolved problem right now.
+🟢 90-100 (HOT BUYER): The author is ACTIVELY and CURRENTLY asking for a tool, software, or recommendation in the *same product category* as the Product Context (same type of solution, not just related keywords). They have an unsolved problem that this specific product can solve.
 
-🟡 70-89 (WARM LEAD): The author is explicitly complaining about the EXACT problem the product solves right now, but hasn't explicitly asked for a software recommendation yet.
+🟡 70-89 (WARM LEAD): The author is explicitly complaining about the EXACT problem that *this specific product* solves (same category: e.g. "need more content" for a content tool, "need better SEO control on my site" for an SEO-on-existing-site tool). They have not yet asked for a recommendation. If they are asking for a *different category* (e.g. a new CMS when the product is a CMS add-on), score 0-39.
 
 🟠 40-69 (WEAK FIT): The post is in the right industry and discusses related topics, but the core pain point isn't a direct match, or the intent is very soft.
 
@@ -155,7 +159,9 @@ Engagement: ${p.score ?? 0} votes, ${p.num_comments ?? 0} comments. ${dateLine}
 ${keywordsLine}`;
   }).join("\n\n");
 
-  const userContent = `Product/context: "${context.trim()}"
+  const userContent = `Product description (what it does and what problem it solves):
+
+${context.trim()}
 
 ${postsBlock}
 
