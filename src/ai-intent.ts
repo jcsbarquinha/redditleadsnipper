@@ -31,6 +31,10 @@ INTENT DIRECTION RULE:
 - Posts where the author is sharing their own strategy, results, experience, advice, or tips are NOT leads — the author is GIVING, not SEEKING. Score 0-39.
 - If the post reads like a tutorial, case study, success story, or advice thread, the author is not a buyer — score low regardless of keyword overlap.
 
+BRAND REJECTION RULE:
+- When the product/context is a specific brand (e.g. from a company URL), posts where the author explicitly rejects that brand, seeks alternatives to it, or says they want something "not like X" or "cheaper than X" are NOT leads for that brand. Score 0-39.
+- Example: "brands that aren't crazy money like Le Creuset" → the author is rejecting Le Creuset (too expensive), seeking alternatives → score 0-39 for Le Creuset.
+
 Treat these as weak or non-leads (score 0-39):
 - posts written by the product owner, founder, or creator
 - posts from someone already using the exact product and sharing a setup, tutorial, or breakdown
