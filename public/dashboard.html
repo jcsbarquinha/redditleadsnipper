@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard – Leadsnipe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .dashboard-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; padding: 1rem 0.75rem; border-bottom: 1px solid var(--border); }
+    .dashboard-user { font-size: 0.9rem; color: var(--text-muted); }
+    .dashboard-user span { margin-right: 0.5rem; }
+    .dashboard-main { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+    .dashboard-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; }
+    .dashboard-empty { color: var(--text-muted); padding: 2rem; text-align: center; }
+    .logout-btn { font-size: 0.9rem; color: var(--link); background: none; border: none; cursor: pointer; padding: 0.25rem 0; }
+    .logout-btn:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header class="dashboard-header">
+    <a href="/" class="logo">
+      <img src="/logo.png" alt="" class="logo-mark" />
+      <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
+    </a>
+    <div class="dashboard-user">
+      <span id="userEmail"></span>
+      <button type="button" class="logout-btn" id="logoutBtn">Log out</button>
+    </div>
+  </header>
+
+  <main class="dashboard-main">
+    <h1 class="dashboard-title">Your leads</h1>
+    <div id="leadsList" class="results-list"></div>
+    <p id="emptyState" class="dashboard-empty hidden">No leads yet. Run a search on the homepage and unlock your results.</p>
+  </main>
+
+  <script>
+(function () {
+  function escapeHtml(s) {
+    var div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+  function formatAge(createdUtc) {
+    if (createdUtc == null) return "";
+    var now = Math.floor(Date.now() / 1000);
+    var days = Math.floor((now - createdUtc) / 86400);
+    if (days < 1) return "now";
+    if (days === 1) return "1d ago";
+    if (days < 30) return days + "d ago";
+    if (days < 365) return Math.floor(days / 30) + "mo ago";
+    return new Date(createdUtc * 1000).toLocaleDateString();
+  }
+  function getIntentBadge(score) {
+    var s = score != null ? Math.round(score) : 0;
+    if (s >= 90) return { cls: "hot", label: "\uD83D\uDD25 " + s + "% Hot Match" };
+    if (s >= 75) return { cls: "warm", label: "\uD83C\uDFAF " + s + "% Warm Match" };
+    return { cls: "lead", label: "\u2728 " + s + "% Lead" };
+  }
+  function summarizeWhy(lead) {
+    if ((lead.explanation || "").trim()) return lead.explanation.trim();
+    if (lead.is_high_intent) return "They are actively looking for a solution or recommendation.";
+    return "It matches your search and shows a relevant pain point.";
+  }
+  function buildCard(lead) {
+    var card = document.createElement("article");
+    card.className = "lead-card";
+    var sub = lead.subreddit ? "r/" + lead.subreddit : "r/community";
+    var badge = getIntentBadge(lead.score);
+    var initial = (lead.subreddit || "r").charAt(0).toUpperCase();
+    var bodySnippet = (lead.selftext || "").trim().slice(0, 200);
+    var votes = lead.votes != null ? lead.votes : 0;
+    var comments = lead.num_comments != null ? lead.num_comments : 0;
+    var why = summarizeWhy(lead);
+    card.innerHTML =
+      '<div class="card-inner">' +
+      '<div class="intent-badge ' + badge.cls + '">' + badge.label + '</div>' +
+      '<p class="card-meta">' +
+      '<span class="subreddit-icon" aria-hidden="true">' + escapeHtml(initial) + '</span> ' +
+      '<a href="https://www.reddit.com/' + sub.replace(/^r\//, "") + '" target="_blank" rel="noopener">' + escapeHtml(sub) + '</a>' +
+      ' <span class="meta-dot">\u00B7</span> <span class="meta-time">' + formatAge(lead.created_utc) + '</span>' +
+      '</p>' +
+      '<h2 class="card-title"><a href="' + escapeHtml(lead.full_link || "#") + '" target="_blank" rel="noopener">' + escapeHtml(lead.title || "No title") + '</a></h2>' +
+      (bodySnippet ? '<p class="card-body">' + escapeHtml(bodySnippet) + (bodySnippet.length >= 200 ? "\u2026" : "") + '</p>' : "") +
+      '<p class="card-engagement">' + votes + ' vote' + (votes !== 1 ? "s" : "") + ' \u00B7 ' + comments + ' comment' + (comments !== 1 ? "s" : "") + '</p>' +
+      (why ? '<button type="button" class="reply-toggle" aria-expanded="false">Why this post</button><div class="reply-content hidden">' + escapeHtml(why) + '</div>' : "") +
+      '</div>';
+    var toggle = card.querySelector(".reply-toggle");
+    var replyContent = card.querySelector(".reply-content");
+    if (toggle && replyContent) {
+      toggle.addEventListener("click", function () {
+        replyContent.classList.toggle("hidden");
+        toggle.setAttribute("aria-expanded", replyContent.classList.contains("hidden") ? "false" : "true");
+      });
+    }
+    return card;
+  }
+
+  var userEmailEl = document.getElementById("userEmail");
+  var leadsList = document.getElementById("leadsList");
+  var emptyState = document.getElementById("emptyState");
+  var logoutBtn = document.getElementById("logoutBtn");
+
+  function redirectHome() {
+    window.location.href = "/";
+  }
+
+  fetch("/api/me", { credentials: "same-origin" })
+    .then(function (r) {
+      if (!r.ok) {
+        redirectHome();
+        throw new Error("Not logged in");
+      }
+      return r.json();
+    })
+    .then(function (me) {
+      userEmailEl.textContent = me.email || "";
+    })
+    .catch(function () {});
+
+  fetch("/api/dashboard/leads", { credentials: "same-origin" })
+    .then(function (r) {
+      if (!r.ok) return { leads: [] };
+      return r.json();
+    })
+    .then(function (data) {
+      var leads = data.leads || [];
+      if (leads.length === 0) {
+        emptyState.classList.remove("hidden");
+        return;
+      }
+      leads.forEach(function (lead) {
+        leadsList.appendChild(buildCard(lead));
+      });
+    });
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", function () {
+      fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
+        redirectHome();
+      });
+    });
+  }
+})();
+  </script>
+</body>
+</html>

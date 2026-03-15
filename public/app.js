@@ -1,4 +1,22 @@
 (function () {
+  const params = new URLSearchParams(window.location.search);
+  const canceled = params.get("canceled");
+  const error = params.get("error");
+  if (canceled === "1") {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    alert("Payment was canceled. Run a new search and click Unlock when you're ready.");
+  } else if (error) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    const messages = {
+      missing_session: "Checkout session was missing. Please try again from a new search.",
+      payments_not_configured: "Payments are not configured on the server.",
+      invalid_session: "Invalid or expired checkout session. Please run a new search and Unlock again.",
+      payment_not_completed: "Payment was not completed. Please try again.",
+      no_email: "We couldn't get your email from the payment. Please contact support.",
+    };
+    alert(messages[error] || "Something went wrong. Please try again.");
+  }
+
   const INLINE_VALIDATION_MESSAGE = "Please enter a real product, service, product category, or business use case.";
   const PLACEHOLDERS = [
     "Enter your product's link",
@@ -227,16 +245,43 @@
       resultsList.appendChild(buildLeadCard(highIntentLeads[0], false));
     }
 
-    if (highIntentLeads.length > 1) {
-      resultsList.appendChild(buildLeadCard(highIntentLeads[1], true));
-
+    if (highIntentCount > 1) {
       const cta = document.createElement("div");
       cta.className = "paywall-cta";
       cta.innerHTML = `
-        <p class="paywall-cta-text">Subscribe to <strong style="color:#ff4500;font-size:1.3em;">unblock the other ${remainingCount} lead${remainingCount !== 1 ? "s" : ""}</strong> and get notified when a new one shows up.</p>
-        <button class="paywall-cta-btn">Unlock all leads</button>
+        <p class="paywall-cta-text">Subscribe to <strong style="color:#ff4500;font-weight:700;">unlock the other ${remainingCount} lead${remainingCount !== 1 ? "s" : ""}</strong> and activate <strong style="color:#ff4500;font-weight:700;">24/7 automated alerts</strong>.</p>
+        <button type="button" class="paywall-cta-btn" id="unlockLeadsBtn">Unlock all leads</button>
       `;
       resultsList.appendChild(cta);
+
+      const unlockBtn = document.getElementById("unlockLeadsBtn");
+      if (unlockBtn) {
+        unlockBtn.addEventListener("click", function () {
+          unlockBtn.disabled = true;
+          unlockBtn.textContent = "Redirecting...";
+          fetch("/api/create-checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ runId: data.runId }),
+            credentials: "same-origin",
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (body) {
+              if (body.url) {
+                window.location.href = body.url;
+                return;
+              }
+              unlockBtn.disabled = false;
+              unlockBtn.textContent = "Unlock all leads";
+              alert(body.error || "Something went wrong.");
+            })
+            .catch(function () {
+              unlockBtn.disabled = false;
+              unlockBtn.textContent = "Unlock all leads";
+              alert("Network error. Try again.");
+            });
+        });
+      }
     }
 
     resultsSection.classList.remove("hidden");

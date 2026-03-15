@@ -30,3 +30,32 @@ export function requireOpenAIKey(): string {
   }
   return key;
 }
+
+/** Base URL for the app (e.g. https://leadsnipe.com or http://localhost:3001). Used for Stripe success/cancel redirects. */
+export function getBaseUrl(): string {
+  const url = process.env.BASE_URL?.trim();
+  if (url) return url.replace(/\/$/, "");
+  const port = process.env.PORT || 3001;
+  return `http://localhost:${port}`;
+}
+
+/** Stripe secret key (required for checkout and webhooks). */
+export function getStripeSecretKey(): string | undefined {
+  return process.env.STRIPE_SECRET_KEY?.trim() || undefined;
+}
+
+/** Amount in cents for one-time "unlock" payment (e.g. 990 = $9.90). Default 990. */
+export function getStripeUnlockAmountCents(): number {
+  const n = Number(process.env.STRIPE_UNLOCK_AMOUNT_CENTS);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 990;
+}
+
+/** Currency for Stripe (e.g. usd). Default usd. */
+export function getStripeCurrency(): string {
+  return (process.env.STRIPE_CURRENCY?.trim() || "usd").toLowerCase();
+}
+
+/** Name of the session cookie. */
+export function getSessionCookieName(): string {
+  return process.env.SESSION_COOKIE_NAME?.trim() || "leadsnipe_session";
+}

@@ -1,17 +1,29 @@
 /**
  * API server for Leadsnipe MVP.
- * POST /api/search { "query": "..." } → runs pipeline, returns leads (for landing "wow" search).
- * Serves landing page from public/ at GET /.
+ * POST /api/search → pipeline, returns leads. CTA "Unlock" → Stripe Checkout → welcome → dashboard.
  */
 
-import { loadConfig } from "./config.js";
+import { loadConfig, getBaseUrl, getStripeSecretKey, getStripeUnlockAmountCents, getStripeCurrency, getSessionCookieName } from "./config.js";
 loadConfig();
 
 import express from "express";
+import cookieParser from "cookie-parser";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
+import Stripe from "stripe";
 import { runPipeline } from "./pipeline.js";
-import { getLeadsForRun } from "./db/index.js";
+import {
+  getLeadsForRun,
+  getRunById,
+  findUserByEmail,
+  createUser,
+  attachRunToUser,
+  createSession,
+  getSession,
+  getLeadsForUser,
+  type LeadRow,
+} from "./db/index.js";
 import { InvalidSearchInputError } from "./input-validation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,8 +31,11 @@ const publicDir = join(__dirname, "..", "public");
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 
 const PORT = Number(process.env.PORT) || 3001;
+const SESSION_COOKIE_NAME = getSessionCookieName();
+const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 /** IP-based rate limit: max requests per window (default 10 per 60s). */
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -65,8 +80,189 @@ app.use((_req, res, next) => {
 
 app.options("*", (_req, res) => res.sendStatus(204));
 
+function leadRowToApi(row: LeadRow) {
+  return {
+    title: row.title,
+    full_link: row.full_link,
+    subreddit: row.subreddit,
+    author: row.author,
+    created_utc: row.created_utc,
+    score: row.score != null ? Math.round(row.score) : null,
+    label: row.label,
+    is_high_intent: row.is_high_intent === 1,
+    explanation: row.reasoning ?? null,
+    suggested_reply: row.suggested_reply ?? null,
+    selftext: row.selftext ?? null,
+    votes: row.post_score ?? 0,
+    num_comments: row.num_comments ?? 0,
+  };
+}
+
+/** Auth: require session cookie and set req.user. */
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  const token = req.cookies?.[SESSION_COOKIE_NAME];
+  if (!token) {
+    res.status(401).json({ error: "Not logged in." });
+    return;
+  }
+  const session = getSession(token);
+  if (!session) {
+    res.clearCookie(SESSION_COOKIE_NAME);
+    res.status(401).json({ error: "Session expired." });
+    return;
+  }
+  (req as express.Request & { user: { id: string; email: string } }).user = { id: session.user_id, email: session.email };
+  next();
+}
+
 /** Health check */
 app.get("/api/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
+/**
+ * POST /api/create-checkout
+ * Body: { runId: string }
+ * Creates Stripe Checkout Session for one-time "unlock" payment; metadata includes runId so we can attach run to user after payment.
+ */
+app.post("/api/create-checkout", (req, res) => {
+  const runId = typeof req.body?.runId === "string" ? req.body.runId.trim() : "";
+  if (!runId) {
+    res.status(400).json({ error: "Missing runId." });
+    return;
+  }
+
+  const stripeKey = getStripeSecretKey();
+  if (!stripeKey) {
+    res.status(503).json({ error: "Payments not configured." });
+    return;
+  }
+
+  const run = getRunById(runId);
+  if (!run) {
+    res.status(404).json({ error: "Run not found." });
+    return;
+  }
+  if (run.user_id) {
+    res.status(400).json({ error: "This run is already unlocked." });
+    return;
+  }
+
+  const baseUrl = getBaseUrl();
+  const stripe = new Stripe(stripeKey);
+
+  stripe.checkout.sessions
+    .create({
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: getStripeCurrency(),
+            product_data: {
+              name: "Unlock all leads",
+              description: "See all high-intent Reddit leads from your search and get access to your dashboard.",
+            },
+            unit_amount: getStripeUnlockAmountCents(),
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${baseUrl}/welcome?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/?canceled=1`,
+      metadata: { run_id: runId, query: run.user_input },
+    })
+    .then((session) => {
+      res.json({ url: session.url });
+    })
+    .catch((err) => {
+      console.error("Stripe create-checkout error:", err);
+      res.status(500).json({ error: "Could not create checkout session." });
+    });
+});
+
+/**
+ * GET /welcome?session_id=cs_xxx
+ * Stripe success_url: retrieve session, create/find user by email, attach run, create app session, redirect to dashboard.
+ */
+app.get("/welcome", async (req, res) => {
+  const sessionId = typeof req.query?.session_id === "string" ? req.query.session_id.trim() : "";
+  if (!sessionId) {
+    res.redirect(getBaseUrl() + "/?error=missing_session");
+    return;
+  }
+
+  const stripeKey = getStripeSecretKey();
+  if (!stripeKey) {
+    res.redirect(getBaseUrl() + "/?error=payments_not_configured");
+    return;
+  }
+
+  const stripe = new Stripe(stripeKey);
+
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await stripe.checkout.sessions.retrieve(sessionId, { expand: [] });
+  } catch (err) {
+    console.error("Stripe retrieve session error:", err);
+    res.redirect(getBaseUrl() + "/?error=invalid_session");
+    return;
+  }
+
+  if (session.payment_status !== "paid") {
+    res.redirect(getBaseUrl() + "/?error=payment_not_completed");
+    return;
+  }
+
+  const emailRaw = session.customer_details?.email ?? session.customer_email;
+  const email = typeof emailRaw === "string" && emailRaw.length > 0 ? emailRaw.trim().toLowerCase() : null;
+  if (!email) {
+    res.redirect(getBaseUrl() + "/?error=no_email");
+    return;
+  }
+
+  const runId = session.metadata?.run_id ?? "";
+  const query = session.metadata?.query ?? "";
+
+  let user = findUserByEmail(email);
+  if (!user) {
+    const userId = randomUUID();
+    const stripeCustomerId = typeof session.customer === "string" ? session.customer : (session.customer as Stripe.Customer)?.id ?? null;
+    createUser(userId, email, stripeCustomerId);
+    user = { id: userId, email, password_hash: null, stripe_customer_id: stripeCustomerId, created_at: "", updated_at: "" };
+  }
+
+  if (runId) {
+    const run = getRunById(runId);
+    if (run && !run.user_id) attachRunToUser(runId, user.id);
+  }
+
+  const { id: token } = createSession(user.id);
+  res.cookie(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: SESSION_COOKIE_MAX_AGE_MS,
+    path: "/",
+  });
+  res.redirect(getBaseUrl() + "/dashboard");
+});
+
+/** Current user (requires auth). */
+app.get("/api/me", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string; email: string } }).user;
+  res.json({ id: user.id, email: user.email });
+});
+
+/** All leads for the current user (requires auth). */
+app.get("/api/dashboard/leads", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const leads = getLeadsForUser(user.id, 200);
+  res.json({ leads: leads.map(leadRowToApi) });
+});
+
+/** Log out: clear session cookie. */
+app.post("/api/logout", (req, res) => {
+  res.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
   res.json({ ok: true });
 });
 
@@ -139,12 +335,22 @@ app.post("/api/search", (req, res, next) => {
   }
 });
 
+// Dashboard page (must be before static so /dashboard serves the page)
+app.get("/dashboard", (_req, res) => {
+  res.sendFile(join(publicDir, "dashboard.html"));
+});
+
 // Landing page and static assets (API routes above take precedence)
 app.use(express.static(publicDir));
 
 app.listen(PORT, () => {
+  const baseUrl = getBaseUrl();
+  const stripeEnabled = !!getStripeSecretKey();
   console.log(`Leadsnipe running at http://localhost:${PORT}`);
+  console.log(`  Base URL (for Stripe redirects): ${baseUrl}`);
+  console.log(`  Stripe: ${stripeEnabled ? "enabled" : "not configured (set STRIPE_SECRET_KEY in .env)"}`);
   console.log(`  Rate limit: ${RATE_LIMIT_MAX} searches per IP per minute`);
   console.log("  Landing: GET /");
   console.log("  API:     POST /api/search with { \"query\": \"...\" }");
+  if (stripeEnabled) console.log("  Unlock:   POST /api/create-checkout → Stripe → GET /welcome → /dashboard");
 });

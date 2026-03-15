@@ -14,13 +14,18 @@
     "report": "tsx src/report.ts",
     "api": "tsx src/server.ts"
   },
-  "keywords": ["reddit", "scraper", "search"],
+  "keywords": [
+    "reddit",
+    "scraper",
+    "search"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "^4.17.21",
     "@types/node": "^20.10.0",
     "tsx": "^4.7.0",
@@ -28,7 +33,9 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.6.0",
+    "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "stripe": "^20.4.1"
   }
 }

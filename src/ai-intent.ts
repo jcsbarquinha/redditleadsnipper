@@ -44,6 +44,7 @@ Treat these as weak or non-leads (score 0-39):
 - posts that mention a specific product with detailed pricing/features disguised as a question (astroturfing)
 - posts where the author has already found a solution and describes it in detail
 - posts that are merely about the same broad topic but not about the specific problem this product solves
+- posts where the author is building or built a product/tool in the same category (e.g. "I'm building a …", "We built a …") — they are a competitor, not a potential customer
 
 ASTROTURFING RULE — always score 0-20:
 - Posts that mention a specific named product with detailed pricing, features, or specs while framing it as a "question" are disguised ads. ALWAYS score 0-20.

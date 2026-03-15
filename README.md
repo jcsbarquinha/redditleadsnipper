@@ -54,6 +54,24 @@ npm run api
 
 Set `PORT` (default 3001) and optionally `CORS_ORIGIN` in `.env`.
 
+### Unlock flow (Stripe + dashboard)
+
+To enable “Unlock all leads” → payment → dashboard:
+
+1. **Stripe**  
+   - Create an account at [stripe.com](https://stripe.com) and get your **Secret key** (Dashboard → Developers → API keys).  
+   - Add to `.env`: `STRIPE_SECRET_KEY=sk_test_...` (use `sk_live_...` in production).
+
+2. **Base URL**  
+   - Add to `.env`: `BASE_URL=http://localhost:3001` (or your production URL).  
+   - Used for Stripe Checkout success/cancel redirects.
+
+3. **Optional**  
+   - `STRIPE_UNLOCK_AMOUNT_CENTS=990` — price in cents (default 990 = $9.90).  
+   - `STRIPE_CURRENCY=usd`.
+
+Flow: user searches → sees **one free lead** → clicks “Unlock all leads” → Stripe Checkout (email + payment) → redirected to `/welcome` → account created from Stripe email, run attached → redirect to **/dashboard** with all leads. Session cookie keeps them logged in; they can log out from the dashboard.
+
 ### Usage
 
 ```bash

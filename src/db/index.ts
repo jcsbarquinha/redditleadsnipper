@@ -3,6 +3,7 @@
  */
 
 import Database from "better-sqlite3";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { getDatabaseUrl } from "../config.js";
@@ -105,6 +106,7 @@ function runSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_comment_intent_label ON comment_intent(label);
   `);
   migratePostIntent(database);
+  migrateUsersAndSessions(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
 
@@ -112,6 +114,33 @@ function migratePostIntent(database: Database.Database): void {
   const columns = (database.prepare("PRAGMA table_info(post_intent)").all() as { name: string }[]).map((r) => r.name);
   if (!columns.includes("suggested_reply")) database.exec("ALTER TABLE post_intent ADD COLUMN suggested_reply TEXT");
   if (!columns.includes("is_high_intent")) database.exec("ALTER TABLE post_intent ADD COLUMN is_high_intent INTEGER NOT NULL DEFAULT 0");
+}
+
+function migrateUsersAndSessions(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
+      stripe_customer_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+  const runCols = (database.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((r) => r.name);
+  if (!runCols.includes("user_id")) {
+    database.exec("ALTER TABLE runs ADD COLUMN user_id TEXT REFERENCES users(id)");
+  }
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_runs_user_id ON runs(user_id)`);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`);
 }
 
 export function closeDb(): void {
@@ -282,5 +311,93 @@ export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
        LIMIT ?`
     )
     .all(runId, limit) as LeadRow[];
+  return rows;
+}
+
+// --- Users & sessions (for Stripe → account creation) ---
+
+export interface UserRow {
+  id: string;
+  email: string;
+  password_hash: string | null;
+  stripe_customer_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function findUserByEmail(email: string): UserRow | undefined {
+  const row = getDb().prepare("SELECT * FROM users WHERE email = ?").get(email.trim().toLowerCase()) as UserRow | undefined;
+  return row;
+}
+
+export function createUser(id: string, email: string, stripeCustomerId?: string | null): void {
+  getDb()
+    .prepare(
+      "INSERT INTO users (id, email, stripe_customer_id, updated_at) VALUES (?, ?, ?, datetime('now'))"
+    )
+    .run(id, email.trim().toLowerCase(), stripeCustomerId ?? null);
+}
+
+export function attachRunToUser(runId: string, userId: string): void {
+  getDb().prepare("UPDATE runs SET user_id = ?, updated_at = datetime('now') WHERE id = ?").run(userId, runId);
+}
+
+export function getRunById(runId: string): { id: string; user_id: string | null; user_input: string } | undefined {
+  const row = getDb()
+    .prepare("SELECT id, user_id, user_input FROM runs WHERE id = ?")
+    .get(runId) as { id: string; user_id: string | null; user_input: string } | undefined;
+  return row;
+}
+
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+export function createSession(userId: string): { id: string; expiresAt: string } {
+  const id = randomUUID();
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  getDb()
+    .prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
+    .run(id, userId, expiresAt);
+  return { id, expiresAt };
+}
+
+export function getSession(sessionId: string): { user_id: string; email: string } | null {
+  const row = getDb()
+    .prepare(
+      `SELECT s.user_id, u.email FROM sessions s JOIN users u ON s.user_id = u.id
+       WHERE s.id = ? AND s.expires_at > datetime('now')`
+    )
+    .get(sessionId) as { user_id: string; email: string } | undefined;
+  return row ?? null;
+}
+
+export function deleteSession(sessionId: string): void {
+  getDb().prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+}
+
+/** All runs for a user, most recent first. */
+export function getRunsForUser(userId: string, limit: number = 50): { id: string; user_input: string; created_at: string }[] {
+  const rows = getDb()
+    .prepare(
+      "SELECT id, user_input, created_at FROM runs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
+    )
+    .all(userId, limit) as { id: string; user_input: string; created_at: string }[];
+  return rows;
+}
+
+/** All leads for a user (from all their runs), ranked by intent then time. */
+export function getLeadsForUser(userId: string, limit: number = 200): LeadRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc, pi.reasoning, pi.suggested_reply, pi.is_high_intent, p.selftext,
+       p.score AS post_score,
+       COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments
+       FROM posts p
+       JOIN runs r ON p.run_id = r.id
+       JOIN post_intent pi ON p.id = pi.post_id
+       WHERE r.user_id = ?
+       ORDER BY pi.score DESC NULLS LAST, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST
+       LIMIT ?`
+    )
+    .all(userId, limit) as LeadRow[];
   return rows;
 }

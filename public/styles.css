@@ -11,6 +11,9 @@
   --intent-high: #46d160;
   --intent-medium: #ffb000;
   --intent-low: #94a3b8;
+  /* Header only: horizontal margin so logo/login don’t sit at viewport edge */
+  --header-margin-x: 2rem;
+  --header-max-width: 1500px;
 }
 
 * {
@@ -19,6 +22,7 @@
 
 body {
   margin: 0;
+  padding-top: 64px;
   font-family: "DM Sans", system-ui, -apple-system, sans-serif;
   font-size: 16px;
   line-height: 1.5;
@@ -28,8 +32,69 @@ body {
 }
 
 .header {
-  padding: 1rem 0.75rem;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
+}
+
+/* Header uses its own margin vars; change --header-margin-x / --header-max-width to tune */
+.header-inner {
+  position: relative;
+  max-width: var(--header-max-width);
+  margin: 0 auto;
+  padding: 1rem var(--header-margin-x);
+  display: flex;
+  align-items: center;
+}
+
+.header-inner .logo {
+  flex-shrink: 0;
+}
+
+/* Center nav with page (H1): absolute center of header-inner = viewport center */
+.header-nav {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2.25rem;
+}
+
+.header-actions {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-right: 2rem; /* extra space to the right of Login only */
+}
+
+.header-link {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.header-link:hover {
+  color: var(--reddit-orange);
+}
+
+.header-login {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+}
+
+.header-login:hover {
+  color: var(--reddit-orange);
 }
 
 .logo {
@@ -41,6 +106,10 @@ body {
   font-weight: 600;
   font-size: 1.875rem;
   letter-spacing: -0.02em;
+}
+
+.header-inner .logo {
+  flex-shrink: 0;
 }
 
 .logo-mark {
@@ -89,8 +158,9 @@ body {
 
 .hero-inner {
   width: 100%;
-  max-width: 900px;
+  max-width: 800px;
   margin: 0 auto;
+  padding: 0 2rem;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -99,6 +169,7 @@ body {
 
 .hero-search {
   max-width: 60rem;
+  margin-top: 2.5rem;
 }
 
 .hero-inner .subhead {
@@ -152,10 +223,14 @@ body {
 }
 
 .subhead {
-  color: var(--text-muted);
+  color: #505050;
   margin: 0 0 2.5rem;
   font-size: 1.46rem;
   line-height: 1.5;
+}
+
+.subhead-highlight {
+  font-size: 1.15em;
 }
 
 .hero-h3 {
