@@ -107,7 +107,22 @@ function runSchema(database: Database.Database): void {
   `);
   migratePostIntent(database);
   migrateUsersAndSessions(database);
+  migrateLeadActions(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
+}
+
+function migrateLeadActions(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS lead_actions (
+      user_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, post_id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_lead_actions_user_id ON lead_actions(user_id)`);
 }
 
 function migratePostIntent(database: Database.Database): void {
@@ -279,6 +294,7 @@ export function insertCommentIntent(
 // --- API / report: fetch leads for a run ---
 
 export interface LeadRow {
+  post_id: string;
   run_id: string;
   user_input: string;
   score: number | null;
@@ -291,23 +307,41 @@ export interface LeadRow {
   reasoning: string | null;
   suggested_reply: string | null;
   is_high_intent: number | null;
+  is_archived: number | null;
   selftext: string | null;
   post_score: number | null;
   num_comments: number | null;
 }
 
-/** Leads for a run, ranked by intent (high first). For API and report. */
+export interface LeadFilters {
+  subreddit?: string;
+  days?: number;
+  minScore?: number;
+  query?: string;
+  includeArchived?: boolean;
+}
+
+/** Leads for a run, ranked by intent (high first). One row per Reddit post (reddit_id) so counts are unique. */
 export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
   const rows = getDb()
     .prepare(
-      `SELECT p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc, pi.reasoning, pi.suggested_reply, pi.is_high_intent, p.selftext,
-       p.score AS post_score,
-       COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments
-       FROM posts p
-       JOIN runs r ON p.run_id = r.id
-       JOIN post_intent pi ON p.id = pi.post_id
-       WHERE p.run_id = ?
-       ORDER BY pi.score DESC NULLS LAST, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST
+      `WITH ranked AS (
+         SELECT p.id AS post_id, p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc, pi.reasoning, pi.suggested_reply, pi.is_high_intent,
+                0 AS is_archived,
+                p.selftext,
+                p.score AS post_score,
+                COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments,
+                ROW_NUMBER() OVER (PARTITION BY p.reddit_id ORDER BY pi.score DESC NULLS LAST, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST) AS rn
+         FROM posts p
+         JOIN runs r ON p.run_id = r.id
+         JOIN post_intent pi ON p.id = pi.post_id
+         WHERE p.run_id = ?
+       )
+       SELECT post_id, run_id, user_input, score, label, title, full_link, subreddit, author, created_utc,
+              reasoning, suggested_reply, is_high_intent, is_archived, selftext, post_score, num_comments
+       FROM ranked
+       WHERE rn = 1
+       ORDER BY score DESC NULLS LAST, created_utc DESC NULLS LAST, post_score DESC NULLS LAST
        LIMIT ?`
     )
     .all(runId, limit) as LeadRow[];
@@ -384,20 +418,78 @@ export function getRunsForUser(userId: string, limit: number = 50): { id: string
   return rows;
 }
 
-/** All leads for a user (from all their runs), ranked by intent then time. */
-export function getLeadsForUser(userId: string, limit: number = 200): LeadRow[] {
+/** All leads for a user (from all their runs), ranked by intent then time. Excludes deleted unless includeArchived. */
+export function getLeadsForUser(
+  userId: string,
+  limit: number = 200,
+  filters: LeadFilters = {}
+): LeadRow[] {
+  const { subreddit, days, minScore, query, includeArchived } = filters;
+  const conditions: string[] = ["r.user_id = ?"];
+  const params: (string | number)[] = [userId];
+
+  conditions.push(`(la.action IS NULL OR la.action != 'deleted')`);
+  if (!includeArchived) {
+    conditions.push(`(la.action IS NULL OR la.action != 'archived')`);
+  }
+  if (subreddit != null && subreddit.trim() !== "") {
+    conditions.push("LOWER(TRIM(p.subreddit)) = LOWER(TRIM(?))");
+    params.push(subreddit.trim());
+  }
+  if (days != null && Number.isFinite(days) && days > 0) {
+    conditions.push("p.created_utc >= ?");
+    params.push(Math.floor(Date.now() / 1000 - days * 86400));
+  }
+  if (minScore != null && Number.isFinite(minScore)) {
+    conditions.push("(pi.score IS NOT NULL AND pi.score >= ?)");
+    params.push(minScore);
+  }
+  if (query != null && query.trim() !== "") {
+    conditions.push("TRIM(r.user_input) = ?");
+    params.push(query.trim());
+  }
+
+  const whereClause = conditions.join(" AND ");
+  params.push(limit);
+  const allParams = [userId, ...params];
+
+  /* One row per Reddit post (reddit_id): same post from multiple runs was shown multiple times. */
   const rows = getDb()
     .prepare(
-      `SELECT p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc, pi.reasoning, pi.suggested_reply, pi.is_high_intent, p.selftext,
-       p.score AS post_score,
-       COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments
-       FROM posts p
-       JOIN runs r ON p.run_id = r.id
-       JOIN post_intent pi ON p.id = pi.post_id
-       WHERE r.user_id = ?
-       ORDER BY pi.score DESC NULLS LAST, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST
+      `WITH ranked AS (
+         SELECT p.id AS post_id, p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc,
+                pi.reasoning, pi.suggested_reply, pi.is_high_intent,
+                CASE WHEN la.action = 'archived' THEN 1 ELSE 0 END AS is_archived,
+                p.selftext,
+                p.score AS post_score,
+                COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments,
+                ROW_NUMBER() OVER (PARTITION BY p.reddit_id ORDER BY pi.score DESC NULLS LAST, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST) AS rn
+         FROM posts p
+         JOIN runs r ON p.run_id = r.id
+         JOIN post_intent pi ON p.id = pi.post_id
+         LEFT JOIN lead_actions la ON la.user_id = ? AND la.post_id = p.id
+         WHERE ${whereClause}
+       )
+       SELECT post_id, run_id, user_input, score, label, title, full_link, subreddit, author, created_utc,
+              reasoning, suggested_reply, is_high_intent, is_archived, selftext, post_score, num_comments
+       FROM ranked
+       WHERE rn = 1
+       ORDER BY score DESC NULLS LAST, created_utc DESC NULLS LAST, post_score DESC NULLS LAST
        LIMIT ?`
     )
-    .all(userId, limit) as LeadRow[];
+    .all(...allParams) as LeadRow[];
   return rows;
+}
+
+/** Archive or delete a lead for a user. */
+export function setLeadAction(
+  userId: string,
+  postId: string,
+  action: "archived" | "deleted"
+): void {
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO lead_actions (user_id, post_id, action, created_at) VALUES (?, ?, ?, datetime('now'))`
+    )
+    .run(userId, postId, action);
 }

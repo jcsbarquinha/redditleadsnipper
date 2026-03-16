@@ -3,7 +3,7 @@
  * POST /api/search → pipeline, returns leads. CTA "Unlock" → Stripe Checkout → welcome → dashboard.
  */
 
-import { loadConfig, getBaseUrl, getStripeSecretKey, getStripeUnlockAmountCents, getStripeCurrency, getSessionCookieName } from "./config.js";
+import { loadConfig, getBaseUrl, getStripeSecretKey, getStripeUnlockAmountCents, getStripeCurrency, getSessionCookieName, getStripeTestPromoCode } from "./config.js";
 loadConfig();
 
 import express from "express";
@@ -22,6 +22,8 @@ import {
   createSession,
   getSession,
   getLeadsForUser,
+  getRunsForUser,
+  setLeadAction,
   type LeadRow,
 } from "./db/index.js";
 import { InvalidSearchInputError } from "./input-validation.js";
@@ -84,6 +86,9 @@ app.options("*", (_req, res) => res.sendStatus(204));
 
 function leadRowToApi(row: LeadRow) {
   return {
+    post_id: row.post_id,
+    run_id: row.run_id,
+    user_input: row.user_input,
     title: row.title,
     full_link: row.full_link,
     subreddit: row.subreddit,
@@ -92,6 +97,7 @@ function leadRowToApi(row: LeadRow) {
     score: row.score != null ? Math.round(row.score) : null,
     label: row.label,
     is_high_intent: row.is_high_intent === 1,
+    is_archived: row.is_archived === 1,
     explanation: row.reasoning ?? null,
     suggested_reply: row.suggested_reply ?? null,
     selftext: row.selftext ?? null,
@@ -152,34 +158,48 @@ app.post("/api/create-checkout", (req, res) => {
 
   const baseUrl = getBaseUrl();
   const stripe = new Stripe(stripeKey);
+  const testPromoCode = getStripeTestPromoCode();
 
-  stripe.checkout.sessions
-    .create({
-      mode: "payment",
-      line_items: [
-        {
-          price_data: {
-            currency: getStripeCurrency(),
-            product_data: {
-              name: "Unlock all leads",
-              description: "See all high-intent Reddit leads from your search and get access to your dashboard.",
+  (async () => {
+    try {
+      let discounts: Array<{ promotion_code: string }> | undefined;
+      if (testPromoCode) {
+        const promos = await stripe.promotionCodes.list({ code: testPromoCode, active: true });
+        const promoId = promos.data[0]?.id;
+        if (promoId) {
+          discounts = [{ promotion_code: promoId }];
+          console.log("[Checkout] Pre-applied promo code:", testPromoCode);
+        } else {
+          console.warn("[Checkout] Promo code not found or inactive:", testPromoCode, "- checkout will show promo field instead");
+        }
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [
+          {
+            price_data: {
+              currency: getStripeCurrency(),
+              product_data: {
+                name: "Unlock all leads",
+                description: "See all high-intent Reddit leads from your search and get access to your dashboard. Billed monthly.",
+              },
+              unit_amount: getStripeUnlockAmountCents(),
             },
-            unit_amount: getStripeUnlockAmountCents(),
+            quantity: 1,
           },
-          quantity: 1,
-        },
-      ],
-      success_url: `${baseUrl}/welcome?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/?canceled=1`,
-      metadata: { run_id: runId, query: run.user_input },
-    })
-    .then((session) => {
+        ],
+        success_url: `${baseUrl}/welcome?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/?canceled=1`,
+        metadata: { run_id: runId, query: run.user_input },
+        ...(discounts ? { discounts } : { allow_promotion_codes: true }),
+      });
       res.json({ url: session.url });
-    })
-    .catch((err) => {
+    } catch (err) {
       console.error("Stripe create-checkout error:", err);
       res.status(500).json({ error: "Could not create checkout session." });
-    });
+    }
+  })();
 });
 
 /**
@@ -255,11 +275,53 @@ app.get("/api/me", requireAuth, (req, res) => {
   res.json({ id: user.id, email: user.email });
 });
 
-/** All leads for the current user (requires auth). */
+/** All leads for the current user (requires auth). Query params: subreddit, days, minScore, query, includeArchived. */
 app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string } }).user;
-  const leads = getLeadsForUser(user.id, 200);
+  const subreddit = typeof req.query.subreddit === "string" ? req.query.subreddit.trim() : undefined;
+  const days = req.query.days !== undefined ? Number(req.query.days) : undefined;
+  const minScore = req.query.minScore !== undefined ? Number(req.query.minScore) : undefined;
+  const query = typeof req.query.query === "string" ? req.query.query.trim() : undefined;
+  const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
+  const leads = getLeadsForUser(user.id, 200, {
+    subreddit: subreddit || undefined,
+    days: Number.isFinite(days) ? days : undefined,
+    minScore: Number.isFinite(minScore) ? minScore : undefined,
+    query: query || undefined,
+    includeArchived,
+  });
   res.json({ leads: leads.map(leadRowToApi) });
+});
+
+/** List runs for the current user (for dashboard query dropdown). */
+app.get("/api/dashboard/runs", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const runs = getRunsForUser(user.id, 50);
+  res.json({ runs });
+});
+
+/** Archive a lead. Body: { post_id: string }. */
+app.post("/api/dashboard/leads/archive", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const postId = typeof req.body?.post_id === "string" ? req.body.post_id.trim() : "";
+  if (!postId) {
+    res.status(400).json({ error: "Missing post_id." });
+    return;
+  }
+  setLeadAction(user.id, postId, "archived");
+  res.json({ ok: true });
+});
+
+/** Delete a lead. Body: { post_id: string }. */
+app.post("/api/dashboard/leads/delete", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const postId = typeof req.body?.post_id === "string" ? req.body.post_id.trim() : "";
+  if (!postId) {
+    res.status(400).json({ error: "Missing post_id." });
+    return;
+  }
+  setLeadAction(user.id, postId, "deleted");
+  res.json({ ok: true });
 });
 
 /** Log out: clear session cookie. */

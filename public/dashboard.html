@@ -10,30 +10,81 @@
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
   <style>
-    .dashboard-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; padding: 1rem 0.75rem; border-bottom: 1px solid var(--border); }
-    .dashboard-user { font-size: 0.9rem; color: var(--text-muted); }
-    .dashboard-user span { margin-right: 0.5rem; }
-    .dashboard-main { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
-    .dashboard-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; }
+    .dashboard-page .header-actions { display: flex; align-items: center; gap: 0.75rem; }
+    .dashboard-page .header-actions .user-email { font-size: 0.9rem; color: var(--text-muted); }
+    .dashboard-page .logout-btn { font-size: 0.95rem; font-weight: 600; color: var(--text); background: none; border: none; cursor: pointer; padding: 0.5rem 1rem; text-decoration: none; }
+    .dashboard-page .logout-btn:hover { color: var(--reddit-orange); }
+    .dashboard-main { max-width: 800px; margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; }
+    .dashboard-title { font-size: 1.75rem; font-weight: 600; margin: 0 0 1rem; color: var(--text); }
+    .dashboard-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; padding: 1rem 0; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
+    .dashboard-toolbar label { font-size: 0.9rem; color: var(--text-muted); margin-right: 0.25rem; }
+    .dashboard-toolbar select { font-size: 0.9rem; padding: 0.4rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+    .dashboard-toolbar .toolbar-query { min-width: 180px; }
+    .dashboard-toolbar .toolbar-subreddit { min-width: 140px; }
+    .dashboard-toolbar .toolbar-days { min-width: 100px; }
+    .dashboard-toolbar .toolbar-score { min-width: 120px; }
+    .dashboard-toolbar .toolbar-archived { display: flex; align-items: center; gap: 0.35rem; }
+    .dashboard-toolbar .toolbar-archived input { width: 1rem; height: 1rem; }
     .dashboard-empty { color: var(--text-muted); padding: 2rem; text-align: center; }
-    .logout-btn { font-size: 0.9rem; color: var(--link); background: none; border: none; cursor: pointer; padding: 0.25rem 0; }
-    .logout-btn:hover { text-decoration: underline; }
+    .lead-card { position: relative; }
+    .lead-card .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+    .lead-card .card-actions .btn { font-size: 0.85rem; padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem; }
+    .lead-card .card-actions .btn:hover { background: #eee; border-color: #ccc; }
+    .lead-card .card-actions .btn-archive { }
+    .lead-card .card-actions .btn-delete { color: #b32d2e; border-color: #e8b4b4; }
+    .lead-card .card-actions .btn-delete:hover { background: #fde8e8; }
+    .lead-card .card-actions .btn-copy { color: var(--link); }
+    .lead-card .card-actions .btn-copy:hover { text-decoration: underline; }
+    .lead-card.archived { opacity: 0.85; }
   </style>
 </head>
-<body>
-  <header class="dashboard-header">
-    <a href="/" class="logo">
-      <img src="/logo.png" alt="" class="logo-mark" />
-      <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
-    </a>
-    <div class="dashboard-user">
-      <span id="userEmail"></span>
-      <button type="button" class="logout-btn" id="logoutBtn">Log out</button>
+<body class="dashboard-page">
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <img src="/logo.png" alt="" class="logo-mark" />
+        <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
+      </a>
+      <nav class="header-nav" aria-label="Main">
+        <a href="/how-it-works" class="header-link">How it Works</a>
+        <a href="/blog" class="header-link">Blog</a>
+        <a href="/pricing" class="header-link">Pricing</a>
+      </nav>
+      <div class="header-actions">
+        <span id="userEmail" class="user-email"></span>
+        <button type="button" class="logout-btn" id="logoutBtn">Log out</button>
+      </div>
     </div>
   </header>
 
   <main class="dashboard-main">
-    <h1 class="dashboard-title">Your leads</h1>
+    <h1 class="dashboard-title">Dashboard</h1>
+    <div class="dashboard-toolbar">
+      <label for="filterQuery">Search</label>
+      <select id="filterQuery" class="toolbar-query" aria-label="Filter by search query">
+        <option value="">All searches</option>
+      </select>
+      <label for="filterSubreddit">Subreddit</label>
+      <select id="filterSubreddit" class="toolbar-subreddit" aria-label="Filter by subreddit">
+        <option value="">All</option>
+      </select>
+      <label for="filterDays">Date</label>
+      <select id="filterDays" class="toolbar-days" aria-label="Filter by date">
+        <option value="">All</option>
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+      </select>
+      <label for="filterScore">Intent</label>
+      <select id="filterScore" class="toolbar-score" aria-label="Filter by intent score">
+        <option value="">All</option>
+        <option value="70">High (70+)</option>
+        <option value="40">Medium+ (40+)</option>
+      </select>
+      <label class="toolbar-archived">
+        <input type="checkbox" id="filterArchived" aria-label="Include archived" />
+        <span>Include archived</span>
+      </label>
+    </div>
     <div id="leadsList" class="results-list"></div>
     <p id="emptyState" class="dashboard-empty hidden">No leads yet. Run a search on the homepage and unlock your results.</p>
   </main>
@@ -66,9 +117,74 @@
     if (lead.is_high_intent) return "They are actively looking for a solution or recommendation.";
     return "It matches your search and shows a relevant pain point.";
   }
+
+  var runs = [];
+  var leads = [];
+
+  function buildLeadsUrl() {
+    var q = document.getElementById("filterQuery").value;
+    var sub = document.getElementById("filterSubreddit").value;
+    var days = document.getElementById("filterDays").value;
+    var score = document.getElementById("filterScore").value;
+    var arch = document.getElementById("filterArchived").checked;
+    var params = new URLSearchParams();
+    if (q) params.set("query", q);
+    if (sub) params.set("subreddit", sub);
+    if (days) params.set("days", days);
+    if (score) params.set("minScore", score);
+    if (arch) params.set("includeArchived", "true");
+    return "/api/dashboard/leads?" + params.toString();
+  }
+
+  function fetchLeads() {
+    return fetch(buildLeadsUrl(), { credentials: "same-origin" })
+      .then(function (r) {
+        if (!r.ok) return { leads: [] };
+        return r.json();
+      })
+      .then(function (data) {
+        leads = data.leads || [];
+        renderLeads();
+        populateSubredditFilter();
+      });
+  }
+
+  function populateSubredditFilter() {
+    var subreddits = [];
+    leads.forEach(function (l) {
+      if (l.subreddit && subreddits.indexOf(l.subreddit) === -1) subreddits.push(l.subreddit);
+    });
+    subreddits.sort();
+    var subSel = document.getElementById("filterSubreddit");
+    var current = subSel.value;
+    subSel.innerHTML = '<option value="">All</option>';
+    subreddits.forEach(function (s) {
+      var opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = "r/" + s;
+      subSel.appendChild(opt);
+    });
+    if (current && subreddits.indexOf(current) !== -1) subSel.value = current;
+  }
+
+  function renderLeads() {
+    var list = document.getElementById("leadsList");
+    var empty = document.getElementById("emptyState");
+    list.innerHTML = "";
+    if (leads.length === 0) {
+      empty.classList.remove("hidden");
+      return;
+    }
+    empty.classList.add("hidden");
+    leads.forEach(function (lead) {
+      list.appendChild(buildCard(lead));
+    });
+  }
+
   function buildCard(lead) {
     var card = document.createElement("article");
-    card.className = "lead-card";
+    card.className = "lead-card" + (lead.is_archived ? " archived" : "");
+    card.dataset.postId = lead.post_id;
     var sub = lead.subreddit ? "r/" + lead.subreddit : "r/community";
     var badge = getIntentBadge(lead.score);
     var initial = (lead.subreddit || "r").charAt(0).toUpperCase();
@@ -76,6 +192,7 @@
     var votes = lead.votes != null ? lead.votes : 0;
     var comments = lead.num_comments != null ? lead.num_comments : 0;
     var why = summarizeWhy(lead);
+    var reply = (lead.suggested_reply || "").trim();
     card.innerHTML =
       '<div class="card-inner">' +
       '<div class="intent-badge ' + badge.cls + '">' + badge.label + '</div>' +
@@ -88,6 +205,12 @@
       (bodySnippet ? '<p class="card-body">' + escapeHtml(bodySnippet) + (bodySnippet.length >= 200 ? "\u2026" : "") + '</p>' : "") +
       '<p class="card-engagement">' + votes + ' vote' + (votes !== 1 ? "s" : "") + ' \u00B7 ' + comments + ' comment' + (comments !== 1 ? "s" : "") + '</p>' +
       (why ? '<button type="button" class="reply-toggle" aria-expanded="false">Why this post</button><div class="reply-content hidden">' + escapeHtml(why) + '</div>' : "") +
+      '<div class="card-actions">' +
+      '<button type="button" class="btn btn-archive" data-action="archive" title="Archive">Archive</button>' +
+      '<button type="button" class="btn btn-delete" data-action="delete" title="Delete">Delete</button>' +
+      (reply ? '<button type="button" class="btn btn-copy" data-action="copy" title="Copy suggested reply">Copy reply</button>' : '') +
+      '<a href="' + escapeHtml(lead.full_link || "#") + '" target="_blank" rel="noopener" class="btn btn-copy">Open in Reddit</a>' +
+      '</div>' +
       '</div>';
     var toggle = card.querySelector(".reply-toggle");
     var replyContent = card.querySelector(".reply-content");
@@ -97,13 +220,35 @@
         toggle.setAttribute("aria-expanded", replyContent.classList.contains("hidden") ? "false" : "true");
       });
     }
+    card.querySelector("[data-action=archive]").addEventListener("click", function () {
+      doAction(lead.post_id, "archive");
+    });
+    card.querySelector("[data-action=delete]").addEventListener("click", function () {
+      doAction(lead.post_id, "delete");
+    });
+    var copyBtn = card.querySelector("[data-action=copy]");
+    if (copyBtn && reply) {
+      copyBtn.addEventListener("click", function () {
+        navigator.clipboard.writeText(reply).then(function () {
+          copyBtn.textContent = "Copied!";
+          setTimeout(function () { copyBtn.textContent = "Copy reply"; }, 1500);
+        });
+      });
+    }
     return card;
   }
 
-  var userEmailEl = document.getElementById("userEmail");
-  var leadsList = document.getElementById("leadsList");
-  var emptyState = document.getElementById("emptyState");
-  var logoutBtn = document.getElementById("logoutBtn");
+  function doAction(postId, action) {
+    var path = action === "archive" ? "/api/dashboard/leads/archive" : "/api/dashboard/leads/delete";
+    fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ post_id: postId })
+    }).then(function (r) {
+      if (r.ok) fetchLeads();
+    });
+  }
 
   function redirectHome() {
     window.location.href = "/";
@@ -118,33 +263,39 @@
       return r.json();
     })
     .then(function (me) {
-      userEmailEl.textContent = me.email || "";
+      document.getElementById("userEmail").textContent = me.email || "";
     })
     .catch(function () {});
 
-  fetch("/api/dashboard/leads", { credentials: "same-origin" })
+  fetch("/api/dashboard/runs", { credentials: "same-origin" })
     .then(function (r) {
-      if (!r.ok) return { leads: [] };
+      if (!r.ok) return { runs: [] };
       return r.json();
     })
     .then(function (data) {
-      var leads = data.leads || [];
-      if (leads.length === 0) {
-        emptyState.classList.remove("hidden");
-        return;
-      }
-      leads.forEach(function (lead) {
-        leadsList.appendChild(buildCard(lead));
+      runs = data.runs || [];
+      var sel = document.getElementById("filterQuery");
+      sel.innerHTML = '<option value="">All searches</option>';
+      runs.forEach(function (run) {
+        var opt = document.createElement("option");
+        opt.value = run.user_input || run.id;
+        opt.textContent = (run.user_input || run.id).slice(0, 50) + (run.user_input && run.user_input.length > 50 ? "…" : "");
+        sel.appendChild(opt);
       });
+      return fetchLeads();
     });
 
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", function () {
-      fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
-        redirectHome();
-      });
+  document.getElementById("filterQuery").addEventListener("change", fetchLeads);
+  document.getElementById("filterSubreddit").addEventListener("change", fetchLeads);
+  document.getElementById("filterDays").addEventListener("change", fetchLeads);
+  document.getElementById("filterScore").addEventListener("change", fetchLeads);
+  document.getElementById("filterArchived").addEventListener("change", fetchLeads);
+
+  document.getElementById("logoutBtn").addEventListener("click", function () {
+    fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
+      redirectHome();
     });
-  }
+  });
 })();
   </script>
 </body>
