@@ -302,21 +302,21 @@
 
         <div class="rail-section">
           <h2 class="rail-section-title">Leads</h2>
-          <button type="button" id="activeOnlyBtn" class="leads-scope-btn" aria-pressed="false">
+          <button type="button" id="activeOnlyBtn" class="leads-scope-btn active" aria-pressed="true">
             <span>Active Leads</span>
             <span class="leads-count">(<span id="activeLeadsCount">0</span>)</span>
           </button>
-        </div>
 
-        <div class="rail-section">
-          <h2 class="rail-section-title">Filters</h2>
-          <div class="intent-pills" role="group" aria-label="Lead filters">
+          <div class="intent-pills" role="group" aria-label="Lead filters" style="margin-top: 0.75rem;">
             <button type="button" class="intent-pill hot" data-intent="hot" aria-pressed="false">🔥 Hot (90+)</button>
             <button type="button" class="intent-pill warm" data-intent="warm" aria-pressed="false">🟡 Warm (70-89)</button>
             <button type="button" class="intent-pill recent" data-intent="recent" aria-pressed="false">🕒 Recent</button>
             <button type="button" class="intent-pill archived" data-intent="archived" aria-pressed="false">🗂 Archived</button>
           </div>
+        </div>
 
+        <div class="rail-section">
+          <h2 class="rail-section-title">Filters</h2>
           <div class="secondary-filters">
             <div style="width: 100%;">
               <label for="filterSort">Sort by</label>
@@ -391,7 +391,7 @@
   // - activeOnly: when true, hide archived leads
   // - sortMode: client-side sorting order
   var leadFilter = "all"; // "all" | "hot" | "warm" | "recent" | "archived"
-  var activeOnly = false;
+  var activeOnly = true;
   var activeLeadsCount = 0;
   var sortMode = "score"; // "score" | "newest"
 
@@ -407,8 +407,8 @@
     var pillActive = leadFilter === next && next !== "all";
     leadFilter = pillActive ? "all" : next;
 
-    if (leadFilter === "archived") activeOnly = false;
-    if (activeOnly) leadFilter = "all";
+    // If viewing archived leads, switch scope off "Active Leads".
+    activeOnly = leadFilter === "archived" ? false : true;
 
     var pillEls = document.querySelectorAll(".intent-pill[data-intent]");
     pillEls.forEach(function (el) {
@@ -418,12 +418,13 @@
       el.setAttribute("aria-pressed", String(isActive));
     });
 
+    syncActiveOnlyUI();
     renderLeads();
   }
 
   function setActiveOnly(next) {
     activeOnly = next;
-    if (activeOnly) leadFilter = "all";
+    if (activeOnly && leadFilter === "archived") leadFilter = "all";
     syncActiveOnlyUI();
     renderLeads();
   }
@@ -449,7 +450,8 @@
       })
       .then(function (data) {
         leads = data.leads || [];
-        activeLeadsCount = leads.filter(function (l) { return l.is_archived === 0; }).length;
+        // API returns `is_archived` as boolean.
+        activeLeadsCount = leads.filter(function (l) { return l.is_archived === false; }).length;
         var countEl = document.getElementById("activeLeadsCount");
         if (countEl) countEl.textContent = String(activeLeadsCount);
         syncActiveOnlyUI();
@@ -467,14 +469,14 @@
     // Scope: hide archived when "Active Leads" is toggled.
     if (activeOnly) {
       working = working.filter(function (l) {
-        return l.is_archived === 0;
+        return l.is_archived === false;
       });
     }
 
     // Pill filters
     if (leadFilter === "archived") {
       working = working.filter(function (l) {
-        return l.is_archived === 1;
+        return l.is_archived === true;
       });
     } else if (leadFilter === "hot") {
       working = working.filter(function (l) {
@@ -682,10 +684,22 @@
     });
   }
 
+  // Initialize Active Leads button state.
   var activeOnlyEl = document.getElementById("activeOnlyBtn");
   if (activeOnlyEl) {
+    activeOnlyEl.classList.toggle("active", activeOnly);
+    activeOnlyEl.setAttribute("aria-pressed", String(activeOnly));
     activeOnlyEl.addEventListener("click", function () {
-      setActiveOnly(!activeOnly);
+      leadFilter = "all";
+      activeOnly = true;
+      // Clear any intent pill selection.
+      var pillEls = document.querySelectorAll(".intent-pill[data-intent]");
+      pillEls.forEach(function (el) {
+        el.classList.remove("active");
+        el.setAttribute("aria-pressed", "false");
+      });
+      syncActiveOnlyUI();
+      renderLeads();
     });
   }
 
