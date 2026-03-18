@@ -244,11 +244,20 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   await validateUserInput(userInput);
 
   const runId = randomUUID();
-  const { keywords: searchQueries, productSummary, whatProductDoes, whatProblemItSolves } = await getKeywordsForInput(userInput, keywordCount);
-  const intentContext =
+  const { keywords: searchQueries, productSummary, whatProductDoes, whatProblemItSolves, targetUser } = await getKeywordsForInput(
+    userInput,
+    keywordCount
+  );
+  const baseContext =
     whatProductDoes && whatProblemItSolves
       ? `What the product does:\n${whatProductDoes}\n\nWhat problem it solves:\n${whatProblemItSolves}`
-      : (productSummary && productSummary.trim() ? productSummary.trim() : userInput);
+      : productSummary && productSummary.trim()
+        ? productSummary.trim()
+        : userInput;
+
+  const intentContext = targetUser
+    ? `${baseContext}\n\nTarget user:\n${targetUser}`
+    : `${baseContext}\n\nTarget user:\n(not specified)`;
   insertRun(runId, userInput, searchQueries, "running");
 
   try {

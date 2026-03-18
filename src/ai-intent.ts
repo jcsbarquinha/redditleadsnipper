@@ -21,16 +21,17 @@ const BATCH_SYSTEM_PROMPT = `You are qualifying B2B sales leads from Reddit post
 
 You will be given ONLY:
 1) The product description and the problem it solves.
-2) Each Reddit post's content (title + body).
+2) The target user (who this product is for, in real-life terms).
+3) Each Reddit post's content (title + body).
 
 For each post, decide whether the author is actually seeking a solution in the product category described above.
 If they are only discussing related topics, asking about something else, or asking to evaluate "legit/scam/safe", then score low.
 
 Scoring rubric (0-100):
-- 90-100: Clearly seeking a recommendation / solution for this product category.
-- 70-89: Clear problem match and open to solutions/recommendations (less direct than above).
-- 40-69: Some relevance to the problem, but weak/indirect seeking intent.
-- 0-39: Not seeking this solution (general discussion, wrong intent, or evaluating legitimacy/scam/safety instead).
+- 90-100: The author is clearly seeking a recommendation/solution AND the post matches the target user's situation (the kind of person who would realistically buy/use this).
+- 70-89: The author’s problem intent matches AND there’s a reasonable fit with the target user's situation (open to solutions/recommendations but not perfectly direct).
+- 40-69: Some relevance, but either seeking intent is weak OR the author appears to be a different kind of user than the target.
+- 0-39: Not seeking this solution, or the post is clearly for a different user/situation, or evaluating legitimacy/scam/safety instead.
 
 Return JSON only as an array with one object per post in the same order.
 Each object must be:
@@ -128,7 +129,7 @@ Title: ${p.title || "(no title)"}
 Body: ${p.body || "(no body)"}`;
   }).join("\n\n");
 
-  const userContent = `Product description (what it does and what problem it solves):
+  const userContent = `Product description + problem + target user:
 
 ${context.trim()}
 
