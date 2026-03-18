@@ -51,7 +51,8 @@ body {
   max-width: var(--header-max-width);
   margin: 0 auto;
   padding: 1rem var(--header-margin-x);
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr; /* left logo | centered nav | right login */
   align-items: center;
 }
 
@@ -61,21 +62,18 @@ body {
 
 /* Center nav with page (H1): absolute center of header-inner = viewport center */
 .header-nav {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 2.25rem;
+  justify-self: center;
 }
 
 .header-actions {
   flex-shrink: 0;
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-right: 2rem; /* extra space to the right of Login only */
+  justify-self: end;
 }
 
 .header-link {
