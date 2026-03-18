@@ -583,9 +583,20 @@
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ post_id: postId })
-    }).then(function (r) {
-      if (r.ok) fetchLeads();
-    });
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          // Try to surface the backend error to the user.
+          return r.text().then(function (t) {
+            var msg = t || r.statusText || "Request failed";
+            throw new Error(msg);
+          });
+        }
+        fetchLeads();
+      })
+      .catch(function (err) {
+        alert("Action failed: " + (err instanceof Error ? err.message : String(err)));
+      });
   }
 
   function redirectHome() {
