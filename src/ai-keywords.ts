@@ -8,10 +8,11 @@ import { requireOpenAIKey } from "./config.js";
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const WEBSITE_FETCH_TIMEOUT_MS = 15_000;
-const MAX_WEBSITE_TEXT_LENGTH = 4000;
+// Keep enough landing page context for good keyword + intent descriptions.
+const MAX_WEBSITE_TEXT_LENGTH = 12000;
 
 /** Number of final LLM-generated search queries. */
-export const DEFAULT_KEYWORD_COUNT = 8;
+export const DEFAULT_KEYWORD_COUNT = 10;
 
 interface WebsiteContext {
   url: string;
@@ -81,7 +82,7 @@ function extractHeadings(html: string): string[] {
   const headings = matches
     .map((match) => stripTags(match[1] ?? ""))
     .filter(Boolean);
-  return [...new Set(headings)].slice(0, 6);
+  return [...new Set(headings)].slice(0, 12);
 }
 
 async function fetchWebsiteContext(input: string): Promise<WebsiteContext | null> {
@@ -219,14 +220,30 @@ function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeyw
   if (!Array.isArray(list)) throw new Error("Expected keywords array");
   const seen = new Set<string>();
   const deduped: string[] = [];
+  const fallback: string[] = [];
 
+  // We want "exactly N" final keywords for the pipeline,
+  // while still preferring uniqueness.
   for (const item of list) {
     if (typeof item !== "string") continue;
     const normalized = normalizeSearchQuery(item);
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    deduped.push(normalized);
-    if (deduped.length >= maxKeywords) break;
+    if (!normalized) continue;
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      deduped.push(normalized);
+      if (deduped.length >= maxKeywords) break;
+    } else {
+      fallback.push(normalized);
+    }
+  }
+
+  // If the model output had duplicates and we got < maxKeywords, fill from fallback
+  // (keeps exact count without blocking the pipeline).
+  if (deduped.length < maxKeywords) {
+    for (const item of fallback) {
+      deduped.push(item);
+      if (deduped.length >= maxKeywords) break;
+    }
   }
 
   const productSummary =

@@ -353,9 +353,9 @@ app.post("/api/search", (req, res, next) => {
     return;
   }
 
-  const maxPages = typeof req.body?.maxPages === "number" && req.body.maxPages >= 1 && req.body.maxPages <= 2
-    ? Math.floor(req.body.maxPages)
-    : 1;
+  // Per the search flow: for each keyword we only fetch the first page results.
+  // (Future deep mode can widen this.)
+  const maxPages = 1;
 
   try {
     const result = await runPipeline({

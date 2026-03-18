@@ -91,31 +91,33 @@
       </div>
     </section>
 
-    <section class="loading-section hidden" id="loadingSection" aria-live="polite">
-      <div class="loading-steps" id="loadingSteps">
-        <div class="step" data-step="1"><span class="step-label">Deploying search agents</span></div>
-        <div class="step" data-step="2"><span class="step-label">Finding discussions</span></div>
-        <div class="step" data-step="3"><span class="step-label">Trashing spam &amp; old threads</span></div>
-        <div class="step" data-step="4"><span class="step-label">Model scoring buying intent</span></div>
-      </div>
-      <div class="loading-bar" aria-hidden="true"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
-      <p class="scanning-counter" id="scanningCounter">Scanning 0 threads...</p>
-      <div class="skeleton-cards" id="skeletonCards">
-        <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
-        <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
-        <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
-        <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
-      </div>
-    </section>
+    <div class="analysis-box">
+      <section class="loading-section hidden" id="loadingSection" aria-live="polite">
+        <div class="loading-steps" id="loadingSteps">
+          <div class="step" data-step="1"><span class="step-label">Deploying search agents</span></div>
+          <div class="step" data-step="2"><span class="step-label">Finding discussions</span></div>
+          <div class="step" data-step="3"><span class="step-label">Trashing spam &amp; old threads</span></div>
+          <div class="step" data-step="4"><span class="step-label">Model scoring buying intent</span></div>
+        </div>
+        <div class="loading-bar" aria-hidden="true"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
+        <p class="scanning-counter" id="scanningCounter">Scanning 0 threads...</p>
+        <div class="skeleton-cards" id="skeletonCards">
+          <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
+          <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
+          <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
+          <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
+        </div>
+      </section>
 
-    <section class="results-section hidden" id="resultsSection">
-      <div class="results-header" id="resultsHeader"></div>
-      <div class="results-list" id="resultsList"></div>
-    </section>
+      <section class="results-section hidden" id="resultsSection">
+        <div class="results-header" id="resultsHeader"></div>
+        <div class="results-list" id="resultsList"></div>
+      </section>
 
-    <section class="error-section hidden" id="errorSection">
-      <p class="error-message" id="errorMessage"></p>
-    </section>
+      <section class="error-section hidden" id="errorSection">
+        <p class="error-message" id="errorMessage"></p>
+      </section>
+    </div>
   </main>
 
   <!-- How it Works -->

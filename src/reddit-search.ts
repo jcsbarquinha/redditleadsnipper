@@ -134,7 +134,8 @@ export async function search(
   let page = 0;
 
   while (page < maxPages) {
-    let url = `${BASE_URL}/search.json?q=${encoded}&limit=${limit}&sort=${sort}&type=link`;
+    // Fetch both link and self posts so we don't miss relevant "seeking help" discussions.
+    let url = `${BASE_URL}/search.json?q=${encoded}&limit=${limit}&sort=${sort}`;
     if (after) url += `&after=${after}`;
     await delay(delayMs);
     const data = await request<RedditListing>(url, delayMs);

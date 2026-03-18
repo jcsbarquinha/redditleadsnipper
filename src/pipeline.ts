@@ -160,11 +160,13 @@ function isLikelySelfPromotionalPost(post: RedditPost, userInput: string): boole
 
 function applyFinalScoreAdjustments(rawScore: number, post: RedditPost): number {
   const ageDays = Math.min(MAX_POST_AGE_DAYS, getPostAgeDays(post));
-  const recencyMultiplier = Number.isFinite(ageDays) ? 1.18 - ageDays * 0.012 : 0.82;
-  const votes = Math.max(0, post.score ?? 0);
-  const numComments = Math.max(0, post.num_comments ?? 0);
-  const engagementBonus = Math.min(8, Math.log1p(numComments) * 2.2 + Math.log1p(votes) * 0.8);
-  return clampScore(rawScore * recencyMultiplier + engagementBonus);
+  // Recency should be a *small* boost only.
+  // The primary signal must remain the AI intent score (seeking-ness).
+  const recencyStrength = 5; // max points added by recency (keep AI dominant)
+  const recencyPoints = Number.isFinite(ageDays)
+    ? Math.round(((MAX_POST_AGE_DAYS - ageDays) / MAX_POST_AGE_DAYS) * recencyStrength)
+    : 0;
+  return clampScore(rawScore + recencyPoints);
 }
 
 function finalizeIntent(score: number, explanation: string | null, suggestedReply: string | null) {

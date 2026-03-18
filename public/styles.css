@@ -446,6 +446,35 @@ body {
   margin: 0;
 }
 
+/* Grey box around entire analysis: loading stages, progress bar, scanning counter, skeleton/result cards */
+.analysis-box {
+  margin-top: 0;
+}
+
+/* When analysis is visible, reduce gap between hero search and grey box (main’s top padding) */
+.main:has(.analysis-box:has(.loading-section:not(.hidden))),
+.main:has(.analysis-box:has(.results-section:not(.hidden))),
+.main:has(.analysis-box:has(.error-section:not(.hidden))) {
+  padding-top: 0.5rem;
+}
+
+.analysis-box:has(.loading-section:not(.hidden)),
+.analysis-box:has(.results-section:not(.hidden)),
+.analysis-box:has(.error-section:not(.hidden)) {
+  background: #f6f7f8;
+  border-radius: 12px;
+  padding: 1.5rem 2rem 2rem;
+  border: 1px solid var(--border);
+}
+
+.analysis-box .loading-section {
+  margin-top: 0;
+}
+
+.analysis-box .results-section {
+  margin-top: 0;
+}
+
 /* Anchor sections: scroll margin so fixed header doesn't cover title */
 #how-it-works,
 #pricing {
