@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blog – Leadsnipe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#F25C37',
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <img src="/logo.png" alt="" class="logo-mark" />
+        <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
+      </a>
+      <nav class="header-nav" aria-label="Main">
+        <a href="#how-it-works" class="header-link">How it Works</a>
+        <a href="/blog" class="header-link">Blog</a>
+        <a href="#pricing" class="header-link">Pricing</a>
+      </nav>
+      <div class="header-actions">
+        <a href="/dashboard" class="header-login">Login</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="bg-gray-50 pt-24 pb-10">
+    <div class="max-w-6xl mx-auto px-6 text-center">
+      <h1 class="text-gray-900 font-bold text-4xl md:text-5xl tracking-tight">
+        The Leadsnipe Growth Hub
+      </h1>
+      <p class="mt-4 text-gray-600 text-lg max-w-2xl mx-auto leading-relaxed">
+        Actionable playbooks on social selling, finding high-intent B2B leads, and scaling inbound.
+      </p>
+    </div>
+  </section>
+
+  <main class="max-w-6xl mx-auto px-6 py-12">
+    <div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-10">
+      <div>
+        <!-- Featured Post -->
+        <section aria-label="Featured post">
+      <article class="border border-gray-200 rounded-xl overflow-hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-2">
+          <div class="bg-gray-100 aspect-video rounded-t-xl lg:rounded-none lg:rounded-r-none flex items-center justify-center text-gray-400 text-sm">
+            Image placeholder
+          </div>
+          <div class="p-8">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4">
+              <span class="inline-flex items-center rounded-md border border-[#F25C37]/20 bg-[#F25C37]/10 px-2.5 py-1 text-xs font-medium text-[#F25C37]">
+                Lead Generation
+              </span>
+              <span class="text-gray-400">•</span>
+              <span class="text-gray-500 text-sm">Mar 12, 2026</span>
+              <span class="text-gray-400">•</span>
+              <span class="text-gray-500 text-sm">7 min read</span>
+            </div>
+
+            <h2 class="text-2xl md:text-3xl font-bold text-gray-900 leading-snug">
+              <a href="/blog/finding-high-intent-b2b-leads/" class="hover:text-[#F25C37] transition-colors">
+                Finding High-Intent B2B Leads on Reddit (Without the Noise)
+              </a>
+            </h2>
+
+            <p class="mt-4 text-gray-500 leading-relaxed">
+              A practical playbook for turning website input into a clean list of active buyers—then prioritizing the conversations that matter.
+            </p>
+
+            <div class="mt-6">
+              <a
+                href="/blog/finding-high-intent-b2b-leads/"
+                class="inline-flex items-center justify-center px-5 py-2.5 rounded-lg border border-[#F25C37]/30 text-[#F25C37] font-semibold hover:bg-[#F25C37]/10 transition-colors"
+              >
+                Read the full article
+              </a>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Article Grid -->
+    <section class="mt-10" aria-label="Older posts">
+      <div class="mt-2 flex items-center justify-between">
+        <h3 class="text-gray-900 font-bold text-xl">Latest articles</h3>
+      </div>
+
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Card 1 -->
+        <article class="border border-gray-200 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+            Image placeholder
+          </div>
+          <div class="p-5">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
+              <span class="inline-flex items-center rounded-md border border-[#F25C37]/20 bg-[#F25C37]/10 px-2.5 py-1 text-xs font-medium text-[#F25C37]">
+                Social Selling
+              </span>
+              <span class="text-gray-400">•</span>
+              <span class="text-gray-500 text-sm">Mar 6, 2026</span>
+              <span class="text-gray-400">•</span>
+              <span class="text-gray-500 text-sm">5 min read</span>
+            </div>
+
+            <h4 class="text-lg font-bold text-gray-900 leading-snug">
+              <a href="/blog/social-selling-workflow/" class="hover:text-[#F25C37] transition-colors">
+                A Simple Social Selling Workflow That Actually Scales
+              </a>
+            </h4>
+            <p class="mt-3 text-gray-500 leading-relaxed">
+              Move from random outreach to a repeatable pipeline of real conversations—backed by a clean decision process.
+            </p>
+          </div>
+        </article>
+
+        <!-- Card 2 -->
+        <article class="border border-gray-200 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+            Image placeholder
+          </div>
+          <div class="p-5">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
+              <span class="inline-flex items-center rounded-md border border-[#F25C37]/20 bg-[#F25C37]/10 px-2.5 py-1 text-xs font-medium text-[#F25C37]">
+                Quality
+              </span>
+              <span class="text-gray-400">•</span>
+              <span class="text-gray-500 text-sm">Feb 28, 2026</span>
+              <span class="text-gray-400">•</span>
+              <span class="text-gray-500 text-sm">6 min read</span>
+            </div>
+
+            <h4 class="text-lg font-bold text-gray-900 leading-snug">
+              <a href="/blog/spam-and-false-positives/" class="hover:text-[#F25C37] transition-colors">
+                Spam, False Positives, and How to Reduce Them
+              </a>
+            </h4>
+            <p class="mt-3 text-gray-500 leading-relaxed">
+              Why irrelevant matches happen and how to tighten your intent scoring so only real buyers make the cut.
+            </p>
+          </div>
+        </article>
+
+        <!-- Card 3 -->
+        <article class="border border-gray-200 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+            Image placeholder
+          </div>
+          <div class="p-5">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
+              <span class="inline-flex items-center rounded-md border border-[#F25C37]/20 bg-[#F25C37]/10 px-2.5 py-1 text-xs font-medium text-[#F25C37]">
+                Strategy
+              </span>
+              <span class="text-gray-400">•</span>
+              <span class="text-gray-500 text-sm">Feb 20, 2026</span>
+              <span class="text-gray-400">•</span>
+              <span class="text-gray-500 text-sm">4 min read</span>
+            </div>
+
+            <h4 class="text-lg font-bold text-gray-900 leading-snug">
+              <a href="/blog/from-website-to-leads/" class="hover:text-[#F25C37] transition-colors">
+                From Website to Leads: What to Feed the System
+              </a>
+            </h4>
+            <p class="mt-3 text-gray-500 leading-relaxed">
+              The input determines the output. Here’s the simple structure that creates higher-quality leads.
+            </p>
+          </div>
+        </article>
+      </div>
+    </section>
+        <!-- Mobile CTA -->
+        <div class="lg:hidden mt-10">
+          <div class="border border-orange-200 bg-orange-50 rounded-xl p-6">
+            <h3 class="text-xl font-bold text-gray-900">Stop waiting for inbound leads.</h3>
+            <p class="mt-2 text-gray-700 leading-relaxed">
+              Leadsnipe filters out the spam and finds active buyers begging for your solution. Get high-intent conversations delivered straight to your inbox.
+            </p>
+            <a
+              href="/#hero"
+              class="mt-5 block w-full text-center py-3 rounded-lg bg-[#F25C37] text-white font-semibold hover:bg-[#F25C37]/90 transition-colors"
+            >
+              Find your next lead
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sticky Right Rail CTA -->
+      <aside class="hidden lg:block">
+        <div class="sticky top-24">
+          <div class="border border-orange-200 bg-orange-50 rounded-xl p-6">
+            <h3 class="text-xl font-bold text-gray-900">Stop waiting for inbound leads.</h3>
+            <p class="mt-2 text-gray-700 leading-relaxed">
+              Leadsnipe filters out the spam and finds active buyers begging for your solution. Get high-intent conversations delivered straight to your inbox.
+            </p>
+            <a
+              href="/#hero"
+              class="mt-5 block w-full text-center py-3 rounded-lg bg-[#F25C37] text-white font-semibold hover:bg-[#F25C37]/90 transition-colors"
+            >
+              Find your next lead
+            </a>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>
+
