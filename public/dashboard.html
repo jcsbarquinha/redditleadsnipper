@@ -355,8 +355,13 @@
   function formatAge(createdUtc) {
     if (createdUtc == null) return "";
     var now = Math.floor(Date.now() / 1000);
-    var days = Math.floor((now - createdUtc) / 86400);
-    if (days < 1) return "now";
+    var secondsAgo = now - createdUtc;
+    var days = Math.floor(secondsAgo / 86400);
+    if (days < 1) {
+      var hours = Math.floor(secondsAgo / 3600);
+      if (hours <= 0) return "now";
+      return hours + "h ago";
+    }
     if (days === 1) return "1d ago";
     if (days < 30) return days + "d ago";
     if (days < 365) return Math.floor(days / 30) + "mo ago";
