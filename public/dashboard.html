@@ -44,6 +44,11 @@
     .dashboard-list-wrap::-webkit-scrollbar-thumb { background: rgba(255, 69, 0, 0.55); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
     .dashboard-list-wrap::-webkit-scrollbar-thumb:hover { background: rgba(255, 69, 0, 0.75); border: 2px solid transparent; background-clip: content-box; }
     .lead-card { position: relative; }
+
+    /* Intent badge row so we can show "Recent" next to Hot/Warm/Lead. */
+    .intent-badges-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .intent-badges-row .intent-badge { margin-bottom: 0; }
+    .intent-badge.recent { background: #dbeafe; color: #1d4ed8; }
     .lead-card .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
     .lead-card .card-actions .btn { font-size: 0.85rem; padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem; }
     .lead-card .card-actions .btn:hover { background: #eee; border-color: #ccc; }
@@ -140,6 +145,15 @@
     return "It matches your search and shows a relevant pain point.";
   }
 
+  function isRecentPost(createdUtc) {
+    if (createdUtc == null) return false;
+    var created = Number(createdUtc);
+    if (!Number.isFinite(created)) return false;
+    var ageSeconds = Date.now() / 1000 - created;
+    // "Recent" = posted within the last 24 hours.
+    return ageSeconds <= 86400;
+  }
+
   var runs = [];
   var leads = [];
   var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
@@ -220,9 +234,13 @@
     var comments = lead.num_comments != null ? lead.num_comments : 0;
     var why = summarizeWhy(lead);
     var reply = (lead.suggested_reply || "").trim();
+    var recent = isRecentPost(lead.created_utc);
     card.innerHTML =
       '<div class="card-inner">' +
+      '<div class="intent-badges-row">' +
       '<div class="intent-badge ' + badge.cls + '">' + badge.label + '</div>' +
+      (recent ? '<div class="intent-badge recent">🕒 Recent</div>' : '') +
+      '</div>' +
       '<p class="card-meta">' +
       '<span class="subreddit-icon" aria-hidden="true">' + escapeHtml(initial) + '</span> ' +
       '<a href="https://www.reddit.com/' + sub.replace(/^r\//, "") + '" target="_blank" rel="noopener">' + escapeHtml(sub) + '</a>' +
