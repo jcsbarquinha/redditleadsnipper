@@ -266,7 +266,10 @@ app.get("/welcome", async (req, res) => {
     maxAge: SESSION_COOKIE_MAX_AGE_MS,
     path: "/",
   });
-  res.redirect(getBaseUrl() + "/dashboard");
+  // Keep the unlocked run scope so the dashboard defaults to showing only this run's leads.
+  const redirectUrl = new URL("/dashboard", getBaseUrl());
+  if (runId) redirectUrl.searchParams.set("runId", runId);
+  res.redirect(redirectUrl.toString());
 });
 
 /** Current user (requires auth). */
@@ -275,19 +278,21 @@ app.get("/api/me", requireAuth, (req, res) => {
   res.json({ id: user.id, email: user.email });
 });
 
-/** All leads for the current user (requires auth). Query params: subreddit, days, minScore, query, includeArchived. */
+/** All leads for the current user (requires auth). Query params: subreddit, days, minScore, query, includeArchived, runId. */
 app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string } }).user;
   const subreddit = typeof req.query.subreddit === "string" ? req.query.subreddit.trim() : undefined;
   const days = req.query.days !== undefined ? Number(req.query.days) : undefined;
   const minScore = req.query.minScore !== undefined ? Number(req.query.minScore) : undefined;
   const query = typeof req.query.query === "string" ? req.query.query.trim() : undefined;
+  const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : undefined;
   const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
   const leads = getLeadsForUser(user.id, 200, {
     subreddit: subreddit || undefined,
     days: Number.isFinite(days) ? days : undefined,
     minScore: Number.isFinite(minScore) ? minScore : undefined,
     query: query || undefined,
+    runId: runId || undefined,
     includeArchived,
   });
   res.json({ leads: leads.map(leadRowToApi) });

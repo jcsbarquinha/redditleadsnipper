@@ -318,6 +318,7 @@ export interface LeadFilters {
   days?: number;
   minScore?: number;
   query?: string;
+  runId?: string;
   includeArchived?: boolean;
 }
 
@@ -424,7 +425,7 @@ export function getLeadsForUser(
   limit: number = 200,
   filters: LeadFilters = {}
 ): LeadRow[] {
-  const { subreddit, days, minScore, query, includeArchived } = filters;
+  const { subreddit, days, minScore, query, runId, includeArchived } = filters;
   const conditions: string[] = ["r.user_id = ?"];
   const params: (string | number)[] = [userId];
 
@@ -447,6 +448,10 @@ export function getLeadsForUser(
   if (query != null && query.trim() !== "") {
     conditions.push("TRIM(r.user_input) = ?");
     params.push(query.trim());
+  }
+  if (runId != null && runId.trim() !== "") {
+    conditions.push("p.run_id = ?");
+    params.push(runId.trim());
   }
 
   const whereClause = conditions.join(" AND ");

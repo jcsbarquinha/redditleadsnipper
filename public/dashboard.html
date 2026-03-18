@@ -27,6 +27,18 @@
     .dashboard-toolbar .toolbar-archived input { width: 1rem; height: 1rem; }
     .dashboard-empty { color: var(--text-muted); padding: 2rem; text-align: center; }
     .lead-card { position: relative; }
+    .lead-card .lead-rank-number {
+      position: absolute;
+      left: 1rem;
+      top: 1.05rem;
+      width: 1.5rem;
+      text-align: center;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+    .lead-card .card-inner { padding-left: 2.75rem; }
     .lead-card .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
     .lead-card .card-actions .btn { font-size: 0.85rem; padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem; }
     .lead-card .card-actions .btn:hover { background: #eee; border-color: #ccc; }
@@ -120,6 +132,7 @@
 
   var runs = [];
   var leads = [];
+  var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
 
   function buildLeadsUrl() {
     var q = document.getElementById("filterQuery").value;
@@ -128,11 +141,12 @@
     var score = document.getElementById("filterScore").value;
     var arch = document.getElementById("filterArchived").checked;
     var params = new URLSearchParams();
-    if (q) params.set("query", q);
+    if (q && !unlockedRunId) params.set("query", q);
     if (sub) params.set("subreddit", sub);
     if (days) params.set("days", days);
     if (score) params.set("minScore", score);
     if (arch) params.set("includeArchived", "true");
+    if (unlockedRunId) params.set("runId", unlockedRunId);
     return "/api/dashboard/leads?" + params.toString();
   }
 
@@ -176,12 +190,12 @@
       return;
     }
     empty.classList.add("hidden");
-    leads.forEach(function (lead) {
-      list.appendChild(buildCard(lead));
+    leads.forEach(function (lead, idx) {
+      list.appendChild(buildCard(lead, idx + 1));
     });
   }
 
-  function buildCard(lead) {
+  function buildCard(lead, rank) {
     var card = document.createElement("article");
     card.className = "lead-card" + (lead.is_archived ? " archived" : "");
     card.dataset.postId = lead.post_id;
@@ -195,6 +209,7 @@
     var reply = (lead.suggested_reply || "").trim();
     card.innerHTML =
       '<div class="card-inner">' +
+      '<div class="lead-rank-number">' + String(rank) + '</div>' +
       '<div class="intent-badge ' + badge.cls + '">' + badge.label + '</div>' +
       '<p class="card-meta">' +
       '<span class="subreddit-icon" aria-hidden="true">' + escapeHtml(initial) + '</span> ' +
