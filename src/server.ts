@@ -24,6 +24,7 @@ import {
   getLeadsForUser,
   getRunsForUser,
   setLeadAction,
+  clearLeadAction,
   type LeadRow,
 } from "./db/index.js";
 import { InvalidSearchInputError } from "./input-validation.js";
@@ -326,6 +327,18 @@ app.post("/api/dashboard/leads/delete", requireAuth, (req, res) => {
     return;
   }
   setLeadAction(user.id, postId, "deleted");
+  res.json({ ok: true });
+});
+
+/** Unarchive a lead: remove the archived action so it returns to the active list. Body: { post_id: string }. */
+app.post("/api/dashboard/leads/unarchive", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const postId = typeof req.body?.post_id === "string" ? req.body.post_id.trim() : "";
+  if (!postId) {
+    res.status(400).json({ error: "Missing post_id." });
+    return;
+  }
+  clearLeadAction(user.id, postId);
   res.json({ ok: true });
 });
 

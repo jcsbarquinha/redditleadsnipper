@@ -119,6 +119,8 @@
     .intent-pill.all { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
     .intent-pill.hot { background: rgba(165, 214, 167, 0.45); border-color: rgba(165, 214, 167, 0.85); color: #1b5e20; }
     .intent-pill.warm { background: rgba(255, 243, 224, 0.9); border-color: rgba(255, 214, 165, 0.9); color: #e65100; }
+    .intent-pill.recent { background: rgba(219, 234, 254, 0.95); border-color: rgba(191, 219, 254, 0.95); color: #1d4ed8; }
+    .intent-pill.archived { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
 
     .secondary-filters {
       display: flex;
@@ -143,6 +145,62 @@
       outline: none;
     }
     .secondary-select:focus { border-color: rgba(255, 69, 0, 0.35); }
+
+    .rail-section { padding: 0.75rem 0.85rem; border-bottom: 1px solid var(--border); }
+    .rail-section:last-child { border-bottom: none; }
+    .rail-section-title {
+      margin: 0 0 0.75rem;
+      font-size: 0.85rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+    .rail-control { margin-top: 0.6rem; }
+    .search-query-input {
+      width: 100%;
+      font-size: 0.95rem;
+      padding: 0.6rem 0.75rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+      outline: none;
+    }
+    .search-query-input:focus { border-color: rgba(255, 69, 0, 0.35); }
+    .primary-btn {
+      width: 100%;
+      font-size: 0.95rem;
+      font-weight: 900;
+      padding: 0.65rem 0.75rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 69, 0, 0.35);
+      background: rgba(255, 69, 0, 0.08);
+      color: #ff4500;
+      cursor: pointer;
+      transition: transform 0.08s ease, background 0.15s, border-color 0.15s;
+    }
+    .primary-btn:hover { background: rgba(255, 69, 0, 0.12); }
+    .primary-btn:active { transform: translateY(1px); }
+    .primary-btn:disabled { cursor: default; opacity: 0.6; }
+
+    .leads-scope-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.6rem 0.85rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 900;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .leads-scope-btn.active { border-color: rgba(255, 69, 0, 0.35); background: rgba(255, 69, 0, 0.08); color: #ff4500; }
+    .leads-scope-btn:disabled { cursor: default; opacity: 0.6; }
 
     /* Card actions */
     .lead-card .card-inner { padding-right: 5.75rem; }
@@ -232,23 +290,31 @@
 
     <div class="dashboard-layout">
       <aside class="dashboard-rail" aria-label="Inbox filters">
-        <div class="dashboard-tracker-row" style="padding-bottom: 0.85rem;">
-          <span class="dashboard-tracker-label">Viewing Tracker:</span>
-          <select id="filterQuery" class="dashboard-tracker-select" aria-label="Viewing tracker">
-            <option value="">All searches</option>
-          </select>
+        <div class="rail-section">
+          <h2 class="rail-section-title">Search</h2>
+          <div class="rail-control">
+            <input id="searchQueryInput" type="text" class="search-query-input" aria-label="Search input" placeholder="Your search input" />
+          </div>
+          <div class="rail-control">
+            <button type="button" id="runSearchBtn" class="primary-btn" title="Run this search again">Run search again</button>
+          </div>
         </div>
 
-        <div class="inbox-tabs" role="tablist" aria-label="Inbox tabs" style="margin-bottom: 0.85rem;">
-          <button type="button" id="tabActive" class="inbox-tab active" role="tab" aria-selected="true">Active Leads</button>
-          <button type="button" id="tabArchived" class="inbox-tab" role="tab" aria-selected="false">Archived</button>
+        <div class="rail-section">
+          <h2 class="rail-section-title">Leads</h2>
+          <button type="button" id="activeOnlyBtn" class="leads-scope-btn" aria-pressed="false">
+            <span>Active Leads</span>
+            <span class="leads-count">(<span id="activeLeadsCount">0</span>)</span>
+          </button>
         </div>
 
-        <div class="dashboard-filters-row" aria-label="Inbox filters">
-          <div class="intent-pills" role="group" aria-label="Intent pills">
-            <button type="button" class="intent-pill all active" data-intent="all" aria-pressed="true">All Leads</button>
+        <div class="rail-section">
+          <h2 class="rail-section-title">Filters</h2>
+          <div class="intent-pills" role="group" aria-label="Lead filters">
             <button type="button" class="intent-pill hot" data-intent="hot" aria-pressed="false">🔥 Hot (90+)</button>
             <button type="button" class="intent-pill warm" data-intent="warm" aria-pressed="false">🟡 Warm (70-89)</button>
+            <button type="button" class="intent-pill recent" data-intent="recent" aria-pressed="false">🕒 Recent</button>
+            <button type="button" class="intent-pill archived" data-intent="archived" aria-pressed="false">🗂 Archived</button>
           </div>
 
           <div class="secondary-filters">
@@ -321,48 +387,56 @@
   var leads = [];
   var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
   // Inbox UI state:
-  // - intentFilter: controls which subset to show (All Leads, Warm, Hot)
-  // - showArchived: controls whether the backend includes archived posts
-  // - sortMode: controls client-side sorting order
-  var intentFilter = "all"; // "all" | "hot" | "warm"
-  var showArchived = false;
+  // - leadFilter: Hot / Warm / Recent / Archived
+  // - activeOnly: when true, hide archived leads
+  // - sortMode: client-side sorting order
+  var leadFilter = "all"; // "all" | "hot" | "warm" | "recent" | "archived"
+  var activeOnly = false;
+  var activeLeadsCount = 0;
   var sortMode = "score"; // "score" | "newest"
 
-  function setIntentFilter(next) {
-    intentFilter = next;
-    var pillEls = document.querySelectorAll(".intent-pill");
+  function syncActiveOnlyUI() {
+    var btn = document.getElementById("activeOnlyBtn");
+    if (!btn) return;
+    btn.classList.toggle("active", activeOnly);
+    btn.setAttribute("aria-pressed", String(activeOnly));
+  }
+
+  function setLeadFilter(next) {
+    // Toggling is supported: clicking the active pill returns to "all".
+    var pillActive = leadFilter === next && next !== "all";
+    leadFilter = pillActive ? "all" : next;
+
+    if (leadFilter === "archived") activeOnly = false;
+    if (activeOnly) leadFilter = "all";
+
+    var pillEls = document.querySelectorAll(".intent-pill[data-intent]");
     pillEls.forEach(function (el) {
-      var isActive = el.getAttribute("data-intent") === next;
+      var mode = el.getAttribute("data-intent") || "all";
+      var isActive = mode === leadFilter;
       el.classList.toggle("active", isActive);
       el.setAttribute("aria-pressed", String(isActive));
     });
+
+    renderLeads();
   }
 
-  function setArchivedTab(isArchived) {
-    showArchived = isArchived;
-    var tabActive = document.getElementById("tabActive");
-    var tabArchived = document.getElementById("tabArchived");
-    if (tabActive && tabArchived) {
-      tabActive.classList.toggle("active", !isArchived);
-      tabArchived.classList.toggle("active", isArchived);
-      tabActive.setAttribute("aria-selected", String(!isArchived));
-      tabArchived.setAttribute("aria-selected", String(isArchived));
-    }
+  function setActiveOnly(next) {
+    activeOnly = next;
+    if (activeOnly) leadFilter = "all";
+    syncActiveOnlyUI();
+    renderLeads();
   }
 
   function buildLeadsUrl() {
-    var q = document.getElementById("filterQuery").value;
     var days = document.getElementById("filterDays").value;
-    // Dashboard feed is focused on "high intent" only, but the UI lets you narrow:
-    // - Hot: score >= 90
-    // - Warm: score > 70 and < 90 (client-side filter)
-    // - All Leads: score > 70
-    var scoreMin = intentFilter === "hot" ? 90 : 71;
     var params = new URLSearchParams();
-    if (q && !unlockedRunId) params.set("query", q);
+    // Dashboard feed focuses on high intent only (>70).
+    var scoreMin = 71;
     if (days) params.set("days", days);
     if (scoreMin) params.set("minScore", scoreMin);
-    if (showArchived) params.set("includeArchived", "true");
+    // We always fetch archived so we can show counts and archived filter without another roundtrip.
+    params.set("includeArchived", "true");
     if (unlockedRunId) params.set("runId", unlockedRunId);
     return "/api/dashboard/leads?" + params.toString();
   }
@@ -375,6 +449,10 @@
       })
       .then(function (data) {
         leads = data.leads || [];
+        activeLeadsCount = leads.filter(function (l) { return l.is_archived === 0; }).length;
+        var countEl = document.getElementById("activeLeadsCount");
+        if (countEl) countEl.textContent = String(activeLeadsCount);
+        syncActiveOnlyUI();
         renderLeads();
       });
   }
@@ -385,15 +463,32 @@
     list.innerHTML = "";
 
     var working = leads.slice();
-    if (intentFilter === "warm") {
+
+    // Scope: hide archived when "Active Leads" is toggled.
+    if (activeOnly) {
+      working = working.filter(function (l) {
+        return l.is_archived === 0;
+      });
+    }
+
+    // Pill filters
+    if (leadFilter === "archived") {
+      working = working.filter(function (l) {
+        return l.is_archived === 1;
+      });
+    } else if (leadFilter === "hot") {
+      working = working.filter(function (l) {
+        var s = l.score != null ? Number(l.score) : 0;
+        return s >= 90;
+      });
+    } else if (leadFilter === "warm") {
       working = working.filter(function (l) {
         var s = l.score != null ? Number(l.score) : 0;
         return s > 70 && s < 90;
       });
-    } else if (intentFilter === "hot") {
+    } else if (leadFilter === "recent") {
       working = working.filter(function (l) {
-        var s = l.score != null ? Number(l.score) : 0;
-        return s >= 90;
+        return isRecentPost(l.created_utc);
       });
     }
 
@@ -437,7 +532,7 @@
     var comments = lead.num_comments != null ? lead.num_comments : 0;
     var why = summarizeWhy(lead);
     var archiveBtnHtml = lead.is_archived
-      ? '<button type="button" class="archive-top-btn" disabled>Archived</button>'
+      ? '<button type="button" class="archive-top-btn" data-action="unarchive" title="Unarchive">Unarchive</button>'
       : '<button type="button" class="archive-top-btn" data-action="archive" title="Archive">Archive</button>';
     var recent = isRecentPost(lead.created_utc);
     card.innerHTML =
@@ -465,17 +560,22 @@
         toggle.setAttribute("aria-expanded", replyContent.classList.contains("hidden") ? "false" : "true");
       });
     }
-    var archiveBtn = card.querySelector("[data-action=archive]");
-    if (archiveBtn) {
-      archiveBtn.addEventListener("click", function () {
-        doAction(lead.post_id, "archive");
+    var actionBtn = card.querySelector("[data-action]");
+    if (actionBtn) {
+      actionBtn.addEventListener("click", function () {
+        doAction(lead.post_id, actionBtn.getAttribute("data-action"));
       });
     }
     return card;
   }
 
   function doAction(postId, action) {
-    var path = action === "archive" ? "/api/dashboard/leads/archive" : "/api/dashboard/leads/delete";
+    var path =
+      action === "archive"
+        ? "/api/dashboard/leads/archive"
+        : action === "unarchive"
+          ? "/api/dashboard/leads/unarchive"
+          : "/api/dashboard/leads/delete";
     fetch(path, {
       method: "POST",
       credentials: "same-origin",
@@ -488,6 +588,54 @@
 
   function redirectHome() {
     window.location.href = "/";
+  }
+
+  function runSearchAgain() {
+    var btn = document.getElementById("runSearchBtn");
+    var input = document.getElementById("searchQueryInput");
+    if (!input) return;
+
+    var query = (input.value || "").trim();
+    if (!query) {
+      alert("Please enter your search input.");
+      return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (btn) btn.textContent = "Running...";
+
+    fetch("/api/search", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query })
+    })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (body) { return Promise.reject(new Error(body.error || "Search failed")); });
+        return r.json();
+      })
+      .then(function (data) {
+        return fetch("/api/create-checkout", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId: data.runId })
+        }).then(function (r) { return r.json(); });
+      })
+      .then(function (body) {
+        if (body.url) {
+          window.location.href = body.url;
+          return;
+        }
+        throw new Error(body.error || "Checkout creation failed.");
+      })
+      .catch(function (err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Run search again";
+        }
+        alert(err instanceof Error ? err.message : String(err));
+      });
   }
 
   fetch("/api/me", { credentials: "same-origin" })
@@ -510,38 +658,48 @@
     })
     .then(function (data) {
       runs = data.runs || [];
-      var sel = document.getElementById("filterQuery");
-      sel.innerHTML = '<option value="">All searches</option>';
-      runs.forEach(function (run) {
-        var opt = document.createElement("option");
-        opt.value = run.user_input || run.id;
-        opt.textContent = (run.user_input || run.id).slice(0, 50) + (run.user_input && run.user_input.length > 50 ? "…" : "");
-        sel.appendChild(opt);
-      });
+
+      var currentRun = null;
+      if (unlockedRunId) {
+        currentRun = runs.find(function (r) { return r.id === unlockedRunId; }) || null;
+      }
+      if (!currentRun) currentRun = runs[0] || null;
+
+      var input = document.getElementById("searchQueryInput");
+      if (input) input.value = (currentRun && currentRun.user_input) ? String(currentRun.user_input) : "";
+
       return fetchLeads();
     });
+  
+  var daysEl = document.getElementById("filterDays");
+  if (daysEl) daysEl.addEventListener("change", fetchLeads);
 
-  document.getElementById("filterQuery").addEventListener("change", fetchLeads);
-  document.getElementById("filterDays").addEventListener("change", fetchLeads);
-  document.getElementById("filterSort").addEventListener("change", function () {
-    sortMode = this.value;
-    renderLeads();
-  });
+  var sortEl = document.getElementById("filterSort");
+  if (sortEl) {
+    sortEl.addEventListener("change", function () {
+      sortMode = this.value;
+      renderLeads();
+    });
+  }
 
-  document.getElementById("tabActive").addEventListener("click", function () {
-    setArchivedTab(false);
-    fetchLeads();
-  });
-  document.getElementById("tabArchived").addEventListener("click", function () {
-    setArchivedTab(true);
-    fetchLeads();
-  });
+  var activeOnlyEl = document.getElementById("activeOnlyBtn");
+  if (activeOnlyEl) {
+    activeOnlyEl.addEventListener("click", function () {
+      setActiveOnly(!activeOnly);
+    });
+  }
 
-  var pillEls = document.querySelectorAll(".intent-pill");
+  var runSearchEl = document.getElementById("runSearchBtn");
+  if (runSearchEl) {
+    runSearchEl.addEventListener("click", function () {
+      runSearchAgain();
+    });
+  }
+
+  var pillEls = document.querySelectorAll(".intent-pill[data-intent]");
   pillEls.forEach(function (el) {
     el.addEventListener("click", function () {
-      setIntentFilter(el.getAttribute("data-intent") || "all");
-      fetchLeads();
+      setLeadFilter(el.getAttribute("data-intent") || "all");
     });
   });
 

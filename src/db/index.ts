@@ -498,3 +498,10 @@ export function setLeadAction(
     )
     .run(userId, postId, action);
 }
+
+/** Remove a lead action (used to "unarchive" back to active). */
+export function clearLeadAction(userId: string, postId: string): void {
+  getDb()
+    .prepare(`DELETE FROM lead_actions WHERE user_id = ? AND post_id = ?`)
+    .run(userId, postId);
+}
