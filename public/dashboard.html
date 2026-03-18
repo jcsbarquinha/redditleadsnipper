@@ -14,7 +14,8 @@
     .dashboard-page .header-actions .user-email { font-size: 0.9rem; color: var(--text-muted); }
     .dashboard-page .logout-btn { font-size: 0.95rem; font-weight: 600; color: var(--text); background: none; border: none; cursor: pointer; padding: 0.5rem 1rem; text-decoration: none; }
     .dashboard-page .logout-btn:hover { color: var(--reddit-orange); }
-    .dashboard-main { max-width: 800px; margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; }
+    .dashboard-main { max-width: 800px; margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; display: flex; flex-direction: column; gap: 1rem; }
+    .dashboard-header { background: var(--bg); position: sticky; top: 64px; z-index: 5; }
     .dashboard-title { font-size: 1.75rem; font-weight: 600; margin: 0 0 1rem; color: var(--text); }
     .dashboard-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; padding: 1rem 0; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
     .dashboard-toolbar label { font-size: 0.9rem; color: var(--text-muted); margin-right: 0.25rem; }
@@ -26,19 +27,23 @@
     .dashboard-toolbar .toolbar-archived { display: flex; align-items: center; gap: 0.35rem; }
     .dashboard-toolbar .toolbar-archived input { width: 1rem; height: 1rem; }
     .dashboard-empty { color: var(--text-muted); padding: 2rem; text-align: center; }
-    .lead-card { position: relative; }
-    .lead-card .lead-rank-number {
-      position: absolute;
-      left: 1rem;
-      top: 1.05rem;
-      width: 1.5rem;
-      text-align: center;
-      font-size: 0.9rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      pointer-events: none;
+
+    /* Scroll area for posts */
+    .dashboard-list-wrap {
+      overflow-y: auto;
+      max-height: calc(100vh - 240px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--bg-card);
+      padding: 0.75rem 0.75rem 1rem;
+      scrollbar-gutter: stable;
     }
-    .lead-card .card-inner { padding-left: 2.75rem; }
+    /* Visible scrollbar styling (best-effort across browsers) */
+    .dashboard-list-wrap::-webkit-scrollbar { width: 10px; }
+    .dashboard-list-wrap::-webkit-scrollbar-track { background: transparent; }
+    .dashboard-list-wrap::-webkit-scrollbar-thumb { background: rgba(255, 69, 0, 0.35); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
+    .dashboard-list-wrap::-webkit-scrollbar-thumb:hover { background: rgba(255, 69, 0, 0.5); border: 2px solid transparent; background-clip: content-box; }
+    .lead-card { position: relative; }
     .lead-card .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
     .lead-card .card-actions .btn { font-size: 0.85rem; padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem; }
     .lead-card .card-actions .btn:hover { background: #eee; border-color: #ccc; }
@@ -70,35 +75,40 @@
   </header>
 
   <main class="dashboard-main">
-    <h1 class="dashboard-title">Dashboard</h1>
-    <div class="dashboard-toolbar">
-      <label for="filterQuery">Search</label>
-      <select id="filterQuery" class="toolbar-query" aria-label="Filter by search query">
-        <option value="">All searches</option>
-      </select>
-      <label for="filterSubreddit">Subreddit</label>
-      <select id="filterSubreddit" class="toolbar-subreddit" aria-label="Filter by subreddit">
-        <option value="">All</option>
-      </select>
-      <label for="filterDays">Date</label>
-      <select id="filterDays" class="toolbar-days" aria-label="Filter by date">
-        <option value="">All</option>
-        <option value="7">Last 7 days</option>
-        <option value="30" selected>Last 30 days</option>
-      </select>
-      <label for="filterScore">Intent</label>
-      <select id="filterScore" class="toolbar-score" aria-label="Filter by intent score">
-        <option value="">All</option>
-        <option value="70">High (70+)</option>
-        <option value="40">Medium+ (40+)</option>
-      </select>
-      <label class="toolbar-archived">
-        <input type="checkbox" id="filterArchived" aria-label="Include archived" />
-        <span>Include archived</span>
-      </label>
+    <div class="dashboard-header">
+      <h1 class="dashboard-title">Dashboard</h1>
+      <div class="dashboard-toolbar">
+        <label for="filterQuery">Search</label>
+        <select id="filterQuery" class="toolbar-query" aria-label="Filter by search query">
+          <option value="">All searches</option>
+        </select>
+        <label for="filterSubreddit">Subreddit</label>
+        <select id="filterSubreddit" class="toolbar-subreddit" aria-label="Filter by subreddit">
+          <option value="">All</option>
+        </select>
+        <label for="filterDays">Date</label>
+        <select id="filterDays" class="toolbar-days" aria-label="Filter by date">
+          <option value="">All</option>
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+        </select>
+        <label for="filterScore">Intent</label>
+        <select id="filterScore" class="toolbar-score" aria-label="Filter by intent score">
+          <option value="">All</option>
+          <option value="71">High (>70)</option>
+          <option value="40">Medium+ (40+)</option>
+        </select>
+        <label class="toolbar-archived">
+          <input type="checkbox" id="filterArchived" aria-label="Include archived" />
+          <span>Include archived</span>
+        </label>
+      </div>
     </div>
-    <div id="leadsList" class="results-list"></div>
-    <p id="emptyState" class="dashboard-empty hidden">No leads yet. Run a search on the homepage and unlock your results.</p>
+
+    <div class="dashboard-list-wrap">
+      <div id="leadsList" class="results-list"></div>
+      <p id="emptyState" class="dashboard-empty hidden">No leads yet. Run a search on the homepage and unlock your results.</p>
+    </div>
   </main>
 
   <script>
@@ -119,10 +129,10 @@
     return new Date(createdUtc * 1000).toLocaleDateString();
   }
   function getIntentBadge(score) {
-    var s = score != null ? Math.round(score) : 0;
-    if (s >= 90) return { cls: "hot", label: "\uD83D\uDD25 " + s + "% Hot Match" };
-    if (s >= 75) return { cls: "warm", label: "\uD83C\uDFAF " + s + "% Warm Match" };
-    return { cls: "lead", label: "\u2728 " + s + "% Lead" };
+    var raw = score != null ? Number(score) : 0;
+    if (raw >= 90) return { cls: "hot", label: "\uD83D\uDD25 " + Math.round(raw) + "% Hot Match" };
+    if (raw > 70) return { cls: "warm", label: "\uD83C\uDFAF " + Math.round(raw) + "% Warm Match" };
+    return { cls: "lead", label: "\u2728 " + Math.round(raw) + "% Lead" };
   }
   function summarizeWhy(lead) {
     if ((lead.explanation || "").trim()) return lead.explanation.trim();
@@ -138,9 +148,10 @@
     var q = document.getElementById("filterQuery").value;
     var sub = document.getElementById("filterSubreddit").value;
     var days = document.getElementById("filterDays").value;
-    // Dashboard feed should only show intent >= 70 leads.
+    // Dashboard feed should only show intent > 70 leads.
     // Keeping the dropdown visible, but we ignore anything below 70 for the actual results.
-    var score = 70;
+    // (Use 71 so ">= minScore" matches "score > 70".)
+    var score = 71;
     var arch = document.getElementById("filterArchived").checked;
     var params = new URLSearchParams();
     if (q && !unlockedRunId) params.set("query", q);
@@ -192,12 +203,12 @@
       return;
     }
     empty.classList.add("hidden");
-    leads.forEach(function (lead, idx) {
-      list.appendChild(buildCard(lead, idx + 1));
+    leads.forEach(function (lead) {
+      list.appendChild(buildCard(lead));
     });
   }
 
-  function buildCard(lead, rank) {
+  function buildCard(lead) {
     var card = document.createElement("article");
     card.className = "lead-card" + (lead.is_archived ? " archived" : "");
     card.dataset.postId = lead.post_id;
@@ -211,7 +222,6 @@
     var reply = (lead.suggested_reply || "").trim();
     card.innerHTML =
       '<div class="card-inner">' +
-      '<div class="lead-rank-number">' + String(rank) + '</div>' +
       '<div class="intent-badge ' + badge.cls + '">' + badge.label + '</div>' +
       '<p class="card-meta">' +
       '<span class="subreddit-icon" aria-hidden="true">' + escapeHtml(initial) + '</span> ' +
