@@ -174,7 +174,8 @@
   function getIntentBadge(score) {
     const s = score != null ? Math.round(score) : 0;
     if (s >= 90) return { cls: "hot", label: `\uD83D\uDD25 ${s}% Hot Match` };
-    if (s >= 75) return { cls: "warm", label: `\uD83C\uDFAF ${s}% Warm Match` };
+    // Keep thresholds consistent with "high intent" (>70) so warm matches are real.
+    if (s > 70) return { cls: "warm", label: `\uD83C\uDFAF ${s}% Warm Match` };
     return { cls: "lead", label: `\u2728 ${s}% Lead` };
   }
 
