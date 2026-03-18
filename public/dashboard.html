@@ -138,7 +138,9 @@
     var q = document.getElementById("filterQuery").value;
     var sub = document.getElementById("filterSubreddit").value;
     var days = document.getElementById("filterDays").value;
-    var score = document.getElementById("filterScore").value;
+    // Dashboard feed should only show intent >= 70 leads.
+    // Keeping the dropdown visible, but we ignore anything below 70 for the actual results.
+    var score = 70;
     var arch = document.getElementById("filterArchived").checked;
     var params = new URLSearchParams();
     if (q && !unlockedRunId) params.set("query", q);
