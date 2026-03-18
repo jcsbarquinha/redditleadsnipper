@@ -14,8 +14,8 @@
     .dashboard-page .header-actions .user-email { font-size: 0.9rem; color: var(--text-muted); }
     .dashboard-page .logout-btn { font-size: 0.95rem; font-weight: 600; color: var(--text); background: none; border: none; cursor: pointer; padding: 0.5rem 1rem; text-decoration: none; }
     .dashboard-page .logout-btn:hover { color: var(--reddit-orange); }
-    .dashboard-main { max-width: 1100px; margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
-    .dashboard-layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; align-items: start; }
+    .dashboard-main { max-width: 1240px; margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
+    .dashboard-layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.65rem; align-items: start; }
     .dashboard-rail {
       position: sticky;
       top: 110px; /* fixed site header (64px) + title spacing */
@@ -431,7 +431,8 @@
     var sub = lead.subreddit ? "r/" + lead.subreddit : "r/community";
     var badge = getIntentBadge(lead.score);
     var initial = (lead.subreddit || "r").charAt(0).toUpperCase();
-    var bodySnippet = (lead.selftext || "").trim().slice(0, 200);
+    // Show more of the post so content doesn't feel "cut off" too quickly.
+    var bodySnippet = (lead.selftext || "").trim().slice(0, 360);
     var votes = lead.votes != null ? lead.votes : 0;
     var comments = lead.num_comments != null ? lead.num_comments : 0;
     var why = summarizeWhy(lead);
