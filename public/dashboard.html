@@ -28,6 +28,139 @@
     .dashboard-toolbar .toolbar-archived input { width: 1rem; height: 1rem; }
     .dashboard-empty { color: var(--text-muted); padding: 2rem; text-align: center; }
 
+    /* Inbox layout */
+    .dashboard-tracker-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding-top: 0.25rem;
+      padding-bottom: 0.75rem;
+    }
+    .dashboard-tracker-label {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .dashboard-tracker-select {
+      flex: 1;
+      min-width: 220px;
+      font-size: 0.9rem;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg-card);
+      color: var(--text);
+    }
+
+    .inbox-tabs {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .inbox-tab {
+      flex: 1;
+      min-width: 180px;
+      padding: 0.6rem 1rem;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text-muted);
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .inbox-tab.active {
+      background: rgba(255, 69, 0, 0.08);
+      border-color: rgba(255, 69, 0, 0.35);
+      color: #ff4500;
+    }
+
+    .dashboard-filters-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      padding-bottom: 0.25rem;
+    }
+    .intent-pills {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .intent-pill {
+      padding: 0.55rem 0.85rem;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text-muted);
+      font-weight: 800;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+      opacity: 0.75;
+      user-select: none;
+    }
+    .intent-pill.active { opacity: 1; }
+    .intent-pill.all { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
+    .intent-pill.hot { background: rgba(165, 214, 167, 0.45); border-color: rgba(165, 214, 167, 0.85); color: #1b5e20; }
+    .intent-pill.warm { background: rgba(255, 243, 224, 0.9); border-color: rgba(255, 214, 165, 0.9); color: #e65100; }
+
+    .secondary-filters {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .secondary-filters label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-right: 0.35rem;
+    }
+    .secondary-select {
+      font-size: 0.9rem;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-card);
+      color: var(--text-muted);
+      outline: none;
+    }
+    .secondary-select:focus { border-color: rgba(255, 69, 0, 0.35); }
+
+    /* Card actions */
+    .lead-card .card-inner { padding-right: 5.75rem; }
+    .lead-card .archive-top-btn {
+      position: absolute;
+      top: 0.9rem;
+      right: 0.9rem;
+      padding: 0.45rem 0.7rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      font-weight: 800;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .lead-card .archive-top-btn:hover {
+      border-color: rgba(255, 69, 0, 0.35);
+      background: rgba(255, 69, 0, 0.05);
+      color: #ff4500;
+    }
+    .lead-card .archive-top-btn:disabled {
+      cursor: default;
+      opacity: 0.55;
+      background: #f3f4f6;
+    }
+
     /* Scroll area for posts */
     .dashboard-list-wrap {
       overflow-y: auto;
@@ -82,31 +215,41 @@
   <main class="dashboard-main">
     <div class="dashboard-header">
       <h1 class="dashboard-title">Dashboard</h1>
-      <div class="dashboard-toolbar">
-        <label for="filterQuery">Search</label>
-        <select id="filterQuery" class="toolbar-query" aria-label="Filter by search query">
+      <div class="dashboard-tracker-row">
+        <span class="dashboard-tracker-label">Viewing Tracker:</span>
+        <select id="filterQuery" class="dashboard-tracker-select" aria-label="Viewing tracker">
           <option value="">All searches</option>
         </select>
-        <label for="filterSubreddit">Subreddit</label>
-        <select id="filterSubreddit" class="toolbar-subreddit" aria-label="Filter by subreddit">
-          <option value="">All</option>
-        </select>
-        <label for="filterDays">Date</label>
-        <select id="filterDays" class="toolbar-days" aria-label="Filter by date">
-          <option value="">All</option>
-          <option value="7">Last 7 days</option>
-          <option value="30" selected>Last 30 days</option>
-        </select>
-        <label for="filterScore">Intent</label>
-        <select id="filterScore" class="toolbar-score" aria-label="Filter by intent score">
-          <option value="">All</option>
-          <option value="71">High (>70)</option>
-          <option value="40">Medium+ (40+)</option>
-        </select>
-        <label class="toolbar-archived">
-          <input type="checkbox" id="filterArchived" aria-label="Include archived" />
-          <span>Include archived</span>
-        </label>
+      </div>
+
+      <div class="inbox-tabs" role="tablist" aria-label="Inbox tabs">
+        <button type="button" id="tabActive" class="inbox-tab active" role="tab" aria-selected="true">Active Leads</button>
+        <button type="button" id="tabArchived" class="inbox-tab" role="tab" aria-selected="false">Archived</button>
+      </div>
+
+      <div class="dashboard-filters-row" aria-label="Inbox filters">
+        <div class="intent-pills" role="group" aria-label="Intent pills">
+          <button type="button" class="intent-pill all active" data-intent="all" aria-pressed="true">All Leads</button>
+          <button type="button" class="intent-pill hot" data-intent="hot" aria-pressed="false">🔥 Hot (90+)</button>
+          <button type="button" class="intent-pill warm" data-intent="warm" aria-pressed="false">🟡 Warm (70-89)</button>
+        </div>
+
+        <div class="secondary-filters">
+          <div>
+            <label for="filterSort">Sort by</label>
+            <select id="filterSort" class="secondary-select" aria-label="Sort by">
+              <option value="score" selected>Highest Score</option>
+              <option value="newest">Newest First</option>
+            </select>
+          </div>
+          <div>
+            <label for="filterDays">Timeframe</label>
+            <select id="filterDays" class="secondary-select" aria-label="Timeframe">
+              <option value="" selected>All Time</option>
+              <option value="7">Last 7 Days</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -157,22 +300,49 @@
   var runs = [];
   var leads = [];
   var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
+  // Inbox UI state:
+  // - intentFilter: controls which subset to show (All Leads, Warm, Hot)
+  // - showArchived: controls whether the backend includes archived posts
+  // - sortMode: controls client-side sorting order
+  var intentFilter = "all"; // "all" | "hot" | "warm"
+  var showArchived = false;
+  var sortMode = "score"; // "score" | "newest"
+
+  function setIntentFilter(next) {
+    intentFilter = next;
+    var pillEls = document.querySelectorAll(".intent-pill");
+    pillEls.forEach(function (el) {
+      var isActive = el.getAttribute("data-intent") === next;
+      el.classList.toggle("active", isActive);
+      el.setAttribute("aria-pressed", String(isActive));
+    });
+  }
+
+  function setArchivedTab(isArchived) {
+    showArchived = isArchived;
+    var tabActive = document.getElementById("tabActive");
+    var tabArchived = document.getElementById("tabArchived");
+    if (tabActive && tabArchived) {
+      tabActive.classList.toggle("active", !isArchived);
+      tabArchived.classList.toggle("active", isArchived);
+      tabActive.setAttribute("aria-selected", String(!isArchived));
+      tabArchived.setAttribute("aria-selected", String(isArchived));
+    }
+  }
 
   function buildLeadsUrl() {
     var q = document.getElementById("filterQuery").value;
-    var sub = document.getElementById("filterSubreddit").value;
     var days = document.getElementById("filterDays").value;
-    // Dashboard feed should only show intent > 70 leads.
-    // Keeping the dropdown visible, but we ignore anything below 70 for the actual results.
-    // (Use 71 so ">= minScore" matches "score > 70".)
-    var score = 71;
-    var arch = document.getElementById("filterArchived").checked;
+    // Dashboard feed is focused on "high intent" only, but the UI lets you narrow:
+    // - Hot: score >= 90
+    // - Warm: score > 70 and < 90 (client-side filter)
+    // - All Leads: score > 70
+    var scoreMin = intentFilter === "hot" ? 90 : 71;
     var params = new URLSearchParams();
     if (q && !unlockedRunId) params.set("query", q);
-    if (sub) params.set("subreddit", sub);
     if (days) params.set("days", days);
-    if (score) params.set("minScore", score);
-    if (arch) params.set("includeArchived", "true");
+    if (scoreMin) params.set("minScore", scoreMin);
+    if (showArchived) params.set("includeArchived", "true");
     if (unlockedRunId) params.set("runId", unlockedRunId);
     return "/api/dashboard/leads?" + params.toString();
   }
@@ -186,38 +356,50 @@
       .then(function (data) {
         leads = data.leads || [];
         renderLeads();
-        populateSubredditFilter();
       });
-  }
-
-  function populateSubredditFilter() {
-    var subreddits = [];
-    leads.forEach(function (l) {
-      if (l.subreddit && subreddits.indexOf(l.subreddit) === -1) subreddits.push(l.subreddit);
-    });
-    subreddits.sort();
-    var subSel = document.getElementById("filterSubreddit");
-    var current = subSel.value;
-    subSel.innerHTML = '<option value="">All</option>';
-    subreddits.forEach(function (s) {
-      var opt = document.createElement("option");
-      opt.value = s;
-      opt.textContent = "r/" + s;
-      subSel.appendChild(opt);
-    });
-    if (current && subreddits.indexOf(current) !== -1) subSel.value = current;
   }
 
   function renderLeads() {
     var list = document.getElementById("leadsList");
     var empty = document.getElementById("emptyState");
     list.innerHTML = "";
-    if (leads.length === 0) {
+
+    var working = leads.slice();
+    if (intentFilter === "warm") {
+      working = working.filter(function (l) {
+        var s = l.score != null ? Number(l.score) : 0;
+        return s > 70 && s < 90;
+      });
+    } else if (intentFilter === "hot") {
+      working = working.filter(function (l) {
+        var s = l.score != null ? Number(l.score) : 0;
+        return s >= 90;
+      });
+    }
+
+    if (sortMode === "newest") {
+      working.sort(function (a, b) {
+        var at = a.created_utc != null ? Number(a.created_utc) : 0;
+        var bt = b.created_utc != null ? Number(b.created_utc) : 0;
+        return bt - at;
+      });
+    } else {
+      working.sort(function (a, b) {
+        var as = a.score != null ? Number(a.score) : -Infinity;
+        var bs = b.score != null ? Number(b.score) : -Infinity;
+        if (bs !== as) return bs - as;
+        var at = a.created_utc != null ? Number(a.created_utc) : 0;
+        var bt = b.created_utc != null ? Number(b.created_utc) : 0;
+        return bt - at;
+      });
+    }
+
+    if (working.length === 0) {
       empty.classList.remove("hidden");
       return;
     }
     empty.classList.add("hidden");
-    leads.forEach(function (lead) {
+    working.forEach(function (lead) {
       list.appendChild(buildCard(lead));
     });
   }
@@ -233,10 +415,13 @@
     var votes = lead.votes != null ? lead.votes : 0;
     var comments = lead.num_comments != null ? lead.num_comments : 0;
     var why = summarizeWhy(lead);
-    var reply = (lead.suggested_reply || "").trim();
+    var archiveBtnHtml = lead.is_archived
+      ? '<button type="button" class="archive-top-btn" disabled>Archived</button>'
+      : '<button type="button" class="archive-top-btn" data-action="archive" title="Archive">Archive</button>';
     var recent = isRecentPost(lead.created_utc);
     card.innerHTML =
       '<div class="card-inner">' +
+      archiveBtnHtml +
       '<div class="intent-badges-row">' +
       '<div class="intent-badge ' + badge.cls + '">' + badge.label + '</div>' +
       (recent ? '<div class="intent-badge recent">🕒 Recent</div>' : '') +
@@ -250,12 +435,6 @@
       (bodySnippet ? '<p class="card-body">' + escapeHtml(bodySnippet) + (bodySnippet.length >= 200 ? "\u2026" : "") + '</p>' : "") +
       '<p class="card-engagement">' + votes + ' vote' + (votes !== 1 ? "s" : "") + ' \u00B7 ' + comments + ' comment' + (comments !== 1 ? "s" : "") + '</p>' +
       (why ? '<button type="button" class="reply-toggle" aria-expanded="false">Why this post</button><div class="reply-content hidden">' + escapeHtml(why) + '</div>' : "") +
-      '<div class="card-actions">' +
-      '<button type="button" class="btn btn-archive" data-action="archive" title="Archive">Archive</button>' +
-      '<button type="button" class="btn btn-delete" data-action="delete" title="Delete">Delete</button>' +
-      (reply ? '<button type="button" class="btn btn-copy" data-action="copy" title="Copy suggested reply">Copy reply</button>' : '') +
-      '<a href="' + escapeHtml(lead.full_link || "#") + '" target="_blank" rel="noopener" class="btn btn-copy">Open in Reddit</a>' +
-      '</div>' +
       '</div>';
     var toggle = card.querySelector(".reply-toggle");
     var replyContent = card.querySelector(".reply-content");
@@ -265,19 +444,10 @@
         toggle.setAttribute("aria-expanded", replyContent.classList.contains("hidden") ? "false" : "true");
       });
     }
-    card.querySelector("[data-action=archive]").addEventListener("click", function () {
-      doAction(lead.post_id, "archive");
-    });
-    card.querySelector("[data-action=delete]").addEventListener("click", function () {
-      doAction(lead.post_id, "delete");
-    });
-    var copyBtn = card.querySelector("[data-action=copy]");
-    if (copyBtn && reply) {
-      copyBtn.addEventListener("click", function () {
-        navigator.clipboard.writeText(reply).then(function () {
-          copyBtn.textContent = "Copied!";
-          setTimeout(function () { copyBtn.textContent = "Copy reply"; }, 1500);
-        });
+    var archiveBtn = card.querySelector("[data-action=archive]");
+    if (archiveBtn) {
+      archiveBtn.addEventListener("click", function () {
+        doAction(lead.post_id, "archive");
       });
     }
     return card;
@@ -331,10 +501,28 @@
     });
 
   document.getElementById("filterQuery").addEventListener("change", fetchLeads);
-  document.getElementById("filterSubreddit").addEventListener("change", fetchLeads);
   document.getElementById("filterDays").addEventListener("change", fetchLeads);
-  document.getElementById("filterScore").addEventListener("change", fetchLeads);
-  document.getElementById("filterArchived").addEventListener("change", fetchLeads);
+  document.getElementById("filterSort").addEventListener("change", function () {
+    sortMode = this.value;
+    renderLeads();
+  });
+
+  document.getElementById("tabActive").addEventListener("click", function () {
+    setArchivedTab(false);
+    fetchLeads();
+  });
+  document.getElementById("tabArchived").addEventListener("click", function () {
+    setArchivedTab(true);
+    fetchLeads();
+  });
+
+  var pillEls = document.querySelectorAll(".intent-pill");
+  pillEls.forEach(function (el) {
+    el.addEventListener("click", function () {
+      setIntentFilter(el.getAttribute("data-intent") || "all");
+      fetchLeads();
+    });
+  });
 
   document.getElementById("logoutBtn").addEventListener("click", function () {
     fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
