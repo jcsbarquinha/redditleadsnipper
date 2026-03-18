@@ -21,7 +21,7 @@
       top: 110px; /* fixed site header (64px) + title spacing */
       align-self: start;
       background: var(--bg-card);
-      border: 1px solid var(--border);
+      border: 1px solid rgba(0, 0, 0, 0.10);
       border-radius: 16px;
       padding: 0.9rem;
     }
@@ -147,7 +147,7 @@
     }
     .secondary-select:focus { border-color: rgba(255, 69, 0, 0.35); }
 
-    .rail-section { padding: 0.75rem 0.85rem; border-bottom: 1px solid var(--border); }
+    .rail-section { padding: 0.75rem 0.85rem; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
     .rail-section:last-child { border-bottom: none; }
     .rail-section-title {
       margin: 0 0 0.75rem;
@@ -239,7 +239,7 @@
     .dashboard-list-wrap {
       overflow-y: auto;
       max-height: calc(100vh - 190px);
-      border: 1px solid var(--border);
+      border: 1px solid rgba(0, 0, 0, 0.12);
       border-radius: 14px;
       background: var(--bg-card);
       padding: 0.75rem 0.75rem 1rem;
@@ -251,6 +251,12 @@
     .dashboard-list-wrap::-webkit-scrollbar-thumb { background: rgba(255, 69, 0, 0.55); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
     .dashboard-list-wrap::-webkit-scrollbar-thumb:hover { background: rgba(255, 69, 0, 0.75); border: 2px solid transparent; background-clip: content-box; }
     .lead-card { position: relative; }
+
+    /* Stronger card outlines to avoid "cheap admin" feel. */
+    .dashboard-page .lead-card {
+      border-color: rgba(0, 0, 0, 0.10) !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04) !important;
+    }
 
     /* Intent badge row so we can show "Recent" next to Hot/Warm/Lead. */
     .intent-badges-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
