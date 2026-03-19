@@ -706,7 +706,18 @@
   function formatLastRunText(runCreatedAt) {
     var d = parseDbDateTime(runCreatedAt);
     if (!d) return "Last run: —";
-    return "Last run: " + d.toLocaleString();
+    var tz = "Local time";
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz;
+    } catch (e) {}
+    var tzShort = "";
+    try {
+      var parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(d);
+      var namePart = parts.find(function (p) { return p.type === "timeZoneName"; });
+      tzShort = namePart && namePart.value ? namePart.value : "";
+    } catch (e2) {}
+    var shownTz = tzShort || tz;
+    return "Last run: " + d.toLocaleString() + " (" + shownTz + ")";
   }
 
   function setRunSearchMetaIdle(runCreatedAt) {
