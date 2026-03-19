@@ -286,13 +286,18 @@
     }
 
     resultsSection.classList.remove("hidden");
-    // Keep the search bar visible (so users can refine the query) while still
-    // showing the freshly generated results below it.
-    if (searchForm) {
-      searchForm.scrollIntoView({ behavior: "smooth", block: "start" });
-    } else {
-      resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Keep the search bar visible while showing the new results below it.
+    // `scrollIntoView` can get weird with fixed headers, so use explicit scroll.
+    function scrollToSearch() {
+      var targetEl = searchForm || searchInput || resultsSection;
+      if (!targetEl) return;
+      var headerOffset = 86; // fixed header (64px) + a bit of spacing
+      var rect = targetEl.getBoundingClientRect();
+      var top = rect.top + window.pageYOffset - headerOffset;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     }
+    // Wait a tick so layout settles after results are injected.
+    setTimeout(scrollToSearch, 80);
   }
 
 
