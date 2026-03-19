@@ -314,6 +314,7 @@ export interface LeadRow {
   suggested_reply: string | null;
   is_high_intent: number | null;
   is_archived: number | null;
+  is_deleted: number | null;
   selftext: string | null;
   post_score: number | null;
   num_comments: number | null;
@@ -326,6 +327,7 @@ export interface LeadFilters {
   query?: string;
   runId?: string;
   includeArchived?: boolean;
+  includeDeleted?: boolean;
 }
 
 /** Leads for a run, ranked by intent (high first). One row per Reddit post (reddit_id) so counts are unique. */
@@ -335,6 +337,7 @@ export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
       `WITH ranked AS (
          SELECT p.id AS post_id, p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc, pi.reasoning, pi.suggested_reply, pi.is_high_intent,
                 0 AS is_archived,
+                0 AS is_deleted,
                 p.selftext,
                 p.score AS post_score,
                 COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments,
@@ -345,7 +348,7 @@ export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
          WHERE p.run_id = ?
        )
        SELECT post_id, run_id, user_input, score, label, title, full_link, subreddit, author, created_utc,
-              reasoning, suggested_reply, is_high_intent, is_archived, selftext, post_score, num_comments
+              reasoning, suggested_reply, is_high_intent, is_archived, is_deleted, selftext, post_score, num_comments
        FROM ranked
        WHERE rn = 1
        ORDER BY score DESC NULLS LAST, created_utc DESC NULLS LAST, post_score DESC NULLS LAST
@@ -434,11 +437,15 @@ export function getLeadsForUser(
   limit: number = 200,
   filters: LeadFilters = {}
 ): LeadRow[] {
-  const { subreddit, days, minScore, query, runId, includeArchived } = filters;
+  const { subreddit, days, minScore, query, runId, includeArchived, includeDeleted } = filters;
   const conditions: string[] = ["r.user_id = ?"];
   const params: (string | number)[] = [userId];
 
-  conditions.push(`(la.action IS NULL OR la.action != 'deleted')`);
+  // By default, keep deleted leads out of the dashboard.
+  // When includeDeleted=true, we return both deleted and non-deleted leads.
+  if (!includeDeleted) {
+    conditions.push(`(la.action IS NULL OR la.action != 'deleted')`);
+  }
   if (!includeArchived) {
     conditions.push(`(la.action IS NULL OR la.action != 'archived')`);
   }
@@ -474,6 +481,7 @@ export function getLeadsForUser(
          SELECT p.id AS post_id, p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc,
                 pi.reasoning, pi.suggested_reply, pi.is_high_intent,
                 CASE WHEN la.action = 'archived' THEN 1 ELSE 0 END AS is_archived,
+                CASE WHEN la.action = 'deleted' THEN 1 ELSE 0 END AS is_deleted,
                 p.selftext,
                 p.score AS post_score,
                 COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments,
@@ -485,7 +493,7 @@ export function getLeadsForUser(
          WHERE ${whereClause}
        )
        SELECT post_id, run_id, user_input, score, label, title, full_link, subreddit, author, created_utc,
-              reasoning, suggested_reply, is_high_intent, is_archived, selftext, post_score, num_comments
+              reasoning, suggested_reply, is_high_intent, is_archived, is_deleted, selftext, post_score, num_comments
        FROM ranked
        WHERE rn = 1
        ORDER BY score DESC NULLS LAST, created_utc DESC NULLS LAST, post_score DESC NULLS LAST

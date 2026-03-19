@@ -128,6 +128,7 @@
     .intent-pill.warm { background: rgba(255, 243, 224, 0.9); border-color: rgba(255, 214, 165, 0.9); color: #e65100; }
     .intent-pill.recent { background: rgba(219, 234, 254, 0.95); border-color: rgba(191, 219, 254, 0.95); color: #1d4ed8; }
     .intent-pill.archived { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
+    .intent-pill.deleted { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.25); color: #b91c1c; }
 
     .secondary-filters {
       display: flex;
@@ -377,12 +378,17 @@
     }
     .leads-scope-btn:disabled { cursor: default; opacity: 0.6; }
 
-    /* Card actions */
-    .lead-card .card-inner { padding-right: 5.75rem; }
-    .lead-card .archive-top-btn {
+    /* Card actions (archive + delete) */
+    .lead-card .card-inner { padding-right: 9rem; }
+    .lead-card .top-actions {
       position: absolute;
       top: 0.9rem;
       right: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+    .lead-card .action-top-btn {
       padding: 0.45rem 0.7rem;
       border-radius: 10px;
       border: 1px solid var(--border);
@@ -391,17 +397,31 @@
       font-weight: 800;
       font-size: 0.8rem;
       cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.08s;
     }
-    .lead-card .archive-top-btn:hover {
-      border-color: rgba(255, 69, 0, 0.35);
-      background: rgba(255, 69, 0, 0.05);
-      color: #ff4500;
-    }
-    .lead-card .archive-top-btn:disabled {
+    .lead-card .action-top-btn:hover { transform: translateY(-1px); }
+    .lead-card .action-top-btn:disabled {
       cursor: default;
       opacity: 0.55;
+      transform: none;
+    }
+    .lead-card .action-top-btn.archive {
       background: #f3f4f6;
+      border-color: #e5e7eb;
+      color: #111;
+    }
+    .lead-card .action-top-btn.archive:hover {
+      background: #e5e7eb;
+      border-color: #d1d5db;
+    }
+    .lead-card .action-top-btn.delete {
+      background: rgba(239, 68, 68, 0.08);
+      border-color: rgba(239, 68, 68, 0.25);
+      color: #b91c1c;
+    }
+    .lead-card .action-top-btn.delete:hover {
+      background: rgba(239, 68, 68, 0.13);
+      border-color: rgba(239, 68, 68, 0.35);
     }
 
     @media (max-width: 980px) {
@@ -508,6 +528,7 @@
             <button type="button" class="intent-pill warm" data-intent="warm" aria-pressed="false">🟡 Warm (<span id="warmLeadsCount">0</span>)</button>
             <button type="button" class="intent-pill recent" data-intent="recent" aria-pressed="false">🕒 Recent (<span id="recentLeadsCount">0</span>)</button>
             <button type="button" class="intent-pill archived" data-intent="archived" aria-pressed="false">🗂 Archived (<span id="archivedLeadsCount">0</span>)</button>
+            <button type="button" class="intent-pill deleted" data-intent="deleted" aria-pressed="false">🗑 Deleted (<span id="deletedLeadsCount">0</span>)</button>
           </div>
         </div>
 
@@ -783,7 +804,7 @@
     leadFilter = pillActive ? "all" : next;
 
     // If viewing archived leads, switch scope off "Active Leads".
-    activeOnly = leadFilter === "archived" ? false : true;
+    activeOnly = (leadFilter === "archived" || leadFilter === "deleted") ? false : true;
 
     var pillEls = document.querySelectorAll(".intent-pill[data-intent]");
     pillEls.forEach(function (el) {
@@ -813,6 +834,8 @@
     if (scoreMin) params.set("minScore", scoreMin);
     // We always fetch archived so we can show counts and archived filter without another roundtrip.
     params.set("includeArchived", "true");
+    // Also fetch deleted leads so the "Deleted" filter can work instantly.
+    params.set("includeDeleted", "true");
     if (unlockedRunId) params.set("runId", unlockedRunId);
     return "/api/dashboard/leads?" + params.toString();
   }
@@ -825,14 +848,16 @@
       })
       .then(function (data) {
         leads = data.leads || [];
-        // API returns `is_archived` as boolean.
-        var nonArchived = leads.filter(function (l) { return l.is_archived === false; });
+        // API returns booleans for `is_archived` and `is_deleted`.
+        var nonDeleted = leads.filter(function (l) { return l.is_deleted !== true; });
+        var nonArchived = nonDeleted.filter(function (l) { return l.is_archived === false; });
         activeLeadsCount = nonArchived.length;
 
         var hotCount = nonArchived.filter(function (l) { return (l.score != null ? Number(l.score) : 0) >= 90; }).length;
         var warmCount = nonArchived.filter(function (l) { var s = l.score != null ? Number(l.score) : 0; return s > 70 && s < 90; }).length;
         var recentCount = nonArchived.filter(function (l) { return isRecentPost(l.created_utc); }).length;
-        var archivedCount = leads.filter(function (l) { return l.is_archived === true; }).length;
+        var archivedCount = nonDeleted.filter(function (l) { return l.is_archived === true; }).length;
+        var deletedCount = leads.filter(function (l) { return l.is_deleted === true; }).length;
 
         var countEl = document.getElementById("activeLeadsCount");
         if (countEl) countEl.textContent = String(activeLeadsCount);
@@ -844,6 +869,8 @@
         if (recentEl) recentEl.textContent = String(recentCount);
         var archivedEl = document.getElementById("archivedLeadsCount");
         if (archivedEl) archivedEl.textContent = String(archivedCount);
+        var deletedEl = document.getElementById("deletedLeadsCount");
+        if (deletedEl) deletedEl.textContent = String(deletedCount);
 
         syncActiveOnlyUI();
         renderLeads();
@@ -884,25 +911,28 @@
       });
     }
 
-    // Pill filters
-    if (leadFilter === "archived") {
-      working = working.filter(function (l) {
-        return l.is_archived === true;
-      });
-    } else if (leadFilter === "hot") {
-      working = working.filter(function (l) {
-        var s = l.score != null ? Number(l.score) : 0;
-        return s >= 90;
-      });
-    } else if (leadFilter === "warm") {
-      working = working.filter(function (l) {
-        var s = l.score != null ? Number(l.score) : 0;
-        return s > 70 && s < 90;
-      });
-    } else if (leadFilter === "recent") {
-      working = working.filter(function (l) {
-        return isRecentPost(l.created_utc);
-      });
+    // Pill filters (deleted is its own category)
+    if (leadFilter === "deleted") {
+      working = working.filter(function (l) { return l.is_deleted === true; });
+    } else {
+      // By default, never show deleted leads in other views.
+      working = working.filter(function (l) { return l.is_deleted !== true; });
+
+      if (leadFilter === "archived") {
+        working = working.filter(function (l) { return l.is_archived === true; });
+      } else if (leadFilter === "hot") {
+        working = working.filter(function (l) {
+          var s = l.score != null ? Number(l.score) : 0;
+          return s >= 90;
+        });
+      } else if (leadFilter === "warm") {
+        working = working.filter(function (l) {
+          var s = l.score != null ? Number(l.score) : 0;
+          return s > 70 && s < 90;
+        });
+      } else if (leadFilter === "recent") {
+        working = working.filter(function (l) { return isRecentPost(l.created_utc); });
+      }
     }
 
     // Keyword search inside the currently-fetched list.
@@ -1036,13 +1066,23 @@
     var votes = lead.votes != null ? lead.votes : 0;
     var comments = lead.num_comments != null ? lead.num_comments : 0;
     var why = summarizeWhy(lead);
-    var archiveBtnHtml = lead.is_archived
-      ? '<button type="button" class="archive-top-btn" data-action="unarchive" title="Unarchive">Unarchive</button>'
-      : '<button type="button" class="archive-top-btn" data-action="archive" title="Archive">Archive</button>';
+    var archiveBtnLabel = lead.is_archived ? "Unarchive" : "Archive";
+    var archiveBtnAction = lead.is_archived ? "unarchive" : "archive";
+    var archiveBtnHtml =
+      '<button type="button" class="action-top-btn archive" data-action="' +
+      archiveBtnAction +
+      '" title="' +
+      archiveBtnLabel +
+      '">' +
+      archiveBtnLabel +
+      "</button>";
+    var deleteBtnHtml =
+      '<button type="button" class="action-top-btn delete" data-action="delete" title="Delete">Delete</button>';
+    var topActionsHtml = '<div class="top-actions">' + archiveBtnHtml + deleteBtnHtml + "</div>";
     var recent = isRecentPost(lead.created_utc);
     card.innerHTML =
       '<div class="card-inner">' +
-      archiveBtnHtml +
+      topActionsHtml +
       '<div class="intent-badges-row">' +
       '<div class="intent-badge ' + badge.cls + '">' + badge.label + '</div>' +
       (recent ? '<div class="intent-badge recent">🕒 Recent</div>' : '') +
@@ -1073,10 +1113,12 @@
         toggle.setAttribute("aria-expanded", replyContent.classList.contains("hidden") ? "false" : "true");
       });
     }
-    var actionBtn = card.querySelector("[data-action]");
-    if (actionBtn) {
-      actionBtn.addEventListener("click", function () {
-        doAction(lead.post_id, actionBtn.getAttribute("data-action"));
+    var actionBtns = card.querySelectorAll("[data-action]");
+    if (actionBtns && actionBtns.length) {
+      actionBtns.forEach(function (actionBtn) {
+        actionBtn.addEventListener("click", function () {
+          doAction(lead.post_id, actionBtn.getAttribute("data-action"));
+        });
       });
     }
     return card;

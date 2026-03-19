@@ -99,6 +99,7 @@ function leadRowToApi(row: LeadRow) {
     label: row.label,
     is_high_intent: row.is_high_intent === 1,
     is_archived: row.is_archived === 1,
+    is_deleted: row.is_deleted === 1,
     explanation: row.reasoning ?? null,
     suggested_reply: row.suggested_reply ?? null,
     selftext: row.selftext ?? null,
@@ -279,7 +280,7 @@ app.get("/api/me", requireAuth, (req, res) => {
   res.json({ id: user.id, email: user.email });
 });
 
-/** All leads for the current user (requires auth). Query params: subreddit, days, minScore, query, includeArchived, runId. */
+/** All leads for the current user (requires auth). Query params: subreddit, days, minScore, query, includeArchived, includeDeleted, runId. */
 app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string } }).user;
   const subreddit = typeof req.query.subreddit === "string" ? req.query.subreddit.trim() : undefined;
@@ -288,6 +289,7 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const query = typeof req.query.query === "string" ? req.query.query.trim() : undefined;
   const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : undefined;
   const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
+  const includeDeleted = req.query.includeDeleted === "true" || req.query.includeDeleted === "1";
   const leads = getLeadsForUser(user.id, 200, {
     subreddit: subreddit || undefined,
     days: Number.isFinite(days) ? days : undefined,
@@ -295,6 +297,7 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
     query: query || undefined,
     runId: runId || undefined,
     includeArchived,
+    includeDeleted,
   });
   res.json({ leads: leads.map(leadRowToApi) });
 });
