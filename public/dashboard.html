@@ -650,14 +650,9 @@
     return { cls: "lead", label: "\u2728 " + Math.round(raw) + "% Lead" };
   }
   function summarizeWhy(lead) {
-    var expl = (lead.explanation || "").trim();
-    // This label is meant for the SaaS founder: why this post is worth their attention.
-    if (expl) {
-      // Keep it simple and forward-looking.
-      return "We’re showing this to you because " + expl.replace(/[.?!]$/, "") + ".";
-    }
-    if (lead.is_high_intent) return "We’re showing this to you because they’re actively looking for a solution.";
-    return "We’re showing this to you because it matches your search and the problem they’re dealing with.";
+    if ((lead.explanation || "").trim()) return lead.explanation.trim();
+    if (lead.is_high_intent) return "They are actively looking for a solution or recommendation.";
+    return "It matches your search and shows a relevant pain point.";
   }
 
   function isRecentPost(createdUtc) {
