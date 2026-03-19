@@ -191,49 +191,104 @@
       line-height: 1.5;
     }
 
-    .alert-toggle-row { margin-bottom: 0.75rem; }
-    .alert-switch {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      font-weight: 700;
-      color: #0b0f17;
-      font-size: 0.9rem;
+    .alert-toggle-row { margin-bottom: 0.95rem; }
+
+    /* Green-on toggle */
+    .email-toggle {
+      position: relative;
+      display: inline-block;
+      width: 46px;
+      height: 26px;
+    }
+    .email-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .email-toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #e5e7eb;
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .email-toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #fff;
+      border-radius: 9999px;
+      transition: transform 0.15s;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    .email-toggle input:checked + .email-toggle-slider {
+      background: rgba(34, 197, 94, 0.14);
+      border-color: rgba(34, 197, 94, 0.35);
+    }
+    .email-toggle input:checked + .email-toggle-slider:before {
+      transform: translateY(-50%) translateX(20px);
     }
 
-    .alert-options {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
+    .alert-type-title { margin: 0 0 0.6rem; font-size: 0.95rem; font-weight: 900; color: #000; }
 
-    .alert-pill {
+    .alert-type-dropdown { position: relative; }
+    .alert-type-dropdown-btn {
       width: 100%;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 0.75rem;
-      padding: 0.55rem 0.85rem;
+      padding: 0.65rem 0.85rem;
       border-radius: 12px;
       border: 1px solid var(--border);
       background: #fff;
       cursor: pointer;
       font-weight: 900;
       color: #0b0f17;
-      transition: background 0.15s, border-color 0.15s, transform 0.08s;
     }
-    .alert-pill:disabled { cursor: default; opacity: 0.55; }
-    .alert-pill.active {
-      border-color: rgba(255, 69, 0, 0.35);
-      background: rgba(255, 69, 0, 0.08);
+    .alert-type-dropdown-btn:disabled { cursor: default; opacity: 0.55; }
+    .alert-type-dropdown-panel {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 0.5rem);
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.35rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
     }
-    .alert-check {
-      display: none;
+    .alert-type-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.55rem 0.7rem;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
       font-weight: 900;
-      color: #ff4500;
+      color: #0b0f17;
     }
-    .alert-pill.active .alert-check { display: inline; }
-    .alert-pill:hover:not(:disabled) { background: #f3f4f6; }
+    .alert-type-option:hover:not(:disabled) {
+      background: #f3f4f6;
+      border-color: rgba(0,0,0,0.04);
+    }
+    .alert-type-option:disabled { cursor: default; opacity: 0.55; }
+    .alert-option-check { opacity: 0; color: #ff4500; font-weight: 900; }
+    .alert-type-option.active .alert-option-check { opacity: 1; }
 
     .leads-scope-btn {
       width: 100%;
@@ -406,31 +461,47 @@
         </div>
 
         <div class="rail-section">
-          <h2 class="rail-section-title">Alerts</h2>
+          <h2 class="rail-section-title">Get email alerts for new leads</h2>
+
           <div class="alert-toggle-row">
-            <label class="alert-switch">
+            <label class="email-toggle" aria-label="Enable email alerts">
               <input type="checkbox" id="emailAlertsEnabled" />
-              <span>Email alerts</span>
+              <span class="email-toggle-slider" aria-hidden="true"></span>
             </label>
           </div>
 
-          <div class="alert-options" role="group" aria-label="Lead alert categories">
-            <button type="button" id="alertAllBtn" class="alert-pill" data-alert="all" aria-pressed="false">
-              <span class="alert-check" aria-hidden="true">✓</span>
-              <span>All leads (&gt;70)</span>
+          <div class="alert-type-title">Type of alerts</div>
+          <div class="alert-type-dropdown">
+            <button
+              type="button"
+              id="alertTypeDropdownBtn"
+              class="alert-type-dropdown-btn"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              disabled
+            >
+              <span id="alertTypeDropdownLabel">All leads (&gt;70)</span>
+              <span aria-hidden="true">▾</span>
             </button>
-            <button type="button" id="alertHotBtn" class="alert-pill" data-alert="hot" aria-pressed="false">
-              <span class="alert-check" aria-hidden="true">✓</span>
-              <span>Hot</span>
-            </button>
-            <button type="button" id="alertWarmBtn" class="alert-pill" data-alert="warm" aria-pressed="false">
-              <span class="alert-check" aria-hidden="true">✓</span>
-              <span>Warm</span>
-            </button>
-            <button type="button" id="alertRecentBtn" class="alert-pill" data-alert="recent" aria-pressed="false">
-              <span class="alert-check" aria-hidden="true">✓</span>
-              <span>Recent</span>
-            </button>
+
+            <div id="alertTypeDropdownPanel" class="alert-type-dropdown-panel hidden" role="listbox" aria-label="Type of alerts">
+              <button type="button" id="alertAllBtn" class="alert-type-option active" data-alert="all" aria-selected="true">
+                <span>All leads (&gt;70)</span>
+                <span class="alert-option-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" id="alertHotBtn" class="alert-type-option active" data-alert="hot" aria-selected="true">
+                <span>Hot</span>
+                <span class="alert-option-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" id="alertWarmBtn" class="alert-type-option active" data-alert="warm" aria-selected="true">
+                <span>Warm</span>
+                <span class="alert-option-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" id="alertRecentBtn" class="alert-type-option active" data-alert="recent" aria-selected="true">
+                <span>Recent</span>
+                <span class="alert-option-check" aria-hidden="true">✓</span>
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -890,61 +961,132 @@
     });
   });
 
-  // Alerts UI (email toggle + multi-select filters placeholder)
+  // Alerts UI: email toggle + alert type dropdown (multi-select)
   var emailAlertsEnabled = document.getElementById("emailAlertsEnabled");
+  var alertTypeDropdownBtn = document.getElementById("alertTypeDropdownBtn");
+  var alertTypeDropdownPanel = document.getElementById("alertTypeDropdownPanel");
+  var alertTypeDropdownLabel = document.getElementById("alertTypeDropdownLabel");
+
   var alertAllBtn = document.getElementById("alertAllBtn");
   var alertHotBtn = document.getElementById("alertHotBtn");
   var alertWarmBtn = document.getElementById("alertWarmBtn");
   var alertRecentBtn = document.getElementById("alertRecentBtn");
 
-  function setAlertBtnActive(btn, on) {
-    if (!btn) return;
-    btn.classList.toggle("active", !!on);
-    btn.setAttribute("aria-pressed", String(!!on));
-  }
-
-  function isAlertBtnActive(btn) {
+  function isOptionActive(btn) {
     return btn ? btn.classList.contains("active") : false;
   }
 
-  function syncAlertAllFromOthers() {
-    if (!alertAllBtn || !alertHotBtn || !alertWarmBtn || !alertRecentBtn) return;
-    var allOn = isAlertBtnActive(alertHotBtn) && isAlertBtnActive(alertWarmBtn) && isAlertBtnActive(alertRecentBtn);
-    setAlertBtnActive(alertAllBtn, allOn);
+  function setOptionActive(btn, on) {
+    if (!btn) return;
+    btn.classList.toggle("active", !!on);
+    btn.setAttribute("aria-selected", String(!!on));
   }
 
-  if (emailAlertsEnabled && alertAllBtn && alertHotBtn && alertWarmBtn && alertRecentBtn) {
-    function applyAlertDisabledState() {
-      var disabled = !emailAlertsEnabled.checked;
-      [alertAllBtn, alertHotBtn, alertWarmBtn, alertRecentBtn].forEach(function (b) {
-        b.disabled = disabled;
-        if (disabled) b.classList.remove("active");
-      });
+  function setAllTypesActive(on) {
+    setOptionActive(alertAllBtn, on);
+    setOptionActive(alertHotBtn, on);
+    setOptionActive(alertWarmBtn, on);
+    setOptionActive(alertRecentBtn, on);
+  }
+
+  function syncAllFromHotWarmRecent() {
+    // All should be checkmarked when Hot+Warm+Recent are all selected.
+    var hotOn = isOptionActive(alertHotBtn);
+    var warmOn = isOptionActive(alertWarmBtn);
+    var recentOn = isOptionActive(alertRecentBtn);
+
+    var anyOn = hotOn || warmOn || recentOn;
+    if (!anyOn) {
+      // Prevent "no selection" UX; default back to All.
+      setAllTypesActive(true);
+      return;
     }
 
-    applyAlertDisabledState();
-    emailAlertsEnabled.addEventListener("change", function () {
-      applyAlertDisabledState();
+    var allOn = hotOn && warmOn && recentOn;
+    setOptionActive(alertAllBtn, allOn);
+  }
+
+  function updateDropdownLabel() {
+    if (!alertTypeDropdownLabel) return;
+
+    var hotOn = isOptionActive(alertHotBtn);
+    var warmOn = isOptionActive(alertWarmBtn);
+    var recentOn = isOptionActive(alertRecentBtn);
+    var allOn = hotOn && warmOn && recentOn;
+
+    if (allOn) {
+      alertTypeDropdownLabel.textContent = "All leads (>70)";
+      return;
+    }
+
+    var parts = [];
+    if (hotOn) parts.push("Hot");
+    if (warmOn) parts.push("Warm");
+    if (recentOn) parts.push("Recent");
+    alertTypeDropdownLabel.textContent = parts.length ? parts.join(", ") : "All leads (>70)";
+  }
+
+  // Enable/disable dropdown via email toggle.
+  if (emailAlertsEnabled && alertTypeDropdownBtn) {
+    function applyEmailToggleState() {
+      var enabled = emailAlertsEnabled.checked;
+      alertTypeDropdownBtn.disabled = !enabled;
+      if (!enabled && alertTypeDropdownPanel) {
+        alertTypeDropdownPanel.classList.add("hidden");
+        alertTypeDropdownBtn.setAttribute("aria-expanded", "false");
+      }
+    }
+    applyEmailToggleState();
+    emailAlertsEnabled.addEventListener("change", applyEmailToggleState);
+  }
+
+  // Dropdown open/close
+  if (alertTypeDropdownBtn && alertTypeDropdownPanel) {
+    alertTypeDropdownBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (this.disabled) return;
+
+      var isHidden = alertTypeDropdownPanel.classList.contains("hidden");
+      alertTypeDropdownPanel.classList.toggle("hidden", !isHidden);
+      alertTypeDropdownBtn.setAttribute("aria-expanded", isHidden ? "true" : "false");
     });
 
-    alertAllBtn.addEventListener("click", function () {
+    document.addEventListener("click", function (e) {
+      if (!alertTypeDropdownPanel || alertTypeDropdownPanel.classList.contains("hidden")) return;
+      if (alertTypeDropdownBtn && (e.target === alertTypeDropdownBtn || alertTypeDropdownBtn.contains(e.target))) return;
+      if (alertTypeDropdownPanel && alertTypeDropdownPanel.contains(e.target)) return;
+      alertTypeDropdownPanel.classList.add("hidden");
+      if (alertTypeDropdownBtn) alertTypeDropdownBtn.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  // Option clicks
+  if (alertAllBtn && alertHotBtn && alertWarmBtn && alertRecentBtn) {
+    // All acts as a "master select" for Hot+Warm+Recent.
+    alertAllBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
       if (emailAlertsEnabled && !emailAlertsEnabled.checked) return;
-      var next = !isAlertBtnActive(alertAllBtn);
-      setAlertBtnActive(alertAllBtn, next);
-      setAlertBtnActive(alertHotBtn, next);
-      setAlertBtnActive(alertWarmBtn, next);
-      setAlertBtnActive(alertRecentBtn, next);
+      setAllTypesActive(true);
+      syncAllFromHotWarmRecent();
+      updateDropdownLabel();
     });
 
     [alertHotBtn, alertWarmBtn, alertRecentBtn].forEach(function (btn) {
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
         if (emailAlertsEnabled && !emailAlertsEnabled.checked) return;
-        var next = !isAlertBtnActive(btn);
-        setAlertBtnActive(btn, next);
-        syncAlertAllFromOthers();
+
+        var next = !isOptionActive(btn);
+        setOptionActive(btn, next);
+        syncAllFromHotWarmRecent();
+        updateDropdownLabel();
       });
     });
   }
+
+  // Initial label sync
+  syncAllFromHotWarmRecent();
+  updateDropdownLabel();
 
   document.getElementById("logoutBtn").addEventListener("click", function () {
     fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
