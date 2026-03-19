@@ -116,7 +116,11 @@
       opacity: 0.75;
       user-select: none;
     }
-    .intent-pill.active { opacity: 1; }
+    .intent-pill.active {
+      opacity: 1;
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.38) inset;
+      border-color: rgba(0, 0, 0, 0.65);
+    }
     .intent-pill.all { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
     .intent-pill.hot { background: rgba(165, 214, 167, 0.45); border-color: rgba(165, 214, 167, 0.85); color: #1b5e20; }
     .intent-pill.warm { background: rgba(255, 243, 224, 0.9); border-color: rgba(255, 214, 165, 0.9); color: #e65100; }
@@ -231,13 +235,15 @@
       box-shadow: 0 1px 2px rgba(0,0,0,0.08);
     }
     .email-toggle input:checked + .email-toggle-slider {
-      background: rgba(34, 197, 94, 0.14);
-      border-color: rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.95);
+      border-color: rgba(34, 197, 94, 1);
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
     }
     .email-toggle input:checked + .email-toggle-slider:before {
       transform: translateY(-50%) translateX(20px);
     }
 
+    .alert-email-subtitle { margin: 0 0 0.6rem; font-size: 0.95rem; font-weight: 900; color: #000; }
     .alert-type-title { margin: 0 0 0.6rem; font-size: 0.95rem; font-weight: 900; color: #000; }
 
     .alert-type-dropdown { position: relative; }
@@ -289,6 +295,37 @@
     .alert-type-option:disabled { cursor: default; opacity: 0.55; }
     .alert-option-check { opacity: 0; color: #ff4500; font-weight: 900; }
     .alert-type-option.active .alert-option-check { opacity: 1; }
+    .alert-type-option.active {
+      background: #f3f4f6;
+      border-color: rgba(0,0,0,0.12);
+    }
+
+    .alert-type-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.33rem 0.6rem;
+      border-radius: 10px;
+      font-weight: 900;
+      font-size: 0.85rem;
+      border: 1px solid transparent;
+      line-height: 1;
+    }
+    .alert-type-chip.hot {
+      background: rgba(165, 214, 167, 0.45);
+      border-color: rgba(165, 214, 167, 0.85);
+      color: #1b5e20;
+    }
+    .alert-type-chip.warm {
+      background: rgba(255, 243, 224, 0.9);
+      border-color: rgba(255, 214, 165, 0.9);
+      color: #e65100;
+    }
+    .alert-type-chip.recent {
+      background: rgba(219, 234, 254, 0.95);
+      border-color: rgba(191, 219, 254, 0.95);
+      color: #1d4ed8;
+    }
 
     .leads-scope-btn {
       width: 100%;
@@ -305,7 +342,13 @@
       font-weight: 900;
       transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .leads-scope-btn.active { border-color: rgba(255, 69, 0, 0.35); background: rgba(255, 69, 0, 0.08); color: #ff4500; }
+    .leads-scope-btn.active {
+      border-color: #000;
+      background: #000;
+      color: #fff;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.08) inset;
+    }
+    .leads-scope-btn.active .leads-count { color: #fff; }
     .leads-scope-btn:disabled { cursor: default; opacity: 0.6; }
 
     /* Card actions */
@@ -461,7 +504,8 @@
         </div>
 
         <div class="rail-section">
-          <h2 class="rail-section-title">Get email alerts for new leads</h2>
+          <h2 class="rail-section-title">Alerts</h2>
+          <div class="alert-email-subtitle">Get email alerts for new leads</div>
 
           <div class="alert-toggle-row">
             <label class="email-toggle" aria-label="Enable email alerts">
@@ -490,15 +534,15 @@
                 <span class="alert-option-check" aria-hidden="true">✓</span>
               </button>
               <button type="button" id="alertHotBtn" class="alert-type-option active" data-alert="hot" aria-selected="true">
-                <span>Hot</span>
+                <span class="alert-type-chip hot">🔥 Hot</span>
                 <span class="alert-option-check" aria-hidden="true">✓</span>
               </button>
               <button type="button" id="alertWarmBtn" class="alert-type-option active" data-alert="warm" aria-selected="true">
-                <span>Warm</span>
+                <span class="alert-type-chip warm">🟡 Warm</span>
                 <span class="alert-option-check" aria-hidden="true">✓</span>
               </button>
               <button type="button" id="alertRecentBtn" class="alert-type-option active" data-alert="recent" aria-selected="true">
-                <span>Recent</span>
+                <span class="alert-type-chip recent">🕒 Recent</span>
                 <span class="alert-option-check" aria-hidden="true">✓</span>
               </button>
             </div>
