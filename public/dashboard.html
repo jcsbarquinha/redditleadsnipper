@@ -1373,7 +1373,12 @@
   fetch("/api/me", { credentials: "same-origin" })
     .then(function (r) {
       if (!r.ok) {
-        redirectHome();
+        // If user isn't authenticated, bounce back to landing with a visible reason.
+        try {
+          window.location.href = "/?auth=required";
+        } catch (e) {
+          redirectHome();
+        }
         throw new Error("Not logged in");
       }
       return r.json();

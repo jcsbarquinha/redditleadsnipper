@@ -17,6 +17,17 @@
     alert(messages[error] || "Something went wrong. Please try again.");
   }
 
+  // If dashboard bounced the user to landing due to auth requirements, show a friendly message.
+  if (params.get("auth") === "required") {
+    try {
+      alert("Please unlock to access your dashboard.");
+    } catch (e) {}
+    try {
+      params.delete("auth");
+      window.history.replaceState({}, document.title, window.location.pathname + (params.toString() ? "?" + params.toString() : ""));
+    } catch (e2) {}
+  }
+
   // If this user already has an active session (paid/unlocked), send them straight to the dashboard.
   // This keeps the Stripe-based auth flow, but makes "returning to the landing page" feel like proper login.
   fetch("/api/me", { credentials: "same-origin" })
