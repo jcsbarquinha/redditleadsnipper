@@ -162,6 +162,18 @@
       color: #000;
     }
     .rail-control { margin-top: 0.6rem; }
+
+    .run-search-meta {
+      margin: 0.35rem 0 0;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.2;
+    }
+
+    .run-search-meta i {
+      font-style: italic;
+    }
     .search-query-input {
       width: 100%;
       font-size: 0.95rem;
@@ -469,6 +481,7 @@
           <div class="rail-control">
             <button type="button" id="runSearchBtn" class="primary-btn" title="Run this search again">Run search again</button>
           </div>
+          <p id="runSearchMeta" class="run-search-meta hidden" aria-live="polite"></p>
         </div>
 
         <div class="rail-section">
@@ -608,6 +621,40 @@
   var runs = [];
   var leads = [];
   var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
+  var runSearchMetaEl = document.getElementById("runSearchMeta");
+
+  function parseDbDateTime(s) {
+    if (!s) return null;
+    var str = String(s).trim();
+    // SQLite datetime('now') typically comes as: "YYYY-MM-DD HH:MM:SS"
+    var d = new Date(str.replace(" ", "T"));
+    if (Number.isFinite(d.getTime())) return d;
+    return null;
+  }
+
+  function formatLastRunText(runCreatedAt) {
+    var d = parseDbDateTime(runCreatedAt);
+    if (!d) return "Last run: —";
+    return "Last run: " + d.toLocaleString();
+  }
+
+  function setRunSearchMetaIdle(runCreatedAt) {
+    if (!runSearchMetaEl) return;
+    runSearchMetaEl.innerHTML = formatLastRunText(runCreatedAt);
+    runSearchMetaEl.classList.remove("hidden");
+  }
+
+  function setRunSearchMetaRunning() {
+    if (!runSearchMetaEl) return;
+    runSearchMetaEl.innerHTML = '<i>(take around 2 min to run)</i>';
+    runSearchMetaEl.classList.remove("hidden");
+  }
+
+  function setRunSearchMetaError() {
+    if (!runSearchMetaEl) return;
+    runSearchMetaEl.innerHTML = "";
+    runSearchMetaEl.classList.add("hidden");
+  }
   // Inbox UI state:
   // - leadFilter: Hot / Warm / Recent / Archived
   // - activeOnly: when true, hide archived leads
@@ -861,6 +908,8 @@
 
     if (btn) btn.disabled = true;
     if (btn) btn.textContent = "Running...";
+    if (btn) btn.classList.add("is-running");
+    setRunSearchMetaRunning();
 
     // Show loading state in the right posts panel.
     var list = document.getElementById("leadsList");
@@ -906,13 +955,33 @@
         if (data && data.runId) {
           unlockedRunId = data.runId;
         }
-        return fetchLeads();
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Run search again";
+          btn.classList.remove("is-running");
+        }
+        // Refresh runs list so we show the correct last run datetime.
+        return fetch("/api/dashboard/runs", { credentials: "same-origin" })
+          .then(function (r) {
+            if (!r.ok) return { runs: [] };
+            return r.json();
+          })
+          .then(function (data2) {
+            runs = data2.runs || [];
+            var currentRun = null;
+            if (unlockedRunId) currentRun = runs.find(function (r) { return r.id === unlockedRunId; }) || null;
+            if (!currentRun) currentRun = runs[0] || null;
+            if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
+            return fetchLeads();
+          });
       })
       .catch(function (err) {
         if (btn) {
           btn.disabled = false;
           btn.textContent = "Run search again";
+          btn.classList.remove("is-running");
         }
+        setRunSearchMetaError();
         alert(err instanceof Error ? err.message : String(err));
       });
   }
@@ -946,6 +1015,8 @@
 
       var input = document.getElementById("searchQueryInput");
       if (input) input.value = (currentRun && currentRun.user_input) ? String(currentRun.user_input) : "";
+
+      if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
 
       return fetchLeads();
     });
