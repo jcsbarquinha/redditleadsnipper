@@ -379,6 +379,18 @@ app.post("/api/dashboard/leads/unarchive", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+/** Reactivate a lead: remove the lead action (deleted/archived) so it returns to active. Body: { post_id: string }. */
+app.post("/api/dashboard/leads/reactivate", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const postId = typeof req.body?.post_id === "string" ? req.body.post_id.trim() : "";
+  if (!postId) {
+    res.status(400).json({ error: "Missing post_id." });
+    return;
+  }
+  clearLeadAction(user.id, postId);
+  res.json({ ok: true });
+});
+
 /** Log out: clear session cookie. */
 app.post("/api/logout", (req, res) => {
   res.clearCookie(SESSION_COOKIE_NAME, { path: "/" });

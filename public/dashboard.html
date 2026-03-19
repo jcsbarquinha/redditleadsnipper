@@ -599,7 +599,7 @@
         </div>
 
         <div class="rail-section">
-          <h2 class="rail-section-title">Intent Score</h2>
+          <h2 class="rail-section-title">Post selection</h2>
           <div class="intent-score-subtitle">Context for post shown</div>
 
           <div class="alert-toggle-row">
@@ -1066,19 +1066,31 @@
     var votes = lead.votes != null ? lead.votes : 0;
     var comments = lead.num_comments != null ? lead.num_comments : 0;
     var why = summarizeWhy(lead);
-    var archiveBtnLabel = lead.is_archived ? "Unarchive" : "Archive";
-    var archiveBtnAction = lead.is_archived ? "unarchive" : "archive";
-    var archiveBtnHtml =
-      '<button type="button" class="action-top-btn archive" data-action="' +
-      archiveBtnAction +
-      '" title="' +
-      archiveBtnLabel +
-      '">' +
-      archiveBtnLabel +
-      "</button>";
-    var deleteBtnHtml =
-      '<button type="button" class="action-top-btn delete" data-action="delete" title="Delete">Delete</button>';
-    var topActionsHtml = '<div class="top-actions">' + archiveBtnHtml + deleteBtnHtml + "</div>";
+    var archiveBtnHtml = "";
+    if (lead.is_deleted !== true) {
+      var archiveBtnLabel = lead.is_archived ? "Unarchive" : "Archive";
+      var archiveBtnAction = lead.is_archived ? "unarchive" : "archive";
+      archiveBtnHtml =
+        '<button type="button" class="action-top-btn archive" data-action="' +
+        archiveBtnAction +
+        '" title="' +
+        archiveBtnLabel +
+        '">' +
+        archiveBtnLabel +
+        "</button>";
+    }
+
+    var deleteBtnHtml = "";
+    var topActionsHtml = "";
+    if (lead.is_deleted === true) {
+      deleteBtnHtml =
+        '<button type="button" class="action-top-btn archive" data-action="reactivate" title="Reactivate">Reactivate</button>';
+    } else {
+      deleteBtnHtml =
+        '<button type="button" class="action-top-btn delete" data-action="delete" title="Delete">Delete</button>';
+    }
+
+    topActionsHtml = '<div class="top-actions">' + archiveBtnHtml + deleteBtnHtml + "</div>";
     var recent = isRecentPost(lead.created_utc);
     card.innerHTML =
       '<div class="card-inner">' +
@@ -1130,6 +1142,8 @@
         ? "/api/dashboard/leads/archive"
         : action === "unarchive"
           ? "/api/dashboard/leads/unarchive"
+          : action === "reactivate"
+            ? "/api/dashboard/leads/reactivate"
           : "/api/dashboard/leads/delete";
     fetch(path, {
       method: "POST",
