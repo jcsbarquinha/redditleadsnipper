@@ -17,6 +17,23 @@
     alert(messages[error] || "Something went wrong. Please try again.");
   }
 
+  // If this user already has an active session (paid/unlocked), send them straight to the dashboard.
+  // This keeps the Stripe-based auth flow, but makes "returning to the landing page" feel like proper login.
+  fetch("/api/me", { credentials: "same-origin" })
+    .then(function (r) {
+      if (!r.ok) return null;
+      return r.json().catch(function () { return null; });
+    })
+    .then(function (me) {
+      if (!me) return;
+      if (window.location.pathname === "/" || window.location.pathname === "") {
+        window.location.href = "/dashboard";
+      }
+    })
+    .catch(function () {
+      // Ignore if unauthenticated.
+    });
+
   const INLINE_VALIDATION_MESSAGE = "Please enter a real product, service, product category, or business use case.";
   const PLACEHOLDERS = [
     "Enter your product's link",
