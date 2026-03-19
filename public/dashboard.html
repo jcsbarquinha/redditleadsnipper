@@ -175,15 +175,59 @@
       font-weight: 900;
       padding: 0.65rem 0.75rem;
       border-radius: 12px;
-      border: 1px solid rgba(255, 69, 0, 0.35);
-      background: rgba(255, 69, 0, 0.08);
-      color: #ff4500;
+      border: 1px solid var(--border);
+      background: #f3f4f6;
+      color: #0b0f17;
       cursor: pointer;
       transition: transform 0.08s ease, background 0.15s, border-color 0.15s;
     }
-    .primary-btn:hover { background: rgba(255, 69, 0, 0.12); }
+    .primary-btn:hover { background: #e5e7eb; border-color: #d1d5db; }
     .primary-btn:active { transform: translateY(1px); }
     .primary-btn:disabled { cursor: default; opacity: 0.6; }
+
+    .context-textarea {
+      min-height: 110px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    .alert-toggle-row { margin-bottom: 0.75rem; }
+    .alert-switch {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 700;
+      color: #0b0f17;
+      font-size: 0.9rem;
+    }
+
+    .alert-options {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .alert-pill {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.55rem 0.85rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+      font-weight: 900;
+      color: #0b0f17;
+      transition: background 0.15s, border-color 0.15s, transform 0.08s;
+    }
+    .alert-pill:disabled { cursor: default; opacity: 0.55; }
+    .alert-pill.active {
+      border-color: rgba(255, 69, 0, 0.35);
+      background: rgba(255, 69, 0, 0.08);
+    }
+    .alert-pill:hover:not(:disabled) { background: #f3f4f6; }
 
     .leads-scope-btn {
       width: 100%;
@@ -303,6 +347,19 @@
             <input id="searchQueryInput" type="text" class="search-query-input" aria-label="Search input" placeholder="Your search input" />
           </div>
           <div class="rail-control">
+            <button type="button" id="toggleContextBtn" class="reply-toggle add-context-btn">Add context</button>
+          </div>
+
+          <div id="contextEditor" class="hidden rail-control" style="margin-top: 0.25rem;">
+            <textarea
+              id="searchContextInput"
+              class="search-query-input context-textarea"
+              aria-label="Additional context input"
+              placeholder="Add any extra details (optional)..."
+            ></textarea>
+          </div>
+
+          <div class="rail-control">
             <button type="button" id="runSearchBtn" class="primary-btn" title="Run this search again">Run search again</button>
           </div>
         </div>
@@ -315,10 +372,10 @@
           </button>
 
           <div class="intent-pills" role="group" aria-label="Lead filters" style="margin-top: 0.75rem;">
-            <button type="button" class="intent-pill hot" data-intent="hot" aria-pressed="false">🔥 Hot (90+)</button>
-            <button type="button" class="intent-pill warm" data-intent="warm" aria-pressed="false">🟡 Warm (70-89)</button>
-            <button type="button" class="intent-pill recent" data-intent="recent" aria-pressed="false">🕒 Recent</button>
-            <button type="button" class="intent-pill archived" data-intent="archived" aria-pressed="false">🗂 Archived</button>
+            <button type="button" class="intent-pill hot" data-intent="hot" aria-pressed="false">🔥 Hot (<span id="hotLeadsCount">0</span>)</button>
+            <button type="button" class="intent-pill warm" data-intent="warm" aria-pressed="false">🟡 Warm (<span id="warmLeadsCount">0</span>)</button>
+            <button type="button" class="intent-pill recent" data-intent="recent" aria-pressed="false">🕒 Recent (<span id="recentLeadsCount">0</span>)</button>
+            <button type="button" class="intent-pill archived" data-intent="archived" aria-pressed="false">🗂 Archived (<span id="archivedLeadsCount">0</span>)</button>
           </div>
         </div>
 
@@ -339,6 +396,23 @@
                 <option value="7">Last 7 Days</option>
               </select>
             </div>
+          </div>
+        </div>
+
+        <div class="rail-section">
+          <h2 class="rail-section-title">Alerts</h2>
+          <div class="alert-toggle-row">
+            <label class="alert-switch">
+              <input type="checkbox" id="emailAlertsEnabled" />
+              <span>Email alerts</span>
+            </label>
+          </div>
+
+          <div class="alert-options" role="group" aria-label="Lead alert categories">
+            <button type="button" id="alertAllBtn" class="alert-pill" data-alert="all" aria-pressed="false">All leads (&gt;70)</button>
+            <button type="button" id="alertHotBtn" class="alert-pill" data-alert="hot" aria-pressed="false">Hot</button>
+            <button type="button" id="alertWarmBtn" class="alert-pill" data-alert="warm" aria-pressed="false">Warm</button>
+            <button type="button" id="alertRecentBtn" class="alert-pill" data-alert="recent" aria-pressed="false">Recent</button>
           </div>
         </div>
       </aside>
@@ -406,6 +480,7 @@
   var activeOnly = true;
   var activeLeadsCount = 0;
   var sortMode = "score"; // "score" | "newest"
+  var isContextEnabled = false;
 
   function syncActiveOnlyUI() {
     var btn = document.getElementById("activeOnlyBtn");
@@ -463,9 +538,25 @@
       .then(function (data) {
         leads = data.leads || [];
         // API returns `is_archived` as boolean.
-        activeLeadsCount = leads.filter(function (l) { return l.is_archived === false; }).length;
+        var nonArchived = leads.filter(function (l) { return l.is_archived === false; });
+        activeLeadsCount = nonArchived.length;
+
+        var hotCount = nonArchived.filter(function (l) { return (l.score != null ? Number(l.score) : 0) >= 90; }).length;
+        var warmCount = nonArchived.filter(function (l) { var s = l.score != null ? Number(l.score) : 0; return s > 70 && s < 90; }).length;
+        var recentCount = nonArchived.filter(function (l) { return isRecentPost(l.created_utc); }).length;
+        var archivedCount = leads.filter(function (l) { return l.is_archived === true; }).length;
+
         var countEl = document.getElementById("activeLeadsCount");
         if (countEl) countEl.textContent = String(activeLeadsCount);
+        var hotEl = document.getElementById("hotLeadsCount");
+        if (hotEl) hotEl.textContent = String(hotCount);
+        var warmEl = document.getElementById("warmLeadsCount");
+        if (warmEl) warmEl.textContent = String(warmCount);
+        var recentEl = document.getElementById("recentLeadsCount");
+        if (recentEl) recentEl.textContent = String(recentCount);
+        var archivedEl = document.getElementById("archivedLeadsCount");
+        if (archivedEl) archivedEl.textContent = String(archivedCount);
+
         syncActiveOnlyUI();
         renderLeads();
       });
@@ -626,33 +717,60 @@
       return;
     }
 
+    var context = "";
+    if (isContextEnabled) {
+      var ctx = document.getElementById("searchContextInput");
+      if (ctx) context = (ctx.value || "").trim();
+    }
+
     if (btn) btn.disabled = true;
     if (btn) btn.textContent = "Running...";
 
-    fetch("/api/search", {
+    // Show loading state in the right posts panel.
+    var list = document.getElementById("leadsList");
+    if (list) {
+      list.innerHTML = `
+        <div class="skeleton-cards" aria-hidden="true">
+          <div class="skeleton-card">
+            <div class="skeleton-line skeleton-line-short"></div>
+            <div class="skeleton-line skeleton-line-long"></div>
+            <div class="skeleton-line skeleton-line-med"></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-line skeleton-line-short"></div>
+            <div class="skeleton-line skeleton-line-long"></div>
+            <div class="skeleton-line skeleton-line-med"></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-line skeleton-line-short"></div>
+            <div class="skeleton-line skeleton-line-long"></div>
+            <div class="skeleton-line skeleton-line-med"></div>
+          </div>
+        </div>
+      `;
+    }
+    var empty = document.getElementById("emptyState");
+    if (empty) empty.classList.add("hidden");
+
+    fetch("/api/dashboard/search", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query })
+      body: JSON.stringify({ query: query, context: context })
     })
       .then(function (r) {
-        if (!r.ok) return r.json().then(function (body) { return Promise.reject(new Error(body.error || "Search failed")); });
+        if (!r.ok) {
+          return r.text().then(function (t) {
+            throw new Error(t || r.statusText || "Search failed");
+          });
+        }
         return r.json();
       })
       .then(function (data) {
-        return fetch("/api/create-checkout", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ runId: data.runId })
-        }).then(function (r) { return r.json(); });
-      })
-      .then(function (body) {
-        if (body.url) {
-          window.location.href = body.url;
-          return;
+        if (data && data.runId) {
+          unlockedRunId = data.runId;
         }
-        throw new Error(body.error || "Checkout creation failed.");
+        return fetchLeads();
       })
       .catch(function (err) {
         if (btn) {
@@ -726,6 +844,20 @@
     });
   }
 
+  // Search context toggle
+  var toggleContextBtn = document.getElementById("toggleContextBtn");
+  var contextEditor = document.getElementById("contextEditor");
+  if (toggleContextBtn && contextEditor) {
+    // Default: hidden
+    isContextEnabled = !contextEditor.classList.contains("hidden");
+
+    toggleContextBtn.addEventListener("click", function () {
+      isContextEnabled = !isContextEnabled;
+      contextEditor.classList.toggle("hidden", !isContextEnabled);
+      toggleContextBtn.textContent = isContextEnabled ? "Remove context" : "Add context";
+    });
+  }
+
   var runSearchEl = document.getElementById("runSearchBtn");
   if (runSearchEl) {
     runSearchEl.addEventListener("click", function () {
@@ -739,6 +871,62 @@
       setLeadFilter(el.getAttribute("data-intent") || "all");
     });
   });
+
+  // Alerts UI (email toggle + multi-select filters placeholder)
+  var emailAlertsEnabled = document.getElementById("emailAlertsEnabled");
+  var alertAllBtn = document.getElementById("alertAllBtn");
+  var alertHotBtn = document.getElementById("alertHotBtn");
+  var alertWarmBtn = document.getElementById("alertWarmBtn");
+  var alertRecentBtn = document.getElementById("alertRecentBtn");
+
+  function setAlertBtnActive(btn, on) {
+    if (!btn) return;
+    btn.classList.toggle("active", !!on);
+    btn.setAttribute("aria-pressed", String(!!on));
+  }
+
+  function isAlertBtnActive(btn) {
+    return btn ? btn.classList.contains("active") : false;
+  }
+
+  function syncAlertAllFromOthers() {
+    if (!alertAllBtn || !alertHotBtn || !alertWarmBtn || !alertRecentBtn) return;
+    var allOn = isAlertBtnActive(alertHotBtn) && isAlertBtnActive(alertWarmBtn) && isAlertBtnActive(alertRecentBtn);
+    setAlertBtnActive(alertAllBtn, allOn);
+  }
+
+  if (emailAlertsEnabled && alertAllBtn && alertHotBtn && alertWarmBtn && alertRecentBtn) {
+    function applyAlertDisabledState() {
+      var disabled = !emailAlertsEnabled.checked;
+      [alertAllBtn, alertHotBtn, alertWarmBtn, alertRecentBtn].forEach(function (b) {
+        b.disabled = disabled;
+        if (disabled) b.classList.remove("active");
+      });
+    }
+
+    applyAlertDisabledState();
+    emailAlertsEnabled.addEventListener("change", function () {
+      applyAlertDisabledState();
+    });
+
+    alertAllBtn.addEventListener("click", function () {
+      if (emailAlertsEnabled && !emailAlertsEnabled.checked) return;
+      var next = !isAlertBtnActive(alertAllBtn);
+      setAlertBtnActive(alertAllBtn, next);
+      setAlertBtnActive(alertHotBtn, next);
+      setAlertBtnActive(alertWarmBtn, next);
+      setAlertBtnActive(alertRecentBtn, next);
+    });
+
+    [alertHotBtn, alertWarmBtn, alertRecentBtn].forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (emailAlertsEnabled && !emailAlertsEnabled.checked) return;
+        var next = !isAlertBtnActive(btn);
+        setAlertBtnActive(btn, next);
+        syncAlertAllFromOthers();
+      });
+    });
+  }
 
   document.getElementById("logoutBtn").addEventListener("click", function () {
     fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {

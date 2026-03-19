@@ -306,6 +306,40 @@ app.get("/api/dashboard/runs", requireAuth, (req, res) => {
   res.json({ runs });
 });
 
+/**
+ * POST /api/dashboard/search
+ * Authenticated "run search again" flow.
+ * Body: { query: string, context?: string }
+ * Runs the full pipeline, attaches the run to the current user, and returns { runId }.
+ */
+app.post("/api/dashboard/search", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
+  const context = typeof req.body?.context === "string" ? req.body.context.trim() : "";
+
+  if (!query) {
+    res.status(400).json({ error: "Missing query." });
+    return;
+  }
+
+  (async () => {
+    try {
+      const result = await runPipeline({
+        userInput: query,
+        context: context ? context : undefined,
+        maxPagesPerKeyword: 1,
+      });
+      attachRunToUser(result.runId, user.id);
+      res.json({ runId: result.runId });
+    } catch (err) {
+      console.error("Dashboard search error:", err);
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Search failed",
+      });
+    }
+  })();
+});
+
 /** Archive a lead. Body: { post_id: string }. */
 app.post("/api/dashboard/leads/archive", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string } }).user;

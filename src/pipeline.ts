@@ -202,6 +202,8 @@ async function mapWithConcurrency<T, R>(
 
 export interface PipelineOptions {
   userInput: string;
+  /** Optional extra context to be included in the LLM prompt (does not replace the stored `userInput`). */
+  context?: string;
   maxPagesPerKeyword?: number;
   delayMs?: number;
   keywordCount?: number;
@@ -236,6 +238,7 @@ function dedupePosts(
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
   const {
     userInput,
+    context,
     maxPagesPerKeyword = DEFAULT_MAX_PAGES_PER_KEYWORD,
     delayMs = DEFAULT_DELAY_MS,
     keywordCount = DEFAULT_KEYWORD_COUNT,
@@ -243,9 +246,14 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   await validateUserInput(userInput);
 
+  const trimmedContext = typeof context === "string" ? context.trim() : "";
+  const llmUserInput = trimmedContext
+    ? `${userInput}\n\nAdditional context:\n${trimmedContext}`
+    : userInput;
+
   const runId = randomUUID();
   const { keywords: searchQueries, productSummary, whatProductDoes, whatProblemItSolves, targetUser } = await getKeywordsForInput(
-    userInput,
+    llmUserInput,
     keywordCount
   );
   const baseContext =
@@ -253,7 +261,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       ? `What the product does:\n${whatProductDoes}\n\nWhat problem it solves:\n${whatProblemItSolves}`
       : productSummary && productSummary.trim()
         ? productSummary.trim()
-        : userInput;
+        : llmUserInput;
 
   const intentContext = targetUser
     ? `${baseContext}\n\nTarget user:\n${targetUser}`
