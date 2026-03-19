@@ -286,7 +286,13 @@
     }
 
     resultsSection.classList.remove("hidden");
-    resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Keep the search bar visible (so users can refine the query) while still
+    // showing the freshly generated results below it.
+    if (searchForm) {
+      searchForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
 
