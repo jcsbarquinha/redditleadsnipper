@@ -227,6 +227,12 @@
       border-color: rgba(255, 69, 0, 0.35);
       background: rgba(255, 69, 0, 0.08);
     }
+    .alert-check {
+      display: none;
+      font-weight: 900;
+      color: #ff4500;
+    }
+    .alert-pill.active .alert-check { display: inline; }
     .alert-pill:hover:not(:disabled) { background: #f3f4f6; }
 
     .leads-scope-btn {
@@ -409,10 +415,22 @@
           </div>
 
           <div class="alert-options" role="group" aria-label="Lead alert categories">
-            <button type="button" id="alertAllBtn" class="alert-pill" data-alert="all" aria-pressed="false">All leads (&gt;70)</button>
-            <button type="button" id="alertHotBtn" class="alert-pill" data-alert="hot" aria-pressed="false">Hot</button>
-            <button type="button" id="alertWarmBtn" class="alert-pill" data-alert="warm" aria-pressed="false">Warm</button>
-            <button type="button" id="alertRecentBtn" class="alert-pill" data-alert="recent" aria-pressed="false">Recent</button>
+            <button type="button" id="alertAllBtn" class="alert-pill" data-alert="all" aria-pressed="false">
+              <span class="alert-check" aria-hidden="true">✓</span>
+              <span>All leads (&gt;70)</span>
+            </button>
+            <button type="button" id="alertHotBtn" class="alert-pill" data-alert="hot" aria-pressed="false">
+              <span class="alert-check" aria-hidden="true">✓</span>
+              <span>Hot</span>
+            </button>
+            <button type="button" id="alertWarmBtn" class="alert-pill" data-alert="warm" aria-pressed="false">
+              <span class="alert-check" aria-hidden="true">✓</span>
+              <span>Warm</span>
+            </button>
+            <button type="button" id="alertRecentBtn" class="alert-pill" data-alert="recent" aria-pressed="false">
+              <span class="alert-check" aria-hidden="true">✓</span>
+              <span>Recent</span>
+            </button>
           </div>
         </div>
       </aside>
