@@ -622,6 +622,29 @@
   var leads = [];
   var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
   var runSearchMetaEl = document.getElementById("runSearchMeta");
+  var contextEditor = document.getElementById("contextEditor");
+  var contextInputEl = document.getElementById("searchContextInput");
+  var toggleContextBtn = document.getElementById("toggleContextBtn");
+
+  function restoreRunInputs(currentRun) {
+    var input = document.getElementById("searchQueryInput");
+    if (input) input.value = currentRun && currentRun.user_input ? String(currentRun.user_input) : "";
+
+    var ctxRaw = currentRun && typeof currentRun.context === "string" ? currentRun.context : "";
+    var ctx = (ctxRaw || "").trim();
+
+    if (ctx) {
+      isContextEnabled = true;
+      if (contextEditor) contextEditor.classList.remove("hidden");
+      if (contextInputEl) contextInputEl.value = ctx;
+      if (toggleContextBtn) toggleContextBtn.textContent = "Remove context";
+    } else {
+      isContextEnabled = false;
+      if (contextEditor) contextEditor.classList.add("hidden");
+      if (contextInputEl) contextInputEl.value = "";
+      if (toggleContextBtn) toggleContextBtn.textContent = "Add context";
+    }
+  }
 
   function parseDbDateTime(s) {
     if (!s) return null;
@@ -954,6 +977,13 @@
       .then(function (data) {
         if (data && data.runId) {
           unlockedRunId = data.runId;
+          try {
+            var url = new URL(window.location.href);
+            url.searchParams.set("runId", data.runId);
+            window.history.replaceState({}, "", url.toString());
+          } catch (e) {
+            // Ignore URL update issues (should not break the search flow).
+          }
         }
         if (btn) {
           btn.disabled = false;
@@ -971,6 +1001,7 @@
             var currentRun = null;
             if (unlockedRunId) currentRun = runs.find(function (r) { return r.id === unlockedRunId; }) || null;
             if (!currentRun) currentRun = runs[0] || null;
+            restoreRunInputs(currentRun);
             if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
             return fetchLeads();
           });
@@ -1015,6 +1046,8 @@
 
       var input = document.getElementById("searchQueryInput");
       if (input) input.value = (currentRun && currentRun.user_input) ? String(currentRun.user_input) : "";
+
+      restoreRunInputs(currentRun);
 
       if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
 

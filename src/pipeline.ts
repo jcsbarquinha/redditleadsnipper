@@ -266,7 +266,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const intentContext = targetUser
     ? `${baseContext}\n\nTarget user:\n${targetUser}`
     : `${baseContext}\n\nTarget user:\n(not specified)`;
-  insertRun(runId, userInput, searchQueries, "running");
+  insertRun(runId, userInput, searchQueries, context, "running");
 
   try {
     const SORT_MODES: Array<"new" | "relevance" | "hot"> = ["new", "relevance", "hot"];

@@ -34,6 +34,7 @@ function runSchema(database: Database.Database): void {
     CREATE TABLE IF NOT EXISTS runs (
       id TEXT PRIMARY KEY,
       user_input TEXT NOT NULL,
+      context TEXT,
       keywords TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -153,6 +154,9 @@ function migrateUsersAndSessions(database: Database.Database): void {
   if (!runCols.includes("user_id")) {
     database.exec("ALTER TABLE runs ADD COLUMN user_id TEXT REFERENCES users(id)");
   }
+  if (!runCols.includes("context")) {
+    database.exec("ALTER TABLE runs ADD COLUMN context TEXT");
+  }
   database.exec(`CREATE INDEX IF NOT EXISTS idx_runs_user_id ON runs(user_id)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`);
@@ -171,14 +175,16 @@ export function insertRun(
   runId: string,
   userInput: string,
   keywords: string[],
+  context?: string,
   status: "pending" | "running" | "completed" | "failed" = "running"
 ): void {
   const database = getDb();
+  const ctx = typeof context === "string" ? context.trim() : "";
   database
     .prepare(
-      `INSERT INTO runs (id, user_input, keywords, status, updated_at) VALUES (?, ?, ?, ?, datetime('now'))`
+      `INSERT INTO runs (id, user_input, context, keywords, status, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))`
     )
-    .run(runId, userInput, JSON.stringify(keywords), status);
+    .run(runId, userInput, ctx || null, JSON.stringify(keywords), status);
 }
 
 export function updateRunStatus(
@@ -410,12 +416,15 @@ export function deleteSession(sessionId: string): void {
 }
 
 /** All runs for a user, most recent first. */
-export function getRunsForUser(userId: string, limit: number = 50): { id: string; user_input: string; created_at: string }[] {
+export function getRunsForUser(
+  userId: string,
+  limit: number = 50
+): { id: string; user_input: string; context: string | null; created_at: string }[] {
   const rows = getDb()
     .prepare(
-      "SELECT id, user_input, created_at FROM runs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
+      "SELECT id, user_input, context, created_at FROM runs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
     )
-    .all(userId, limit) as { id: string; user_input: string; created_at: string }[];
+    .all(userId, limit) as { id: string; user_input: string; context: string | null; created_at: string }[];
   return rows;
 }
 
