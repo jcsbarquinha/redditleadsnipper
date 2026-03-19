@@ -24,6 +24,8 @@
       border: 1px solid rgba(0, 0, 0, 0.10);
       border-radius: 16px;
       padding: 0.9rem;
+      max-height: calc(100vh - 190px);
+      overflow-y: auto;
     }
     .dashboard-content { min-width: 0; }
     .dashboard-title { font-size: 2.15rem; font-weight: 700; margin: 0 0 1rem; color: var(--text); line-height: 1.2; }
@@ -527,6 +529,28 @@
         </div>
 
         <div class="rail-section">
+          <h2 class="rail-section-title">Search in posts</h2>
+          <div class="rail-control">
+            <input
+              id="postKeywordSearchInput"
+              type="text"
+              class="search-query-input"
+              aria-label="Search within posts"
+              placeholder="Type keywords to filter the list"
+            />
+          </div>
+        </div>
+
+        <div class="rail-section">
+          <h2 class="rail-section-title">CSV export</h2>
+          <div class="rail-control">
+            <button type="button" id="exportCsvBtn" class="primary-btn" title="Export the currently shown posts as CSV">
+              Export CSV
+            </button>
+          </div>
+        </div>
+
+        <div class="rail-section">
           <h2 class="rail-section-title">Alerts</h2>
           <div class="alert-email-subtitle">Get email alerts for new leads</div>
 
@@ -707,6 +731,7 @@
   var sortMode = "score"; // "score" | "newest"
   var isContextEnabled = false;
   var showWhyForAll = false;
+  var postKeywordSearch = "";
 
   var whyToggleEl = document.getElementById("showWhyForAllToggle");
   if (whyToggleEl) showWhyForAll = !!whyToggleEl.checked;
@@ -809,11 +834,31 @@
       });
   }
 
-  function renderLeads() {
-    var list = document.getElementById("leadsList");
-    var empty = document.getElementById("emptyState");
-    list.innerHTML = "";
+  function tokenizePostKeywordSearch(q) {
+    var raw = (q || "").trim().toLowerCase();
+    if (!raw) return [];
+    return raw
+      .split(/[,\s]+/)
+      .map(function (t) { return t.trim(); })
+      .filter(Boolean);
+  }
 
+  function postMatchesKeywordSearch(lead, tokens) {
+    if (!tokens.length) return true;
+    var haystack = [
+      lead.title || "",
+      lead.selftext || "",
+      lead.explanation || "",
+      lead.subreddit || "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    return tokens.every(function (tok) {
+      return haystack.includes(tok);
+    });
+  }
+
+  function computeWorkingLeads() {
     var working = leads.slice();
 
     // Scope: hide archived when "Active Leads" is toggled.
@@ -844,6 +889,15 @@
       });
     }
 
+    // Keyword search inside the currently-fetched list.
+    var tokens = tokenizePostKeywordSearch(postKeywordSearch);
+    if (tokens.length) {
+      working = working.filter(function (l) {
+        return postMatchesKeywordSearch(l, tokens);
+      });
+    }
+
+    // Sorting
     if (sortMode === "newest") {
       working.sort(function (a, b) {
         var at = a.created_utc != null ? Number(a.created_utc) : 0;
@@ -861,6 +915,16 @@
       });
     }
 
+    return working;
+  }
+
+  function renderLeads() {
+    var list = document.getElementById("leadsList");
+    var empty = document.getElementById("emptyState");
+    list.innerHTML = "";
+
+    var working = computeWorkingLeads();
+
     if (working.length === 0) {
       empty.classList.remove("hidden");
       return;
@@ -869,6 +933,79 @@
     working.forEach(function (lead) {
       list.appendChild(buildCard(lead));
     });
+  }
+
+  function csvEscapeCell(value) {
+    if (value == null) return "";
+    var s = String(value);
+    // Escape quotes for CSV.
+    s = s.replace(/"/g, '""');
+    if (/[",\n\r]/.test(s)) {
+      s = '"' + s + '"';
+    }
+    return s;
+  }
+
+  function exportLeadsCsv() {
+    var working = computeWorkingLeads();
+    if (!working.length) {
+      alert("No posts to export with the current filters.");
+      return;
+    }
+
+    var headers = [
+      "post_id",
+      "subreddit",
+      "title",
+      "full_link",
+      "score",
+      "label",
+      "is_high_intent",
+      "created_utc",
+      "votes",
+      "num_comments",
+      "is_archived",
+      "explanation",
+      "suggested_reply",
+      "selftext",
+    ];
+
+    var lines = [headers.join(",")];
+    working.forEach(function (lead) {
+      var row = [
+        lead.post_id,
+        lead.subreddit,
+        lead.title,
+        lead.full_link,
+        lead.score,
+        lead.label,
+        lead.is_high_intent,
+        lead.created_utc,
+        lead.votes,
+        lead.num_comments,
+        lead.is_archived,
+        lead.explanation,
+        lead.suggested_reply,
+        lead.selftext,
+      ].map(csvEscapeCell);
+      lines.push(row.join(","));
+    });
+
+    var csv = lines.join("\n");
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var now = new Date();
+    var stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "leadsnipe-export-" + stamp + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 1200);
   }
 
   function buildCard(lead) {
@@ -1168,6 +1305,24 @@
       setLeadFilter(el.getAttribute("data-intent") || "all");
     });
   });
+
+  // Search within posts (client-side keyword filter applied alongside other filters)
+  var postKeywordSearchInput = document.getElementById("postKeywordSearchInput");
+  if (postKeywordSearchInput) {
+    postKeywordSearch = (postKeywordSearchInput.value || "").trim();
+    postKeywordSearchInput.addEventListener("input", function () {
+      postKeywordSearch = (this.value || "").trim();
+      renderLeads();
+    });
+  }
+
+  // CSV export (full selftext content) for the currently shown list.
+  var exportCsvBtn = document.getElementById("exportCsvBtn");
+  if (exportCsvBtn) {
+    exportCsvBtn.addEventListener("click", function () {
+      exportLeadsCsv();
+    });
+  }
 
   // Alerts UI: email toggle + alert type dropdown (multi-select)
   var emailAlertsEnabled = document.getElementById("emailAlertsEnabled");
