@@ -14,8 +14,8 @@
     .dashboard-page .header-actions .user-email { font-size: 0.9rem; color: var(--text-muted); }
     .dashboard-page .logout-btn { font-size: 0.95rem; font-weight: 600; color: var(--text); background: none; border: none; cursor: pointer; padding: 0.5rem 1rem; text-decoration: none; }
     .dashboard-page .logout-btn:hover { color: var(--reddit-orange); }
-    .dashboard-main { max-width: 1240px; margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
-    .dashboard-layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.65rem; align-items: start; }
+    .dashboard-main { max-width: 1280px; margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
+    .dashboard-layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; align-items: start; }
     .dashboard-rail {
       position: sticky;
       top: 110px; /* fixed site header (64px) + title spacing */
@@ -364,6 +364,13 @@
       box-shadow: 0 0 0 2px rgba(0,0,0,0.10) inset;
     }
     .leads-scope-btn.active .leads-count { color: #000; }
+
+    .intent-score-subtitle {
+      margin: 0 0 0.75rem;
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: #000;
+    }
     .leads-scope-btn:disabled { cursor: default; opacity: 0.6; }
 
     /* Card actions */
@@ -564,6 +571,18 @@
             </div>
           </div>
         </div>
+
+        <div class="rail-section">
+          <h2 class="rail-section-title">Intent Score</h2>
+          <div class="intent-score-subtitle">Context for post shown</div>
+
+          <div class="alert-toggle-row">
+            <label class="email-toggle" aria-label="Show Why this post by default">
+              <input type="checkbox" id="showWhyForAllToggle" />
+              <span class="email-toggle-slider" aria-hidden="true"></span>
+            </label>
+          </div>
+        </div>
       </aside>
 
       <section class="dashboard-content">
@@ -669,7 +688,7 @@
 
   function setRunSearchMetaRunning() {
     if (!runSearchMetaEl) return;
-    runSearchMetaEl.innerHTML = '<i>(take around 2 min to run)</i>';
+    runSearchMetaEl.innerHTML = '<i>(takes around 2 min to run)</i>';
     runSearchMetaEl.classList.remove("hidden");
   }
 
@@ -687,6 +706,28 @@
   var activeLeadsCount = 0;
   var sortMode = "score"; // "score" | "newest"
   var isContextEnabled = false;
+  var showWhyForAll = false;
+
+  var whyToggleEl = document.getElementById("showWhyForAllToggle");
+  if (whyToggleEl) showWhyForAll = !!whyToggleEl.checked;
+
+  function applyWhyVisibilityToAllCards() {
+    var list = document.getElementById("leadsList");
+    if (!list) return;
+    var cards = list.querySelectorAll(".lead-card");
+    cards.forEach(function (card) {
+      var toggle = card.querySelector(".reply-toggle");
+      var replyContent = card.querySelector(".reply-content");
+      if (!toggle || !replyContent) return;
+      if (showWhyForAll) {
+        replyContent.classList.remove("hidden");
+        toggle.setAttribute("aria-expanded", "true");
+      } else {
+        replyContent.classList.add("hidden");
+        toggle.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
 
   function syncActiveOnlyUI() {
     var btn = document.getElementById("activeOnlyBtn");
@@ -866,6 +907,14 @@
     var toggle = card.querySelector(".reply-toggle");
     var replyContent = card.querySelector(".reply-content");
     if (toggle && replyContent) {
+      // Global default: show/hide "Why this post" content for all cards.
+      if (showWhyForAll) {
+        replyContent.classList.remove("hidden");
+        toggle.setAttribute("aria-expanded", "true");
+      } else {
+        replyContent.classList.add("hidden");
+        toggle.setAttribute("aria-expanded", "false");
+      }
       toggle.addEventListener("click", function () {
         replyContent.classList.toggle("hidden");
         toggle.setAttribute("aria-expanded", replyContent.classList.contains("hidden") ? "false" : "true");
@@ -1095,6 +1144,14 @@
       isContextEnabled = !isContextEnabled;
       contextEditor.classList.toggle("hidden", !isContextEnabled);
       toggleContextBtn.textContent = isContextEnabled ? "Remove context" : "Add context";
+    });
+  }
+
+  // Intent Score toggle: show/hide "Why this post" by default for all cards.
+  if (whyToggleEl) {
+    whyToggleEl.addEventListener("change", function () {
+      showWhyForAll = !!this.checked;
+      applyWhyVisibilityToAllCards();
     });
   }
 
