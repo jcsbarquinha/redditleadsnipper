@@ -50,12 +50,19 @@ const publicDir = join(__dirname, "..", "public");
 const app = express();
 app.use(cookieParser());
 
-/** Render sets PORT (often 10000). If unset (local dev), use 3001. Never use NaN/0 — that breaks Render's port scan. */
+/**
+ * Render injects PORT (commonly 10000). Health checks probe that port — listening on 3001 while Render probes 10000 → deploy timeout.
+ * - Production: default 10000 if PORT missing/invalid (never fall back to 3001 here).
+ * - Local dev: 3001 when PORT unset.
+ * Tip: In Render Dashboard, do not set PORT to empty; omit it so the platform injects the real value.
+ */
 function getListenPort(): number {
   const raw = process.env.PORT;
-  if (raw === undefined || String(raw).trim() === "") return 3001;
+  const isProd = process.env.NODE_ENV === "production";
+  const fallback = isProd ? 10000 : 3001;
+  if (raw === undefined || String(raw).trim() === "") return fallback;
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3001;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 const PORT = getListenPort();
 const SESSION_COOKIE_NAME = getSessionCookieName();

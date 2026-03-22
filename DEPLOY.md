@@ -67,6 +67,11 @@ Set these in the host’s dashboard (not committed to git):
 
 Copy values from your local `.env`; **never** commit `.env`.
 
+### Render: avoid “port scan timeout” / failed deploys
+
+- **Do not** add a `PORT` variable in Render’s Environment unless you know you need it. Leave it unset so Render injects the correct port (often **`10000`**).
+- If `PORT` is missing or wrong, the app must still listen on the **same** port Render probes — otherwise deploy fails with **Timed out** / **no open ports detected**.
+
 ---
 
 ## 5. Stripe (production)
