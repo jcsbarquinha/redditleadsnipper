@@ -17,11 +17,12 @@ import type { RedditPost } from "./types.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 const DEFAULT_DELAY_MS = 500;
-const MAX_POST_AGE_DAYS = 30;
+/** Align with Reddit `t=week` (~7 days). */
+const MAX_POST_AGE_DAYS = 7;
 const MIN_CONTENT_LENGTH = 20;
 const SEARCH_KEYWORD_CONCURRENCY = 3;
 const INTENT_CONCURRENCY = 10;
-const INTENT_BATCH_SIZE = 1;
+const INTENT_BATCH_SIZE = 2;
 const MAX_PAGES_PER_QUERY = 2;
 
 
@@ -216,6 +217,20 @@ export interface PipelineResult {
   totalPostIntents: number;
 }
 
+/** Extra safety: one row per reddit post id before DB + LLM (avoids duplicate LLM calls). */
+function dedupeCandidatePostsById(candidates: CandidatePost[]): CandidatePost[] {
+  const seen = new Set<string>();
+  const out: CandidatePost[] = [];
+  for (const c of candidates) {
+    const id = (c.post.id ?? "").trim();
+    if (!id) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(c);
+  }
+  return out;
+}
+
 function dedupePosts(
   keywordResults: { keyword: string; posts: RedditPost[] }[]
 ): Map<string, { post: RedditPost; matchedKeywords: string[] }> {
@@ -252,10 +267,13 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     : userInput;
 
   const runId = randomUUID();
+  const pipelineT0 = performance.now();
+
   const { keywords: searchQueries, productSummary, whatProductDoes, whatProblemItSolves, targetUser } = await getKeywordsForInput(
     llmUserInput,
     keywordCount
   );
+  const keywordsMs = Math.round(performance.now() - pipelineT0);
   const baseContext =
     whatProductDoes && whatProblemItSolves
       ? `What the product does:\n${whatProductDoes}\n\nWhat problem it solves:\n${whatProblemItSolves}`
@@ -274,6 +292,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       SORT_MODES.map((sort) => ({ query, sort }))
     );
 
+    const redditT0 = performance.now();
     const keywordResults = await mapWithConcurrency(
       searchTasks,
       SEARCH_KEYWORD_CONCURRENCY,
@@ -284,24 +303,29 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
           delayMs,
           exactPhrase: false,
           sort,
+          timeFilter: "week",
         }),
       })
     );
+    const redditMs = Math.round(performance.now() - redditT0);
 
     const uniquePosts = dedupePosts(keywordResults);
-    let recentCandidates: CandidatePost[] = [...uniquePosts.values()]
-      .filter(({ post }) => isPostWithinMaxAge(post))
-      .filter(({ post }) => !isLikelySelfPromotionalPost(post, userInput))
-      .map(({ post, matchedKeywords }) => ({
-        post: { ...post, comments: [] },
-        matchedKeywords,
-      }));
+    let recentCandidates: CandidatePost[] = dedupeCandidatePostsById(
+      [...uniquePosts.values()]
+        .filter(({ post }) => isPostWithinMaxAge(post))
+        .filter(({ post }) => !isLikelySelfPromotionalPost(post, userInput))
+        .map(({ post, matchedKeywords }) => ({
+          post: { ...post, comments: [] },
+          matchedKeywords,
+        }))
+    );
 
     for (const candidate of recentCandidates) {
       insertPost(runId, candidate.post, candidate.matchedKeywords);
     }
 
-    const scorableCandidates = recentCandidates.filter((c) => hasEnoughContentForIntent(c.post));
+    let scorableCandidates = recentCandidates.filter((c) => hasEnoughContentForIntent(c.post));
+    scorableCandidates = dedupeCandidatePostsById(scorableCandidates);
     const thinCandidates = recentCandidates.filter((c) => !hasEnoughContentForIntent(c.post));
 
     for (const candidate of thinCandidates) {
@@ -317,6 +341,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
     const rankedCandidates: RankedCandidate[] = [];
 
+    const intentT0 = performance.now();
     await mapWithConcurrency(batches, INTENT_CONCURRENCY, async (batch) => {
       const posts = batch.map((c) => ({
         id: c.post.id ?? "",
@@ -381,6 +406,24 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
         }
       }
     });
+    const intentMs = Math.round(performance.now() - intentT0);
+    const totalMs = Math.round(performance.now() - pipelineT0);
+
+    console.log(
+      JSON.stringify({
+        event: "pipeline_timings",
+        runId,
+        keywordsMs,
+        redditMs,
+        intentMs,
+        totalMs,
+        searchTaskCount: searchTasks.length,
+        uniqueAfterDedupe: uniquePosts.size,
+        postsAfterFilters: recentCandidates.length,
+        scorableForLlm: scorableCandidates.length,
+        intentBatches: batches.length,
+      })
+    );
 
     updateRunStatus(runId, "completed");
     return {

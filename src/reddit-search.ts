@@ -100,12 +100,17 @@ function extractPost(child: ListingChild): RedditPost | null {
   };
 }
 
+/** Reddit search time filter (`t` param). `week` ≈ last 7 days. */
+export type RedditTimeFilter = "hour" | "day" | "week" | "month" | "year" | "all";
+
 export interface SearchOptions {
   maxPages?: number;
   limit?: number;
   delayMs?: number;
   exactPhrase?: boolean;
   sort?: "relevance" | "new" | "hot";
+  /** When set, restricts results by recency (e.g. `week` for last ~7 days). */
+  timeFilter?: RedditTimeFilter;
 }
 
 /**
@@ -122,6 +127,7 @@ export async function search(
     delayMs = DEFAULT_DELAY_MS,
     exactPhrase = false,
     sort = "new",
+    timeFilter,
   } = options;
 
   let q = query.trim();
@@ -136,6 +142,9 @@ export async function search(
   while (page < maxPages) {
     // Fetch both link and self posts so we don't miss relevant "seeking help" discussions.
     let url = `${BASE_URL}/search.json?q=${encoded}&limit=${limit}&sort=${sort}`;
+    if (timeFilter && timeFilter !== "all") {
+      url += `&t=${timeFilter}`;
+    }
     if (after) url += `&after=${after}`;
     await delay(delayMs);
     const data = await request<RedditListing>(url, delayMs);
