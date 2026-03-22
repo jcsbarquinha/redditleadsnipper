@@ -3,6 +3,7 @@
  * POST /api/search → pipeline, returns leads. CTA "Unlock" → Stripe Checkout → welcome → dashboard.
  */
 
+import "./boot.js";
 import {
   loadConfig,
   getBaseUrl,

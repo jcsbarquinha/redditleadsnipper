@@ -14,10 +14,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm rebuild better-sqlite3
 COPY --from=build /app/dist ./dist
 COPY public ./public
-RUN mkdir -p /data && chown -R node:node /data
+RUN mkdir -p /data
 ENV DATABASE_URL=/data/reddit-leads.db
-# Default matches Render’s probe if runtime doesn’t override — was missing and app fell back to 3001 → port scan timeout
+# Render injects PORT at runtime; image default helps local `docker run` without -e PORT
 ENV PORT=10000
 EXPOSE 10000
-USER node
+# Run as root so a Render Disk mounted at /data is writable (volume often root-owned; node user could block SQLite)
 CMD ["node", "dist/server.js"]
