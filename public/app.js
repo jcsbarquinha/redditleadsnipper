@@ -1,16 +1,120 @@
 (function () {
+  const PRICING_BILLING_KEY = "leadsnipePricingBilling";
+  const PENDING_RUN_ID_KEY = "leadsnipePendingRunId";
+  const PENDING_QUERY_KEY = "leadsnipePendingQuery";
+
+  function getPricingBillingChoice() {
+    try {
+      return localStorage.getItem(PRICING_BILLING_KEY) === "yearly" ? "yearly" : "monthly";
+    } catch (e) {
+      return "monthly";
+    }
+  }
+
+  function scrollToPricingSection() {
+    var el = document.getElementById("pricing");
+    if (!el) return;
+    var headerOffset = 86;
+    var rect = el.getBoundingClientRect();
+    var top = rect.top + window.pageYOffset - headerOffset;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    el.classList.add("pricing-section-highlight");
+    setTimeout(function () {
+      try {
+        el.classList.remove("pricing-section-highlight");
+      } catch (e2) {}
+    }, 2200);
+  }
+
+  function persistPendingSearch(runId, query) {
+    try {
+      if (runId) sessionStorage.setItem(PENDING_RUN_ID_KEY, runId);
+      if (query != null) sessionStorage.setItem(PENDING_QUERY_KEY, String(query));
+    } catch (e) {}
+  }
+
+  /** Basic UUID shape — ignore garbage left in sessionStorage */
+  function isLikelyRunId(s) {
+    return typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim());
+  }
+
+  function getPendingRunId() {
+    try {
+      var raw = sessionStorage.getItem(PENDING_RUN_ID_KEY) || "";
+      if (!raw) return "";
+      if (!isLikelyRunId(raw)) {
+        try {
+          sessionStorage.removeItem(PENDING_RUN_ID_KEY);
+        } catch (e2) {}
+        return "";
+      }
+      return raw.trim();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function startCheckoutFromPricing(btn) {
+    var runId = getPendingRunId();
+    var billing = getPricingBillingChoice();
+    var payload = { billing: billing };
+    if (runId) payload.runId = runId;
+    var prev = "";
+    if (btn) {
+      btn.disabled = true;
+      prev = btn.textContent;
+      btn.textContent = "Redirecting...";
+    }
+    fetch("/api/create-checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "same-origin",
+    })
+      .then(function (r) {
+        return r.json().then(function (body) {
+          return { ok: r.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        var body = result.body || {};
+        if (body.url) {
+          window.location.href = body.url;
+          return;
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prev;
+        }
+        var err = body.error || "Something went wrong.";
+        if (!result.ok && /missing runid/i.test(String(err))) {
+          err =
+            "The server is running an old version. Stop and restart the API (e.g. npm run api), then try again.";
+        }
+        alert(err);
+      })
+      .catch(function () {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prev;
+        }
+        alert("Network error. Try again.");
+      });
+  }
+
   const params = new URLSearchParams(window.location.search);
   const canceled = params.get("canceled");
   const error = params.get("error");
   if (canceled === "1") {
-    window.history.replaceState({}, document.title, window.location.pathname);
-    alert("Payment was canceled. Run a new search and click Unlock when you're ready.");
+    window.history.replaceState({}, document.title, window.location.pathname + "#pricing");
+    alert("Payment was canceled. Choose Monthly or Yearly below, then try again.");
+    setTimeout(scrollToPricingSection, 200);
   } else if (error) {
     window.history.replaceState({}, document.title, window.location.pathname);
     const messages = {
-      missing_session: "Checkout session was missing. Please try again from a new search.",
+      missing_session: "Checkout session was missing. Please try again from the pricing section.",
       payments_not_configured: "Payments are not configured on the server.",
-      invalid_session: "Invalid or expired checkout session. Please run a new search and Unlock again.",
+      invalid_session: "Invalid or expired checkout session. Please try again from the pricing section.",
       payment_not_completed: "Payment was not completed. Please try again.",
       no_email: "We couldn't get your email from the payment. Please contact support.",
     };
@@ -55,16 +159,18 @@
   ];
 
   const STEPS = [
-    { id: 1, label: "Deploying search agents" },
-    { id: 2, label: "Finding discussions" },
-    { id: 3, label: "Trashing spam & old threads" },
-    { id: 4, label: "Model scoring buying intent" },
+    { id: 1, label: "Mapping your search" },
+    { id: 2, label: "Collecting posts" },
+    { id: 3, label: "Quality filter" },
+    { id: 4, label: "Intent scoring" },
   ];
 
   let placeholderIndex = 0;
   let stepInterval = null;
-  let counterInterval = null;
-  let scanCount = 0;
+  let activeStepIndex = 0;
+  let threadsAnalyzed = null;
+  let almostThereTimer = null;
+  let intentShowingAlmost = false;
 
   const hero = document.getElementById("hero");
   const searchForm = document.getElementById("searchForm");
@@ -81,7 +187,8 @@
   const resultsList = document.getElementById("resultsList");
   const errorSection = document.getElementById("errorSection");
   const errorMessage = document.getElementById("errorMessage");
-  const scanningCounter = document.getElementById("scanningCounter");
+  const loadingSubline = document.getElementById("loadingSubline");
+  const loadingTimeHint = document.getElementById("loadingTimeHint");
   const skeletonCards = document.getElementById("skeletonCards");
   const teaserSection = document.getElementById("teaserSection");
 
@@ -137,7 +244,50 @@
     return new Date(createdUtc * 1000).toLocaleDateString();
   }
 
+  function clearAlmostThereTimer() {
+    if (almostThereTimer) {
+      clearTimeout(almostThereTimer);
+      almostThereTimer = null;
+    }
+  }
+
+  function scheduleAlmostThere() {
+    clearAlmostThereTimer();
+    intentShowingAlmost = false;
+    almostThereTimer = setTimeout(() => {
+      intentShowingAlmost = true;
+      if (activeStepIndex === 3) renderLoadingSubline();
+    }, 40000);
+  }
+
+  function renderLoadingSubline() {
+    if (!loadingSubline) return;
+    if (activeStepIndex >= 4) return;
+    const i = activeStepIndex;
+    let text = "";
+    if (i === 0) {
+      text = "Turning your product into queries and target discussions…";
+    } else if (i === 1) {
+      if (threadsAnalyzed != null) {
+        text = `Gathering ${threadsAnalyzed.toLocaleString()} threads from subreddits that fit your offer…`;
+      } else {
+        text = "Gathering threads from subreddits that fit your offer…";
+      }
+    } else if (i === 2) {
+      text = "Dropping spam, duplicates, and low-signal threads…";
+    } else if (i === 3) {
+      text = intentShowingAlmost ? "Almost there..." : "Ranking who's most likely to buy…";
+    }
+    loadingSubline.classList.remove("loading-subline--done");
+    loadingSubline.innerHTML =
+      '<span class="loading-subline-wrap"><span class="loading-subline-text"></span></span>';
+    const inner = loadingSubline.querySelector(".loading-subline-text");
+    if (inner) inner.textContent = text;
+  }
+
   function setStep(activeIndex) {
+    const prev = activeStepIndex;
+    activeStepIndex = activeIndex;
     const stepEls = loadingSteps.querySelectorAll(".step");
     stepEls.forEach((el, i) => {
       el.classList.remove("active", "done");
@@ -145,24 +295,15 @@
       else if (i === activeIndex) el.classList.add("active");
     });
     loadingBarFill.style.width = ((activeIndex + 1) / STEPS.length) * 100 + "%";
-  }
-
-  function startScanCounter() {
-    scanCount = 0;
-    if (scanningCounter) scanningCounter.textContent = "Scanning 0 threads...";
-    counterInterval = setInterval(() => {
-      const bump = Math.floor(Math.random() * 14) + 3;
-      scanCount += bump;
-      if (scanningCounter) scanningCounter.textContent = `Scanning ${scanCount.toLocaleString()} threads...`;
-    }, 80 + Math.random() * 60);
-  }
-
-  function stopScanCounter(finalCount) {
-    clearInterval(counterInterval);
-    if (finalCount != null && finalCount > 0) {
-      scanCount = finalCount;
+    if (activeIndex === 3 && prev !== 3) {
+      intentShowingAlmost = false;
+      scheduleAlmostThere();
     }
-    if (scanningCounter) scanningCounter.textContent = `Scanned ${scanCount.toLocaleString()} threads`;
+    if (activeIndex !== 3) {
+      clearAlmostThereTimer();
+      intentShowingAlmost = false;
+    }
+    renderLoadingSubline();
   }
 
   function showLoading() {
@@ -171,9 +312,14 @@
     errorSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
     loadingSection.classList.remove("hidden");
+    if (loadingTimeHint) loadingTimeHint.classList.remove("hidden");
     if (skeletonCards) skeletonCards.classList.remove("hidden");
+    threadsAnalyzed = null;
+    clearAlmostThereTimer();
+    intentShowingAlmost = false;
+    if (stepInterval) clearInterval(stepInterval);
+    stepInterval = null;
     setStep(0);
-    startScanCounter();
     let step = 0;
     stepInterval = setInterval(() => {
       step = Math.min(step + 1, STEPS.length - 1);
@@ -182,17 +328,25 @@
     }, 5000);
   }
 
-  function completeLoading() {
+  function completeLoading(totalPosts) {
     clearInterval(stepInterval);
+    stepInterval = null;
+    clearAlmostThereTimer();
     setStep(STEPS.length);
     if (skeletonCards) skeletonCards.classList.add("hidden");
-    clearInterval(counterInterval);
-    if (scanningCounter) scanningCounter.innerHTML = `${scanCount.toLocaleString()} threads scanned &#x2705;`;
+    const n = totalPosts != null ? totalPosts : threadsAnalyzed;
+    const count = n != null ? n : 0;
+    if (loadingSubline) {
+      loadingSubline.classList.add("loading-subline--done");
+      loadingSubline.innerHTML = `${count.toLocaleString()} threads scanned &#x2705;`;
+    }
+    if (loadingTimeHint) loadingTimeHint.classList.add("hidden");
   }
 
   function showError(msg) {
     clearInterval(stepInterval);
-    stopScanCounter();
+    stepInterval = null;
+    clearAlmostThereTimer();
     loadingSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
     errorSection.classList.add("hidden");
@@ -266,7 +420,13 @@
   }
 
   function showResults(data) {
-    completeLoading();
+    if (data && data.runId) {
+      persistPendingSearch(data.runId, data.query != null ? data.query : "");
+    }
+
+    threadsAnalyzed = typeof data.totalPosts === "number" ? data.totalPosts : null;
+    renderLoadingSubline();
+    completeLoading(data.totalPosts);
     errorSection.classList.add("hidden");
 
     if (data.timings && typeof console !== "undefined") {
@@ -277,7 +437,8 @@
     const highIntentCount = highIntentLeads.length;
     const hotLeads = data.leads.filter(isHotLead);
     const hotCount = hotLeads.length;
-    const remainingCount = Math.max(0, highIntentCount - 1);
+    /** Match headline: "other" Hot leads only (not all high-intent / warm). */
+    const remainingHotCount = Math.max(0, hotCount - 1);
 
     resultsHeader.innerHTML =
       hotCount > 0
@@ -290,41 +451,20 @@
       resultsList.appendChild(buildLeadCard(teaserLead, false));
     }
 
-    if (highIntentCount > 1) {
+    if (hotCount > 1) {
       const cta = document.createElement("div");
       cta.className = "paywall-cta";
       cta.innerHTML = `
-        <p class="paywall-cta-text">Subscribe to <strong style="color:#ff4500;font-weight:700;">unlock the other ${remainingCount} lead${remainingCount !== 1 ? "s" : ""}</strong> and activate <strong style="color:#ff4500;font-weight:700;">24/7 automated alerts</strong>.</p>
-        <button type="button" class="paywall-cta-btn" id="unlockLeadsBtn">Unlock all leads</button>
+        <p class="paywall-cta-text">Subscribe to <strong style="color:#ff4500;font-weight:700;">unlock the other ${remainingHotCount} Hot lead${remainingHotCount !== 1 ? "s" : ""}</strong> and activate <strong style="color:#ff4500;font-weight:700;">24/7 automated alerts</strong>.</p>
+        <button type="button" class="paywall-cta-btn-large" id="unlockLeadsBtn">Unlock leads</button>
+        <p class="paywall-cta-microcopy">Cancel anytime. No long-term commitment.</p>
       `;
       resultsList.appendChild(cta);
 
       const unlockBtn = document.getElementById("unlockLeadsBtn");
       if (unlockBtn) {
         unlockBtn.addEventListener("click", function () {
-          unlockBtn.disabled = true;
-          unlockBtn.textContent = "Redirecting...";
-          fetch("/api/create-checkout", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ runId: data.runId }),
-            credentials: "same-origin",
-          })
-            .then(function (r) { return r.json(); })
-            .then(function (body) {
-              if (body.url) {
-                window.location.href = body.url;
-                return;
-              }
-              unlockBtn.disabled = false;
-              unlockBtn.textContent = "Unlock all leads";
-              alert(body.error || "Something went wrong.");
-            })
-            .catch(function () {
-              unlockBtn.disabled = false;
-              unlockBtn.textContent = "Unlock all leads";
-              alert("Network error. Try again.");
-            });
+          scrollToPricingSection();
         });
       }
     }
@@ -417,4 +557,54 @@
   }
   updateRollerVisibility();
   setInterval(rotatePlaceholder, 3000);
+
+  (function initPricingToggle() {
+    const monthlyBtn = document.getElementById("pricingToggleMonthly");
+    const yearlyBtn = document.getElementById("pricingToggleYearly");
+    const monthlyPanel = document.getElementById("pricingPanelMonthly");
+    const yearlyPanel = document.getElementById("pricingPanelYearly");
+    if (!monthlyBtn || !yearlyBtn || !monthlyPanel || !yearlyPanel) return;
+
+    const base =
+      "pricing-billing-btn px-8 py-3.5 rounded-xl text-base font-semibold transition-all min-h-[3.25rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
+    const active = base + " bg-white text-gray-900 shadow-sm";
+    const inactive = base + " text-gray-600 hover:text-gray-900";
+
+    function setMode(mode) {
+      const isMonth = mode === "monthly";
+      monthlyBtn.className = (isMonth ? active : inactive) + " min-w-[8.5rem]";
+      yearlyBtn.className = (!isMonth ? active : inactive) + " min-w-[13.5rem]";
+      monthlyBtn.setAttribute("aria-pressed", String(isMonth));
+      yearlyBtn.setAttribute("aria-pressed", String(!isMonth));
+      monthlyPanel.classList.toggle("hidden", !isMonth);
+      yearlyPanel.classList.toggle("hidden", isMonth);
+      try {
+        localStorage.setItem(PRICING_BILLING_KEY, mode);
+      } catch (e) {}
+    }
+
+    var saved = null;
+    try {
+      saved = localStorage.getItem(PRICING_BILLING_KEY);
+    } catch (e) {}
+    setMode(saved === "yearly" ? "yearly" : "monthly");
+    monthlyBtn.addEventListener("click", function () {
+      setMode("monthly");
+    });
+    yearlyBtn.addEventListener("click", function () {
+      setMode("yearly");
+    });
+  })();
+
+  (function initPricingCheckoutButton() {
+    var btn = document.getElementById("pricingCheckoutBtn");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      startCheckoutFromPricing(btn);
+    });
+  })();
+
+  if (window.location.hash === "#pricing" && canceled !== "1") {
+    setTimeout(scrollToPricingSection, 100);
+  }
 })();

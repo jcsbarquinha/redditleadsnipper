@@ -139,6 +139,7 @@ function migrateUsersAndSessions(database: Database.Database): void {
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT,
       stripe_customer_id TEXT,
+      entitled_until TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -149,6 +150,16 @@ function migrateUsersAndSessions(database: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
+
+    CREATE TABLE IF NOT EXISTS magic_links (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_magic_links_expires_at ON magic_links(expires_at);
   `);
   const runCols = (database.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((r) => r.name);
   if (!runCols.includes("user_id")) {
@@ -157,6 +168,17 @@ function migrateUsersAndSessions(database: Database.Database): void {
   if (!runCols.includes("context")) {
     database.exec("ALTER TABLE runs ADD COLUMN context TEXT");
   }
+
+  const userCols = (database.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((r) => r.name);
+  if (!userCols.includes("entitled_until")) {
+    database.exec("ALTER TABLE users ADD COLUMN entitled_until TEXT");
+  }
+
+  // Backfill: for existing Stripe customers, give them a short entitlement window.
+  // This prevents older paid users from suddenly being locked out.
+  database.exec(
+    "UPDATE users SET entitled_until = datetime('now','+30 days') WHERE entitled_until IS NULL AND stripe_customer_id IS NOT NULL"
+  );
   database.exec(`CREATE INDEX IF NOT EXISTS idx_runs_user_id ON runs(user_id)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`);
@@ -365,6 +387,7 @@ export interface UserRow {
   email: string;
   password_hash: string | null;
   stripe_customer_id: string | null;
+  entitled_until: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -377,9 +400,21 @@ export function findUserByEmail(email: string): UserRow | undefined {
 export function createUser(id: string, email: string, stripeCustomerId?: string | null): void {
   getDb()
     .prepare(
-      "INSERT INTO users (id, email, stripe_customer_id, updated_at) VALUES (?, ?, ?, datetime('now'))"
+      "INSERT INTO users (id, email, stripe_customer_id, entitled_until, updated_at) VALUES (?, ?, ?, null, datetime('now'))"
     )
     .run(id, email.trim().toLowerCase(), stripeCustomerId ?? null);
+}
+
+export function setStripeCustomerId(userId: string, stripeCustomerId: string | null): void {
+  if (!stripeCustomerId) return;
+  getDb().prepare("UPDATE users SET stripe_customer_id = ? WHERE id = ?").run(stripeCustomerId, userId);
+}
+
+export function setEntitledUntil(userId: string, isoDatetime: string | null = null): void {
+  const entitled = isoDatetime ?? null;
+  getDb()
+    .prepare(`UPDATE users SET entitled_until = ? WHERE id = ?`)
+    .run(entitled, userId);
 }
 
 export function attachRunToUser(runId: string, userId: string): void {
@@ -404,18 +439,43 @@ export function createSession(userId: string): { id: string; expiresAt: string }
   return { id, expiresAt };
 }
 
-export function getSession(sessionId: string): { user_id: string; email: string } | null {
+export function getSession(sessionId: string): { user_id: string; email: string; entitled_until: string | null } | null {
   const row = getDb()
     .prepare(
-      `SELECT s.user_id, u.email FROM sessions s JOIN users u ON s.user_id = u.id
-       WHERE s.id = ? AND s.expires_at > datetime('now')`
+      `SELECT s.user_id, u.email, u.entitled_until FROM sessions s JOIN users u ON s.user_id = u.id
+       WHERE s.id = ? AND s.expires_at > datetime('now')
+         AND u.entitled_until IS NOT NULL
+         AND u.entitled_until > datetime('now')`
     )
-    .get(sessionId) as { user_id: string; email: string } | undefined;
+    .get(sessionId) as { user_id: string; email: string; entitled_until: string | null } | undefined;
   return row ?? null;
 }
 
 export function deleteSession(sessionId: string): void {
   getDb().prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+}
+
+export function createMagicLink(
+  token: string,
+  userId: string,
+  expiresAtIso: string
+): void {
+  getDb()
+    .prepare("INSERT INTO magic_links (token, user_id, expires_at, used_at) VALUES (?, ?, ?, null)")
+    .run(token, userId, expiresAtIso);
+}
+
+export function consumeMagicLink(token: string): string | null {
+  const row = getDb()
+    .prepare(
+      "SELECT user_id FROM magic_links WHERE token = ? AND used_at IS NULL AND expires_at > datetime('now')"
+    )
+    .get(token) as { user_id: string } | undefined;
+
+  if (!row) return null;
+
+  getDb().prepare("UPDATE magic_links SET used_at = datetime('now') WHERE token = ?").run(token);
+  return row.user_id;
 }
 
 /** All runs for a user, most recent first. */

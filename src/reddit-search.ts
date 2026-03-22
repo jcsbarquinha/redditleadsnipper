@@ -25,8 +25,8 @@ function headers(): HeadersInit {
 }
 
 export const DEFAULT_DELAY_MS = 1000; // 1 s between requests; use --delay 0.5 for faster (risk of 429)
-const MAX_RETRIES = 3;
-const RETRY_BACKOFF_MS = 5000;
+const MAX_RETRIES = 10;
+const RETRY_BACKOFF_MS = 4000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in - Leadsnipe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: "#F25C37",
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <img src="/logo.png" alt="" class="logo-mark" />
+        <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
+      </a>
+      <div class="header-actions">
+        <a href="/" class="header-link">Back</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="main" style="max-width: 720px;">
+    <section class="paywall-cta">
+      <h1 style="font-size: 1.6rem; margin: 0 0 0.75rem; letter-spacing: -0.02em;">Sign in</h1>
+      <p class="paywall-cta-text" style="margin-bottom: 1.25rem;">
+        Use Google or email magic link to access your dashboard. You’ll still need an active unlock to view leads.
+      </p>
+
+      <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
+        <button type="button" id="googleSignInBtn" class="paywall-cta-btn" style="background: #111827;">
+          Continue with Google
+        </button>
+      </div>
+
+      <div style="border-top: 1px solid rgba(0,0,0,0.06); padding-top: 1.25rem;">
+        <label for="magicEmail" class="paywall-cta-text" style="margin: 0 0 0.5rem; display: block; font-weight: 600; color: var(--text);">
+          Email magic link
+        </label>
+        <input
+          id="magicEmail"
+          type="email"
+          placeholder="you@company.com"
+          autocomplete="email"
+          class="search-input"
+          style="width: 100%;"
+        />
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.75rem;">
+          <button type="button" id="sendMagicLinkBtn" class="paywall-cta-btn">
+            Send magic link
+          </button>
+          <button type="button" id="cancelMagicLinkBtn" class="paywall-cta-btn" style="background: rgba(0,0,0,0.06); color: #111827;">
+            Clear
+          </button>
+        </div>
+        <p id="authStatus" class="paywall-cta-text" style="margin-top: 1rem; min-height: 1.25rem;"></p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const googleBtn = document.getElementById("googleSignInBtn");
+    const sendMagicLinkBtn = document.getElementById("sendMagicLinkBtn");
+    const cancelBtn = document.getElementById("cancelMagicLinkBtn");
+    const emailEl = document.getElementById("magicEmail");
+    const statusEl = document.getElementById("authStatus");
+
+    function setStatus(msg, isError) {
+      statusEl.textContent = msg || "";
+      statusEl.style.color = isError ? "#dc2626" : "var(--text)";
+    }
+
+    async function redirectIfAuthed() {
+      try {
+        const r = await fetch("/api/me", { credentials: "same-origin" });
+        if (!r.ok) return;
+        window.location.href = "/dashboard";
+      } catch (_e) {
+        // ignore
+      }
+    }
+
+    googleBtn?.addEventListener("click", () => {
+      window.location.href = "/api/auth/google/start";
+    });
+
+    sendMagicLinkBtn?.addEventListener("click", async () => {
+      const email = (emailEl?.value || "").trim();
+      if (!email) {
+        setStatus("Enter your email first.", true);
+        return;
+      }
+
+      sendMagicLinkBtn.disabled = true;
+      setStatus("Sending magic link...");
+
+      try {
+        const r = await fetch("/api/auth/magic-link/request", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.error || "Could not send magic link.");
+        }
+
+        setStatus("Check your email for the sign-in link.");
+      } catch (err) {
+        setStatus(err instanceof Error ? err.message : "Something went wrong.", true);
+      } finally {
+        sendMagicLinkBtn.disabled = false;
+      }
+    });
+
+    cancelBtn?.addEventListener("click", () => {
+      if (emailEl) emailEl.value = "";
+      setStatus("");
+    });
+
+    redirectIfAuthed();
+  </script>
+</body>
+</html>
+

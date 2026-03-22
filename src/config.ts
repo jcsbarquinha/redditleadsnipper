@@ -44,10 +44,20 @@ export function getStripeSecretKey(): string | undefined {
   return process.env.STRIPE_SECRET_KEY?.trim() || undefined;
 }
 
-/** Amount in cents for "unlock" payment per month (e.g. 1999 = $19.99). Default 1999. */
+/** Amount in cents for "unlock" payment — monthly option (e.g. 999 = $9.99). Default 999. */
 export function getStripeUnlockAmountCents(): number {
   const n = Number(process.env.STRIPE_UNLOCK_AMOUNT_CENTS);
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : 1999;
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 999;
+}
+
+/**
+ * Yearly unlock amount in cents (12 months for the price of 10).
+ * Default = 10 × monthly default = 9990 ($99.90). Override with STRIPE_UNLOCK_YEARLY_AMOUNT_CENTS.
+ */
+export function getStripeUnlockYearlyAmountCents(): number {
+  const n = Number(process.env.STRIPE_UNLOCK_YEARLY_AMOUNT_CENTS);
+  if (Number.isFinite(n) && n > 0) return Math.round(n);
+  return getStripeUnlockAmountCents() * 10;
 }
 
 /** Currency for Stripe (e.g. usd). Default usd. */

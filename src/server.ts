@@ -3,7 +3,16 @@
  * POST /api/search → pipeline, returns leads. CTA "Unlock" → Stripe Checkout → welcome → dashboard.
  */
 
-import { loadConfig, getBaseUrl, getStripeSecretKey, getStripeUnlockAmountCents, getStripeCurrency, getSessionCookieName, getStripeTestPromoCode } from "./config.js";
+import {
+  loadConfig,
+  getBaseUrl,
+  getStripeSecretKey,
+  getStripeUnlockAmountCents,
+  getStripeUnlockYearlyAmountCents,
+  getStripeCurrency,
+  getSessionCookieName,
+  getStripeTestPromoCode,
+} from "./config.js";
 loadConfig();
 
 import express from "express";
@@ -44,41 +53,6 @@ app.use(cookieParser());
 const PORT = Number(process.env.PORT) || 3001;
 const SESSION_COOKIE_NAME = getSessionCookieName();
 const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-/** IP-based rate limit: max requests per window. 0 = no limit (for testing). */
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX);
-const RATE_LIMIT_ENABLED = RATE_LIMIT_MAX > 0;
-
-const ipRequestTimestamps = new Map<string, number[]>();
-
-function getClientIp(req: express.Request): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
-  return req.ip ?? req.socket?.remoteAddress ?? "unknown";
-}
-
-function isRateLimited(ip: string): boolean {
-  if (!RATE_LIMIT_ENABLED) return false;
-  const now = Date.now();
-  const cutoff = now - RATE_LIMIT_WINDOW_MS;
-  let timestamps = ipRequestTimestamps.get(ip) ?? [];
-  timestamps = timestamps.filter((t) => t > cutoff);
-  if (timestamps.length >= RATE_LIMIT_MAX) return true;
-  timestamps.push(now);
-  ipRequestTimestamps.set(ip, timestamps);
-  return false;
-}
-
-// Prune old entries every 5 minutes
-setInterval(() => {
-  const cutoff = Date.now() - RATE_LIMIT_WINDOW_MS;
-  for (const [ip, timestamps] of ipRequestTimestamps.entries()) {
-    const kept = timestamps.filter((t) => t > cutoff);
-    if (kept.length === 0) ipRequestTimestamps.delete(ip);
-    else ipRequestTimestamps.set(ip, kept);
-  }
-}, 5 * 60 * 1000);
 
 // Allow frontend (any origin for MVP; restrict later)
 app.use((_req, res, next) => {
@@ -137,15 +111,14 @@ app.get("/api/health", (_req, res) => {
 
 /**
  * POST /api/create-checkout
- * Body: { runId: string }
- * Creates Stripe Checkout Session for one-time "unlock" payment; metadata includes runId so we can attach run to user after payment.
+ * Body: { runId?: string, billing?: "monthly" | "yearly" }
+ * If runId is set: unlock that search run after payment. If omitted: dashboard access only (user runs a search later).
  */
 app.post("/api/create-checkout", (req, res) => {
   const runId = typeof req.body?.runId === "string" ? req.body.runId.trim() : "";
-  if (!runId) {
-    res.status(400).json({ error: "Missing runId." });
-    return;
-  }
+
+  const billingRaw = typeof req.body?.billing === "string" ? req.body.billing.trim().toLowerCase() : "";
+  const billing: "monthly" | "yearly" = billingRaw === "yearly" ? "yearly" : "monthly";
 
   const stripeKey = getStripeSecretKey();
   if (!stripeKey) {
@@ -153,14 +126,17 @@ app.post("/api/create-checkout", (req, res) => {
     return;
   }
 
-  const run = getRunById(runId);
-  if (!run) {
-    res.status(404).json({ error: "Run not found." });
-    return;
-  }
-  if (run.user_id) {
-    res.status(400).json({ error: "This run is already unlocked." });
-    return;
+  let run: ReturnType<typeof getRunById> | null = null;
+  if (runId) {
+    run = getRunById(runId);
+    if (!run) {
+      res.status(404).json({ error: "Run not found." });
+      return;
+    }
+    if (run.user_id) {
+      res.status(400).json({ error: "This run is already unlocked." });
+      return;
+    }
   }
 
   const baseUrl = getBaseUrl();
@@ -181,6 +157,24 @@ app.post("/api/create-checkout", (req, res) => {
         }
       }
 
+      const unitAmount =
+        billing === "yearly" ? getStripeUnlockYearlyAmountCents() : getStripeUnlockAmountCents();
+      const productDescription = run
+        ? billing === "yearly"
+          ? "See all high-intent Reddit leads from your search and get access to your dashboard. Billed annually (12 months for the price of 10)."
+          : "See all high-intent Reddit leads from your search and get access to your dashboard. Billed monthly."
+        : billing === "yearly"
+          ? "Full dashboard access to find buyer-intent leads on Reddit. Billed annually (12 months for the price of 10)."
+          : "Full dashboard access to find buyer-intent leads on Reddit. Billed monthly.";
+
+      const productName = run
+        ? billing === "yearly"
+          ? "Unlock all leads — yearly"
+          : "Unlock all leads — monthly"
+        : billing === "yearly"
+          ? "Founder Plan — yearly"
+          : "Founder Plan — monthly";
+
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [
@@ -188,17 +182,23 @@ app.post("/api/create-checkout", (req, res) => {
             price_data: {
               currency: getStripeCurrency(),
               product_data: {
-                name: "Unlock all leads",
-                description: "See all high-intent Reddit leads from your search and get access to your dashboard. Billed monthly.",
+                name: productName,
+                description: productDescription,
               },
-              unit_amount: getStripeUnlockAmountCents(),
+              unit_amount: unitAmount,
             },
             quantity: 1,
           },
         ],
         success_url: `${baseUrl}/welcome?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/?canceled=1`,
-        metadata: { run_id: runId, query: run.user_input },
+        cancel_url: `${baseUrl}/?canceled=1#pricing`,
+        // Stripe rejects empty metadata values; omit run_id when doing “pricing only” checkout.
+        metadata: {
+          billing_interval: billing,
+          ...(runId
+            ? { run_id: runId, query: run?.user_input ?? "" }
+            : { checkout_kind: "dashboard_only" }),
+        },
         ...(discounts ? { discounts } : { allow_promotion_codes: true }),
       });
       res.json({ url: session.url });
@@ -249,8 +249,9 @@ app.get("/welcome", async (req, res) => {
     return;
   }
 
-  const runId = session.metadata?.run_id ?? "";
-  const query = session.metadata?.query ?? "";
+  const runId = typeof session.metadata?.run_id === "string" ? session.metadata.run_id.trim() : "";
+  const billingInterval =
+    session.metadata?.billing_interval === "yearly" ? "yearly" : "monthly";
 
   const stripeCustomerId =
     typeof session.customer === "string"
@@ -276,8 +277,9 @@ app.get("/welcome", async (req, res) => {
   // persist the Stripe customer id so account linking stays consistent.
   setStripeCustomerId(user.id, stripeCustomerId);
 
-  // Grant/update 30-day entitlement for paid users.
-  const entitledUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const entitlementMs =
+    billingInterval === "yearly" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+  const entitledUntil = new Date(Date.now() + entitlementMs).toISOString();
   setEntitledUntil(user.id, entitledUntil);
 
   if (runId) {
@@ -358,7 +360,7 @@ app.post("/api/dashboard/search", requireAuth, (req, res) => {
         maxPagesPerKeyword: 1,
       });
       attachRunToUser(result.runId, user.id);
-      res.json({ runId: result.runId });
+      res.json({ runId: result.runId, totalPosts: result.totalPosts });
     } catch (err) {
       console.error("Dashboard search error:", err);
       res.status(500).json({
@@ -644,19 +646,8 @@ app.get("/api/auth/google/callback", async (req, res) => {
  * POST /api/search
  * Body: { "query": "SEO content automation", "maxPages"?: number }
  * Runs the full pipeline (validation → keywords → search → shortlist → rank), then returns leads ranked by intent.
- * Rate limited by IP (default 10 requests per minute).
  */
-app.post("/api/search", (req, res, next) => {
-  const ip = getClientIp(req);
-  if (isRateLimited(ip)) {
-    res.setHeader("Retry-After", String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)));
-    res.status(429).json({
-      error: "Too many searches. Please try again in a minute.",
-    });
-    return;
-  }
-  next();
-}, async (req, res) => {
+app.post("/api/search", async (req, res) => {
   const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
   if (!query) {
     res.status(400).json({ error: "Missing or empty query. Send { \"query\": \"your search\" }." });
@@ -729,7 +720,7 @@ app.listen(PORT, () => {
   console.log(`Leadsnipe running at http://localhost:${PORT}`);
   console.log(`  Base URL (for Stripe redirects): ${baseUrl}`);
   console.log(`  Stripe: ${stripeEnabled ? "enabled" : "not configured (set STRIPE_SECRET_KEY in .env)"}`);
-  console.log(RATE_LIMIT_ENABLED ? `  Rate limit: ${RATE_LIMIT_MAX} searches per IP per minute` : "  Rate limit: disabled");
+  console.log("  Search API: no IP rate limit (add middleware in production if needed)");
   console.log("  Landing: GET /");
   console.log("  API:     POST /api/search with { \"query\": \"...\" }");
   if (stripeEnabled) console.log("  Unlock:   POST /api/create-checkout → Stripe → GET /welcome → /dashboard");

@@ -70,7 +70,16 @@ To enable “Unlock all leads” → payment → dashboard:
    - `STRIPE_UNLOCK_AMOUNT_CENTS=990` — price in cents (default 990 = $9.90).  
    - `STRIPE_CURRENCY=usd`.
 
-Flow: user searches → sees **one free lead** → clicks “Unlock all leads” → Stripe Checkout (email + payment) → redirected to `/welcome` → account created from Stripe email, run attached → redirect to **/dashboard** with all leads. Session cookie keeps them logged in; they can log out from the dashboard.
+**Flows**
+
+1. **Search → pay (recommended)**  
+   User runs a free search → we save their `runId` in `sessionStorage` → they click **Choose plan & unlock** to scroll to **Pricing** → pick Monthly or Yearly → **Unlock Your Leads** → Stripe Checkout → `GET /welcome` → entitlement (30 days monthly / 365 days yearly), run attached to account → **/dashboard?runId=…** with leads.
+
+2. **Pricing only (no search)**  
+   User opens **Pricing** → chooses billing → **Unlock Your Leads** → checkout without `runId` → after payment, **/dashboard** with an empty inbox until they run a search there.
+
+3. **Cancel / errors**  
+   Stripe cancel returns to `/?canceled=1#pricing` so they land on pricing again. Session cookie keeps them logged in after payment.
 
 ### Usage
 

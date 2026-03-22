@@ -3,6 +3,7 @@
  */
 
 import { requireOpenAIKey } from "./config.js";
+import { fetchOpenAIChat } from "./openai-fetch.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
@@ -137,7 +138,7 @@ ${postsBlock}
 
 Score all ${posts.length} posts. Return JSON array only.`;
 
-  const res = await fetch(OPENAI_API_URL, {
+  const res = await fetchOpenAIChat(OPENAI_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -151,7 +152,7 @@ Score all ${posts.length} posts. Return JSON array only.`;
       ],
       temperature: 0.2,
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(120_000),
   });
 
   if (!res.ok) {

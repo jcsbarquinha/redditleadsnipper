@@ -177,6 +177,14 @@
     .run-search-meta i {
       font-style: italic;
     }
+
+    .run-search-meta-hint {
+      font-size: 0.625rem;
+      line-height: 1.35;
+      color: #b4b4bc;
+      font-style: normal;
+      font-weight: 400;
+    }
     .search-query-input {
       width: 100%;
       font-size: 0.95rem;
@@ -688,6 +696,12 @@
   var runs = [];
   var leads = [];
   var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
+  if (unlockedRunId) {
+    try {
+      sessionStorage.removeItem("leadsnipePendingRunId");
+      sessionStorage.removeItem("leadsnipePendingQuery");
+    } catch (e) {}
+  }
   var runSearchMetaEl = document.getElementById("runSearchMeta");
   var contextEditor = document.getElementById("contextEditor");
   var contextInputEl = document.getElementById("searchContextInput");
@@ -749,7 +763,7 @@
 
   function setRunSearchMetaRunning() {
     if (!runSearchMetaEl) return;
-    runSearchMetaEl.innerHTML = '<i>(takes around 2 min to run)</i>';
+    runSearchMetaEl.innerHTML = '<span class="run-search-meta-hint">(takes ~2 min to run)</span>';
     runSearchMetaEl.classList.remove("hidden");
   }
 
@@ -1196,18 +1210,64 @@
     // Show landing-page style loading stage inside the posts panel.
     var list = document.getElementById("leadsList");
     var dashStepInterval = null;
-    var dashCounterInterval = null;
-    var dashScanCount = 0;
+    var dashActiveStepIndex = 0;
+    var dashThreadsAnalyzed = null;
+    var dashAlmostTimer = null;
+    var dashIntentAlmost = false;
 
-    function completeDashboardLoading() {
+    function clearDashAlmostTimer() {
+      if (dashAlmostTimer) {
+        clearTimeout(dashAlmostTimer);
+        dashAlmostTimer = null;
+      }
+    }
+
+    function scheduleDashAlmostThere() {
+      clearDashAlmostTimer();
+      dashIntentAlmost = false;
+      dashAlmostTimer = setTimeout(function () {
+        dashIntentAlmost = true;
+        if (dashActiveStepIndex === 3) renderDashboardSubline();
+      }, 40000);
+    }
+
+    function renderDashboardSubline() {
+      var el = list ? list.querySelector("#dashboardLoadingSubline") : null;
+      if (!el) return;
+      if (dashActiveStepIndex >= 4) return;
+      var i = dashActiveStepIndex;
+      var text = "";
+      if (i === 0) {
+        text = "Turning your product into queries and target discussions…";
+      } else if (i === 1) {
+        if (dashThreadsAnalyzed != null) {
+          text =
+            "Gathering " +
+            dashThreadsAnalyzed.toLocaleString() +
+            " threads from subreddits that fit your offer…";
+        } else {
+          text = "Gathering threads from subreddits that fit your offer…";
+        }
+      } else if (i === 2) {
+        text = "Dropping spam, duplicates, and low-signal threads…";
+      } else if (i === 3) {
+        text = dashIntentAlmost ? "Almost there..." : "Ranking who's most likely to buy…";
+      }
+      el.classList.remove("loading-subline--done");
+      el.innerHTML =
+        '<span class="loading-subline-wrap"><span class="loading-subline-text"></span></span>';
+      var inner = el.querySelector(".loading-subline-text");
+      if (inner) inner.textContent = text;
+    }
+
+    function completeDashboardLoading(totalPosts) {
       if (dashStepInterval) clearInterval(dashStepInterval);
-      if (dashCounterInterval) clearInterval(dashCounterInterval);
       dashStepInterval = null;
-      dashCounterInterval = null;
+      clearDashAlmostTimer();
 
       var stepEls = list ? list.querySelectorAll("#dashboardLoadingSteps .step") : [];
       var loadingBarFill = list ? list.querySelector("#dashboardLoadingBarFill") : null;
-      var scanningCounter = list ? list.querySelector("#dashboardScanningCounter") : null;
+      var subline = list ? list.querySelector("#dashboardLoadingSubline") : null;
       var skeletonCards = list ? list.querySelector("#dashboardSkeletonCards") : null;
 
       if (stepEls && stepEls.length) {
@@ -1220,8 +1280,11 @@
         }
       }
       if (skeletonCards) skeletonCards.classList.add("hidden");
-      if (scanningCounter) {
-        scanningCounter.innerHTML = dashScanCount.toLocaleString() + " threads scanned &#x2705;";
+      var n = totalPosts != null ? totalPosts : dashThreadsAnalyzed;
+      var count = n != null ? n : 0;
+      if (subline) {
+        subline.classList.add("loading-subline--done");
+        subline.innerHTML = count.toLocaleString() + " threads scanned &#x2705;";
       }
     }
 
@@ -1229,13 +1292,13 @@
       list.innerHTML = `
         <section class="loading-section" id="dashboardLoadingSection" style="margin-top: 0;" aria-live="polite">
           <div class="loading-steps" id="dashboardLoadingSteps">
-            <div class="step" data-step="1"><span class="step-label">Deploying search agents</span></div>
-            <div class="step" data-step="2"><span class="step-label">Finding discussions</span></div>
-            <div class="step" data-step="3"><span class="step-label">Trashing spam &amp; old threads</span></div>
-            <div class="step" data-step="4"><span class="step-label">Model scoring buying intent</span></div>
+            <div class="step" data-step="1"><span class="step-label">Mapping your search</span></div>
+            <div class="step" data-step="2"><span class="step-label">Collecting posts</span></div>
+            <div class="step" data-step="3"><span class="step-label">Quality filter</span></div>
+            <div class="step" data-step="4"><span class="step-label">Intent scoring</span></div>
           </div>
           <div class="loading-bar" aria-hidden="true"><div class="loading-bar-fill" id="dashboardLoadingBarFill"></div></div>
-          <p class="scanning-counter" id="dashboardScanningCounter">Scanning 0 threads...</p>
+          <p class="loading-subline" id="dashboardLoadingSubline"></p>
           <div class="skeleton-cards" id="dashboardSkeletonCards">
             <div class="skeleton-card">
               <div class="skeleton-line skeleton-line-short"></div>
@@ -1263,9 +1326,10 @@
 
       var stepEls = list.querySelectorAll("#dashboardLoadingSteps .step");
       var loadingBarFill = list.querySelector("#dashboardLoadingBarFill");
-      var scanningCounter = list.querySelector("#dashboardScanningCounter");
 
       function setStep(activeIndex) {
+        var prev = dashActiveStepIndex;
+        dashActiveStepIndex = activeIndex;
         stepEls.forEach(function (el, i) {
           el.classList.remove("active", "done");
           if (i < activeIndex) el.classList.add("done");
@@ -1274,23 +1338,21 @@
         if (loadingBarFill && stepEls.length) {
           loadingBarFill.style.width = ((activeIndex + 1) / stepEls.length) * 100 + "%";
         }
+        if (activeIndex === 3 && prev !== 3) {
+          dashIntentAlmost = false;
+          scheduleDashAlmostThere();
+        }
+        if (activeIndex !== 3) {
+          clearDashAlmostTimer();
+          dashIntentAlmost = false;
+        }
+        renderDashboardSubline();
       }
 
-      function startScanCounter() {
-        dashScanCount = 0;
-        if (scanningCounter) scanningCounter.textContent = "Scanning 0 threads...";
-        dashCounterInterval = setInterval(function () {
-          var bump = Math.floor(Math.random() * 14) + 3;
-          dashScanCount += bump;
-          if (scanningCounter) {
-            scanningCounter.textContent = "Scanning " + dashScanCount.toLocaleString() + " threads...";
-          }
-        }, 80 + Math.random() * 60);
-      }
-
-      // Start at step 0 (first step highlighted).
+      dashThreadsAnalyzed = null;
+      clearDashAlmostTimer();
+      dashIntentAlmost = false;
       setStep(0);
-      startScanCounter();
 
       var step = 0;
       dashStepInterval = setInterval(function () {
@@ -1330,9 +1392,14 @@
             // Ignore URL update issues (should not break the search flow).
           }
         }
+        dashThreadsAnalyzed =
+          data && typeof data.totalPosts === "number" ? data.totalPosts : null;
+        try {
+          renderDashboardSubline();
+        } catch (e) {}
         // Stop the animated loading state before we refresh the list.
         try {
-          completeDashboardLoading();
+          completeDashboardLoading(data && typeof data.totalPosts === "number" ? data.totalPosts : null);
         } catch (e) {}
         if (btn) {
           btn.disabled = false;
@@ -1357,9 +1424,8 @@
       })
       .catch(function (err) {
         if (dashStepInterval) clearInterval(dashStepInterval);
-        if (dashCounterInterval) clearInterval(dashCounterInterval);
         dashStepInterval = null;
-        dashCounterInterval = null;
+        clearDashAlmostTimer();
         if (btn) {
           btn.disabled = false;
           btn.textContent = "Run search again";

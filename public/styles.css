@@ -150,7 +150,7 @@ body {
 .hero {
   width: 100%;
   text-align: center;
-  padding: 8rem 1rem 3rem;
+  padding: 9.5rem 1rem 3rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -174,9 +174,10 @@ body {
 
 .hero-inner .subhead {
   width: 100%;
+  max-width: 47rem;
   min-width: 0;
-  margin-left: 0;
-  margin-right: 0;
+  margin-left: auto;
+  margin-right: auto;
   padding-left: 0;
   padding-right: 0;
   text-align: center;
@@ -188,12 +189,20 @@ body {
   margin-right: auto;
 }
 
-.headline {
-  display: block;
+.headline-wrap {
+  position: relative;
   width: 100%;
   max-width: var(--header-max-width);
   margin: 0 auto 2.75rem;
   padding: 0 var(--header-margin-x);
+  box-sizing: border-box;
+}
+
+.headline {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
   font-size: 4.5rem;
   font-weight: 600;
@@ -228,6 +237,7 @@ body {
   margin: 0 0 2.5rem;
   font-size: 1.46rem;
   line-height: 1.5;
+  font-weight: 400;
 }
 
 .subhead-highlight {
@@ -236,14 +246,16 @@ body {
 
 .hero-h3 {
   display: block;
-  width: max-content;
-  max-width: none;
+  width: 100%;
+  max-width: var(--header-max-width);
+  margin: 0 auto 2.5rem;
+  padding: 0 var(--header-margin-x);
+  box-sizing: border-box;
   font-size: 1.76rem;
   font-weight: 600;
-  margin: 0 auto 2.5rem;
   line-height: 1.4;
   color: var(--text);
-  white-space: nowrap;
+  white-space: normal;
   text-align: center;
 }
 
@@ -541,6 +553,96 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Loading subline under steps: same typography as scanning line + breathing on all phases */
+.loading-subline {
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 1.25rem 0 0;
+  letter-spacing: 0.01em;
+  min-height: 1.5em;
+  font-variant-numeric: normal;
+}
+
+.loading-subline .loading-subline-wrap {
+  display: inline-block;
+  animation: loading-subline-breathe 2s ease-in-out infinite;
+}
+
+.loading-subline .loading-subline-text {
+  display: inline-block;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.loading-subline.loading-subline--done {
+  font-variant-numeric: tabular-nums;
+}
+
+.loading-subline.loading-subline--done .loading-subline-wrap,
+.loading-subline.loading-subline--done .loading-subline-text {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes loading-subline-breathe {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-subline .loading-subline-wrap {
+    animation: none;
+  }
+
+  .loading-subline .loading-subline-wrap,
+  .loading-subline .loading-subline-text {
+    opacity: 1;
+  }
+}
+
+/* Subtle note under loading subline (landing) */
+.loading-time-hint {
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: #b4b4bc;
+  font-style: normal;
+  font-weight: 400;
+  margin: 0.75rem auto 0;
+  max-width: 20rem;
+  text-align: center;
+}
+
+.pricing-billing-toggle {
+  position: relative;
+}
+
+/* Yearly toggle: orange suffix after label */
+.pricing-yearly-offer-suffix {
+  color: var(--reddit-orange);
+  font-weight: 600;
+}
+
+/* Scroll target after “Choose plan & unlock” */
+#pricing.pricing-section-highlight {
+  box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.45), 0 8px 32px rgba(255, 69, 0, 0.12);
+  border-radius: 0.75rem;
+  transition: box-shadow 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #pricing.pricing-section-highlight {
+    box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.35);
+  }
+}
+
 .skeleton-cards {
   display: flex;
   flex-direction: column;
@@ -683,6 +785,39 @@ body {
 
 .paywall-cta-btn:hover {
   background: #e03e00;
+}
+
+/* Landing results unlock CTA — match pricing section primary button */
+.paywall-cta-btn-large {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 1rem 1.5rem;
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #fff;
+  background: var(--reddit-orange);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, box-shadow 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+}
+
+.paywall-cta-btn-large:hover {
+  background: #e03e00;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.06);
+}
+
+.paywall-cta-microcopy {
+  text-align: center;
+  font-size: 0.75rem;
+  color: #000;
+  margin: 1rem 0 0;
+  line-height: 1.4;
 }
 
 .intent-badge {

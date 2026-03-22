@@ -8,7 +8,7 @@ import { BASE_URL, DEFAULT_DELAY_MS } from "./reddit-search.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 10;
 const RETRY_BACKOFF_MS = 5000;
 
 function headers(): HeadersInit {

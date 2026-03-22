@@ -34,17 +34,19 @@
         <a href="#pricing" class="header-link">Pricing</a>
       </nav>
       <div class="header-actions">
-        <a href="/dashboard" class="header-login">Login</a>
+        <a href="/login" class="header-login">Login</a>
       </div>
     </div>
   </header>
 
   <section class="hero" id="hero">
-    <h1 class="headline">Find your <span class="headline-scribble">next customers</span> on <span class="headline-accent">Subreddits</span>.</h1>
-    <div class="hero-inner">
-      <p class="subhead">Stop manually scrolling Reddit. Tell us what you build, and we'll hand you <strong><span class="subhead-highlight">ranked potential buyers</span></strong> - ready for an organic reply.</p>
+    <div class="headline-wrap">
+      <h1 class="headline">Find your <span class="headline-scribble">next customers</span> on <span class="headline-accent">Subreddits</span></h1>
     </div>
-    <h3 class="hero-h3">Engage with people who are begging for your product <span class="headline-accent">(10x higher conversion)</span>.</h3>
+    <div class="hero-inner">
+      <h2 class="subhead">Enter your URL. Our search engine filters out the noise and hands you a <strong>ranked list of high-intent buyers</strong>—ready for you.</h2>
+    </div>
+    <h3 class="hero-h3">Engage with people who are begging for your product <span class="headline-accent">(10x higher conversion)</span></h3>
     <div class="hero-inner hero-search">
       <form class="search-form" id="searchForm" aria-label="Search" novalidate>
         <div class="search-input-wrap">
@@ -93,13 +95,14 @@
     <div class="analysis-box">
       <section class="loading-section hidden" id="loadingSection" aria-live="polite">
         <div class="loading-steps" id="loadingSteps">
-          <div class="step" data-step="1"><span class="step-label">Deploying search agents</span></div>
-          <div class="step" data-step="2"><span class="step-label">Finding discussions</span></div>
-          <div class="step" data-step="3"><span class="step-label">Trashing spam &amp; old threads</span></div>
-          <div class="step" data-step="4"><span class="step-label">Model scoring buying intent</span></div>
+          <div class="step" data-step="1"><span class="step-label">Mapping your search</span></div>
+          <div class="step" data-step="2"><span class="step-label">Collecting posts</span></div>
+          <div class="step" data-step="3"><span class="step-label">Quality filter</span></div>
+          <div class="step" data-step="4"><span class="step-label">Intent scoring</span></div>
         </div>
         <div class="loading-bar" aria-hidden="true"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
-        <p class="scanning-counter" id="scanningCounter">Scanning 0 threads...</p>
+        <p class="loading-subline" id="loadingSubline" aria-live="polite"></p>
+        <p class="loading-time-hint" id="loadingTimeHint">(takes ~2 min to run)</p>
         <div class="skeleton-cards" id="skeletonCards">
           <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
           <div class="skeleton-card"><div class="skeleton-line skeleton-line-short"></div><div class="skeleton-line skeleton-line-long"></div><div class="skeleton-line skeleton-line-med"></div></div>
@@ -124,36 +127,36 @@
     <div class="max-w-6xl mx-auto">
       <header class="text-center mb-16">
         <h2 id="how-it-works-heading" class="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">
-          How it works
+          How Leadsnipe works
         </h2>
         <p class="mt-4 text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
-          We scan reddit and alert you any time a potential user pops up.
+          Input what you sell. We find Reddit threads where someone is looking for a solution like yours.
         </p>
       </header>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         <!-- Step 1 -->
         <article class="group bg-white rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 p-8 border border-gray-100">
           <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-bold text-lg mb-6" aria-hidden="true">1</div>
-          <h3 class="text-xl font-semibold text-gray-900 mb-3">1. Describe your product</h3>
-          <p class="text-gray-600 leading-relaxed">Paste your website link or tell us what you build. In seconds we identify your ideal customers and the exact problems they are trying to solve.</p>
+          <h3 class="text-xl font-semibold text-gray-900 mb-3">1. Paste your URL</h3>
+          <p class="text-gray-600 leading-relaxed">Drop in your website link. Our engine reads your page, understands your exact ICP, and builds a custom targeting profile instantly. No manual keywords needed.</p>
         </article>
         <!-- Step 2 -->
         <article class="group bg-white rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 p-8 border border-gray-100">
           <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-bold text-lg mb-6" aria-hidden="true">2</div>
           <h3 class="text-xl font-semibold text-gray-900 mb-3">2. We find the hot leads</h3>
-          <p class="text-gray-600 leading-relaxed">We scan thousands of daily conversations and score them from 0 to 100. We trash the spam and hand you a clean list of people actively looking to buy your product.</p>
+          <p class="text-gray-600 leading-relaxed">We scan thousands of threads, trash the spam and self-promo, and score the real conversations from 0 to 100 based on true buying intent.</p>
         </article>
         <!-- Step 3 -->
         <article class="group bg-white rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 p-8 border border-gray-100">
           <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-bold text-lg mb-6" aria-hidden="true">3</div>
-          <h3 class="text-xl font-semibold text-gray-900 mb-3">3. Engage and get customers</h3>
-          <p class="text-gray-600 leading-relaxed">Open the lead and start a real conversation. Skip cold outreach - engange with users who want your product.</p>
+          <h3 class="text-xl font-semibold text-gray-900 mb-3">3. Jump in and close</h3>
+          <p class="text-gray-600 leading-relaxed">Open the thread and reply like a human. No auto-DMs, no Reddit bans—you stay in control. Our alerts and dashboard bring fresh threads as soon as they pop up.</p>
         </article>
       </div>
 
       <div class="mt-10 flex justify-center">
         <a href="#hero" class="inline-flex items-center justify-center py-4 px-10 text-center text-lg font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl transition-colors duration-200 shadow-md hover:shadow-lg">
-          Find your next lead
+          Run a free search
         </a>
       </div>
     </div>
@@ -164,45 +167,80 @@
     <div class="max-w-4xl mx-auto px-6">
       <header class="text-center mb-12">
         <h2 id="pricing-heading" class="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">
-          Simple pricing. Massive ROI.
+          Simple pricing. Serious intent signal.
         </h2>
         <p class="mt-4 text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
-          Stop scrolling forums. Get a clean list of active buyers delivered to your dashboard.
+          Get a clean list of active buyers and cut your outreach to 5 minutes a day.
         </p>
       </header>
       <div class="max-w-xl mx-auto bg-white rounded-2xl shadow-lg border-2 border-primary/20 p-8 md:p-10 hover:shadow-xl transition-shadow duration-200">
-        <h3 class="text-2xl font-bold text-gray-900 mb-2">Growth Plan</h3>
-        <p class="text-gray-600 mb-8 leading-relaxed">Everything you need to turn your landing page URL into a ranked feed of high-intent leads.</p>
-        <ul class="space-y-4 mb-8" role="list">
-          <li class="flex items-start gap-3 text-gray-700">
-            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
-            <span>Smart Search Generation</span>
-          </li>
-          <li class="flex items-start gap-3 text-gray-700">
-            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
-            <span>Strict Spam & Noise Filtering</span>
-          </li>
-          <li class="flex items-start gap-3 text-gray-700">
-            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
-            <span>0-100 Buyer Intent Scoring</span>
-          </li>
-          <li class="flex items-start gap-3 text-gray-700">
-            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
-            <span>24/7 Automated Email & Dashboard Alerts</span>
-          </li>
-          <li class="flex items-start gap-3 text-gray-700">
-            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
-            <span>Direct Links to Active Conversations</span>
-          </li>
-        </ul>
-        <div class="mb-6">
-          <p class="text-4xl md:text-5xl font-bold text-gray-900">$19.99</p>
+        <h3 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Founder Plan</h3>
+        <p class="text-gray-600 mb-6 leading-relaxed">Paste your URL once. Get a ranked feed of buyer-intent leads for your product.</p>
+
+        <div class="flex justify-center mb-6" role="group" aria-label="Billing period">
+          <div
+            class="pricing-billing-toggle inline-flex rounded-2xl bg-gray-100 p-2 gap-2 overflow-visible relative"
+          >
+            <button
+              type="button"
+              id="pricingToggleMonthly"
+              class="pricing-billing-btn px-8 py-3.5 rounded-xl text-base font-semibold transition-all min-h-[3.25rem] min-w-[8.5rem]"
+              aria-pressed="true"
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              id="pricingToggleYearly"
+              class="pricing-billing-btn px-8 py-3.5 rounded-xl text-base font-semibold transition-all min-h-[3.25rem] min-w-[13.5rem]"
+              aria-pressed="false"
+            >
+              🔥 Yearly <span class="pricing-yearly-offer-suffix">(2 months free)</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="pricingPanelMonthly" class="mb-6">
+          <p class="text-4xl md:text-5xl font-bold text-gray-900">$9.99</p>
           <p class="text-gray-500 text-sm mt-1">USD / month</p>
           <p class="text-gray-500 text-sm">billed monthly</p>
         </div>
-        <a href="#hero" class="block w-full py-4 px-6 text-center text-lg font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl transition-colors duration-200 shadow-md hover:shadow-lg">
+        <div id="pricingPanelYearly" class="mb-6 hidden">
+          <p class="text-4xl md:text-5xl font-bold text-gray-900">$99.90</p>
+          <p class="text-gray-500 text-sm mt-1">USD / year</p>
+          <p class="text-gray-500 text-sm">billed annually · 12 months for the price of 10</p>
+          <p class="text-sm text-primary font-medium mt-2">~$8.33/mo equivalent</p>
+        </div>
+
+        <ul class="space-y-4 mb-8" role="list">
+          <li class="flex items-start gap-3 text-black">
+            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
+            <span>URL-to-Search Pipeline (No manual keywords)</span>
+          </li>
+          <li class="flex items-start gap-3 text-black">
+            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
+            <span>No Spam or Self-Promo</span>
+          </li>
+          <li class="flex items-start gap-3 text-black">
+            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
+            <span>Buyer Intent Scoring</span>
+          </li>
+          <li class="flex items-start gap-3 text-black">
+            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
+            <span>Real-Time Email Alerts (Never miss a hot lead)</span>
+          </li>
+          <li class="flex items-start gap-3 text-black">
+            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5" aria-hidden="true"><svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg></span>
+            <span>Easy Access to Active Threads</span>
+          </li>
+        </ul>
+        <button
+          type="button"
+          id="pricingCheckoutBtn"
+          class="block w-full py-4 px-6 text-center text-lg font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl transition-colors duration-200 shadow-md hover:shadow-lg"
+        >
           Unlock Your Leads
-        </a>
+        </button>
         <p class="text-center text-xs text-gray-400 mt-4">Cancel anytime. No long-term commitment.</p>
       </div>
     </div>
