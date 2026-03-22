@@ -210,11 +210,24 @@ export interface PipelineOptions {
   keywordCount?: number;
 }
 
+export interface PipelineTimings {
+  keywordsMs: number;
+  redditMs: number;
+  intentMs: number;
+  totalMs: number;
+  searchTaskCount: number;
+  uniqueAfterDedupe: number;
+  postsAfterFilters: number;
+  scorableForLlm: number;
+  intentBatches: number;
+}
+
 export interface PipelineResult {
   runId: string;
   keywords: string[];
   totalPosts: number;
   totalPostIntents: number;
+  timings: PipelineTimings;
 }
 
 /** Extra safety: one row per reddit post id before DB + LLM (avoids duplicate LLM calls). */
@@ -409,21 +422,19 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     const intentMs = Math.round(performance.now() - intentT0);
     const totalMs = Math.round(performance.now() - pipelineT0);
 
-    console.log(
-      JSON.stringify({
-        event: "pipeline_timings",
-        runId,
-        keywordsMs,
-        redditMs,
-        intentMs,
-        totalMs,
-        searchTaskCount: searchTasks.length,
-        uniqueAfterDedupe: uniquePosts.size,
-        postsAfterFilters: recentCandidates.length,
-        scorableForLlm: scorableCandidates.length,
-        intentBatches: batches.length,
-      })
-    );
+    const timings: PipelineTimings = {
+      keywordsMs,
+      redditMs,
+      intentMs,
+      totalMs,
+      searchTaskCount: searchTasks.length,
+      uniqueAfterDedupe: uniquePosts.size,
+      postsAfterFilters: recentCandidates.length,
+      scorableForLlm: scorableCandidates.length,
+      intentBatches: batches.length,
+    };
+
+    console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
 
     updateRunStatus(runId, "completed");
     return {
@@ -431,6 +442,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       keywords: searchQueries,
       totalPosts: recentCandidates.length,
       totalPostIntents: rankedCandidates.length,
+      timings,
     };
   } catch (err) {
     updateRunStatus(runId, "failed");

@@ -12,6 +12,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
+import nodemailer from "nodemailer";
 import { runPipeline } from "./pipeline.js";
 import {
   getLeadsForRun,
@@ -21,6 +22,10 @@ import {
   attachRunToUser,
   createSession,
   getSession,
+  createMagicLink,
+  consumeMagicLink,
+  setEntitledUntil,
+  setStripeCustomerId,
   getLeadsForUser,
   getRunsForUser,
   setLeadAction,
@@ -247,13 +252,33 @@ app.get("/welcome", async (req, res) => {
   const runId = session.metadata?.run_id ?? "";
   const query = session.metadata?.query ?? "";
 
+  const stripeCustomerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : (session.customer as Stripe.Customer)?.id ?? null;
+
   let user = findUserByEmail(email);
   if (!user) {
     const userId = randomUUID();
-    const stripeCustomerId = typeof session.customer === "string" ? session.customer : (session.customer as Stripe.Customer)?.id ?? null;
     createUser(userId, email, stripeCustomerId);
-    user = { id: userId, email, password_hash: null, stripe_customer_id: stripeCustomerId, created_at: "", updated_at: "" };
+    user = {
+      id: userId,
+      email,
+      password_hash: null,
+      stripe_customer_id: stripeCustomerId,
+      entitled_until: null,
+      created_at: "",
+      updated_at: "",
+    };
   }
+
+  // If the user existed from Google/email login before Stripe checkout,
+  // persist the Stripe customer id so account linking stays consistent.
+  setStripeCustomerId(user.id, stripeCustomerId);
+
+  // Grant/update 30-day entitlement for paid users.
+  const entitledUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  setEntitledUntil(user.id, entitledUntil);
 
   if (runId) {
     const run = getRunById(runId);
@@ -397,6 +422,224 @@ app.post("/api/logout", (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/auth/magic-link/request", async (req, res) => {
+  const emailRaw = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+  const email = emailRaw.toLowerCase();
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Missing or invalid email." });
+    return;
+  }
+
+  const SMTP_HOST = process.env.SMTP_HOST?.trim() || "";
+  const SMTP_PORT = Number(process.env.SMTP_PORT || "");
+  const SMTP_USER = process.env.SMTP_USER?.trim() || "";
+  const SMTP_PASS = process.env.SMTP_PASS?.trim() || "";
+  const EMAIL_FROM = process.env.EMAIL_FROM?.trim() || "";
+
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !EMAIL_FROM) {
+    res.status(503).json({ error: "Email is not configured. Set SMTP_* + EMAIL_FROM." });
+    return;
+  }
+
+  let user = findUserByEmail(email);
+  if (!user) {
+    const userId = randomUUID();
+    createUser(userId, email, null);
+    user = findUserByEmail(email);
+  }
+  if (!user) {
+    res.status(500).json({ error: "Could not create user." });
+    return;
+  }
+
+  const token = randomUUID();
+  const expiresAtIso = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
+  createMagicLink(token, user.id, expiresAtIso);
+
+  const baseUrl = getBaseUrl();
+  const magicLink = `${baseUrl}/magic-link?token=${encodeURIComponent(token)}`;
+
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+
+  try {
+    await transporter.sendMail({
+      from: EMAIL_FROM,
+      to: email,
+      subject: "Your Leadsnipe sign-in link",
+      text: `Click to sign in: ${magicLink}\n\nThis link expires in 15 minutes.`,
+      html: `Click to sign in: <a href="${magicLink}">${magicLink}</a><br/><br/>This link expires in 15 minutes.`,
+    });
+  } catch (e) {
+    console.error("Magic link email send failed:", e);
+    res.status(500).json({ error: "Could not send magic link email." });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
+/**
+ * GET /magic-link?token=...
+ * Verifies token, creates session cookie, redirects to dashboard.
+ */
+app.get("/magic-link", (req, res) => {
+  const token = typeof req.query?.token === "string" ? req.query.token.trim() : "";
+  if (!token) {
+    res.redirect("/?error=missing_magic_link");
+    return;
+  }
+
+  const userId = consumeMagicLink(token);
+  if (!userId) {
+    res.redirect("/?error=invalid_magic_link");
+    return;
+  }
+
+  const { id: sessionToken } = createSession(userId);
+  res.cookie(SESSION_COOKIE_NAME, sessionToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: SESSION_COOKIE_MAX_AGE_MS,
+    path: "/",
+  });
+
+  res.redirect("/dashboard");
+});
+
+/**
+ * GET /api/auth/google/start
+ * Redirects to Google OAuth consent screen.
+ */
+app.get("/api/auth/google/start", (req, res) => {
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim() || "";
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET?.trim() || "";
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    res.status(503).json({ error: "Google auth is not configured." });
+    return;
+  }
+
+  const baseUrl = getBaseUrl();
+  const redirectUri = `${baseUrl}/api/auth/google/callback`;
+  const state = randomUUID();
+
+  res.cookie("google_oauth_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000,
+    path: "/",
+  });
+
+  const scope = encodeURIComponent("openid email profile");
+  const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("scope", scope);
+  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("prompt", "select_account");
+
+  res.redirect(authUrl.toString());
+});
+
+/**
+ * GET /api/auth/google/callback
+ * Exchanges code → user, creates session cookie, redirects to dashboard.
+ */
+app.get("/api/auth/google/callback", async (req, res) => {
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim() || "";
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET?.trim() || "";
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    res.redirect("/?error=google_not_configured");
+    return;
+  }
+
+  const code = typeof req.query?.code === "string" ? req.query.code : "";
+  const state = typeof req.query?.state === "string" ? req.query.state : "";
+
+  const cookieState = req.cookies?.google_oauth_state;
+  if (!code || !state || !cookieState || cookieState !== state) {
+    res.redirect("/?error=google_state_mismatch");
+    return;
+  }
+
+  const baseUrl = getBaseUrl();
+  const redirectUri = `${baseUrl}/api/auth/google/callback`;
+
+  try {
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      res.redirect("/?error=google_token_exchange_failed");
+      return;
+    }
+
+    const tokenJson = await tokenRes.json();
+    const accessToken = tokenJson.access_token;
+    if (!accessToken) {
+      res.redirect("/?error=google_no_access_token");
+      return;
+    }
+
+    const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!userInfoRes.ok) {
+      res.redirect("/?error=google_userinfo_failed");
+      return;
+    }
+
+    const profile = (await userInfoRes.json()) as { email?: string };
+    const email = typeof profile?.email === "string" ? profile.email.trim().toLowerCase() : "";
+    if (!email) {
+      res.redirect("/?error=google_no_email");
+      return;
+    }
+
+    let user = findUserByEmail(email);
+    if (!user) {
+      const userId = randomUUID();
+      createUser(userId, email, null);
+      user = findUserByEmail(email);
+    }
+    if (!user) {
+      res.redirect("/?error=google_user_create_failed");
+      return;
+    }
+
+    const { id: sessionToken } = createSession(user.id);
+    res.cookie(SESSION_COOKIE_NAME, sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: SESSION_COOKIE_MAX_AGE_MS,
+      path: "/",
+    });
+
+    res.redirect("/dashboard");
+  } catch (e) {
+    console.error("Google auth error:", e);
+    res.redirect("/?error=google_auth_error");
+  }
+});
+
 /**
  * POST /api/search
  * Body: { "query": "SEO content automation", "maxPages"?: number }
@@ -438,6 +681,7 @@ app.post("/api/search", (req, res, next) => {
       keywords: result.keywords,
       totalPosts: result.totalPosts,
       totalComments: 0,
+      timings: result.timings,
       leads: leads.map((row) => ({
         title: row.title,
         full_link: row.full_link,
@@ -469,6 +713,11 @@ app.post("/api/search", (req, res, next) => {
 // Dashboard page (must be before static so /dashboard serves the page)
 app.get("/dashboard", (_req, res) => {
   res.sendFile(join(publicDir, "dashboard.html"));
+});
+
+// Login page (must be before static so /login serves the page)
+app.get("/login", (_req, res) => {
+  res.sendFile(join(publicDir, "login.html"));
 });
 
 // Landing page and static assets (API routes above take precedence)

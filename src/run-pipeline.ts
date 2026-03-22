@@ -48,6 +48,7 @@ async function main(): Promise<void> {
     console.log("Keywords:", result.keywords.length);
     console.log("Unique posts:", result.totalPosts);
     console.log("Post intents (0-100):", result.totalPostIntents);
+    console.log("Timings (ms):", result.timings);
   } catch (err) {
     console.error("Error:", err);
     process.exit(1);

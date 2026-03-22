@@ -256,22 +256,38 @@
     return card;
   }
 
+  function roundScore(l) {
+    return l.score != null ? Math.round(l.score) : 0;
+  }
+
+  /** Hot Match on landing = score >= 90 (same as teaser card badge). */
+  function isHotLead(l) {
+    return roundScore(l) >= 90;
+  }
+
   function showResults(data) {
     completeLoading();
     errorSection.classList.add("hidden");
 
+    if (data.timings && typeof console !== "undefined") {
+      console.info("[Leadsnipe] Pipeline timings (ms):", data.timings);
+    }
+
     const highIntentLeads = data.leads.filter(function (l) { return l.is_high_intent; });
     const highIntentCount = highIntentLeads.length;
+    const hotLeads = data.leads.filter(isHotLead);
+    const hotCount = hotLeads.length;
     const remainingCount = Math.max(0, highIntentCount - 1);
 
     resultsHeader.innerHTML =
-      highIntentCount > 0
-        ? `<span class="results-count">${highIntentCount} high-intent leads</span> found in the last 30 days \uD83D\uDD25`
-        : "No high-intent leads found in the last 30 days for that query.";
+      hotCount > 0
+        ? `<span class="results-count">${hotCount} Hot leads</span> found in the last 7 days \uD83D\uDD25`
+        : "No Hot leads found in the last 7 days for that query.";
     resultsList.innerHTML = "";
 
-    if (highIntentLeads.length > 0) {
-      resultsList.appendChild(buildLeadCard(highIntentLeads[0], false));
+    var teaserLead = hotLeads.length > 0 ? hotLeads[0] : (highIntentLeads.length > 0 ? highIntentLeads[0] : null);
+    if (teaserLead) {
+      resultsList.appendChild(buildLeadCard(teaserLead, false));
     }
 
     if (highIntentCount > 1) {
