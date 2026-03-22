@@ -16,6 +16,8 @@ COPY --from=build /app/dist ./dist
 COPY public ./public
 RUN mkdir -p /data && chown -R node:node /data
 ENV DATABASE_URL=/data/reddit-leads.db
-# PORT is set by Render at runtime
+# Default matches Render’s probe if runtime doesn’t override — was missing and app fell back to 3001 → port scan timeout
+ENV PORT=10000
+EXPOSE 10000
 USER node
 CMD ["node", "dist/server.js"]

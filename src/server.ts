@@ -50,7 +50,14 @@ const publicDir = join(__dirname, "..", "public");
 const app = express();
 app.use(cookieParser());
 
-const PORT = Number(process.env.PORT) || 3001;
+/** Render sets PORT (often 10000). If unset (local dev), use 3001. Never use NaN/0 — that breaks Render's port scan. */
+function getListenPort(): number {
+  const raw = process.env.PORT;
+  if (raw === undefined || String(raw).trim() === "") return 3001;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3001;
+}
+const PORT = getListenPort();
 const SESSION_COOKIE_NAME = getSessionCookieName();
 const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const POST_LOGIN_REDIRECT_COOKIE = "post_login_redirect";
@@ -848,7 +855,7 @@ app.use(express.static(publicDir));
 app.listen(PORT, "0.0.0.0", () => {
   const baseUrl = getBaseUrl();
   const stripeEnabled = !!getStripeSecretKey();
-  console.log(`Leadsnipe listening on 0.0.0.0:${PORT}`);
+  console.log(`Leadsnipe listening on 0.0.0.0:${PORT} (process.env.PORT=${JSON.stringify(process.env.PORT)})`);
   console.log(`  Base URL (for Stripe redirects): ${baseUrl}`);
   console.log(`  Stripe: ${stripeEnabled ? "enabled" : "not configured (set STRIPE_SECRET_KEY in .env)"}`);
   console.log("  Search API: no IP rate limit (add middleware in production if needed)");
