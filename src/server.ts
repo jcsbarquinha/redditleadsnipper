@@ -844,10 +844,11 @@ app.get("/login", (_req, res) => {
 // Landing page and static assets (API routes above take precedence)
 app.use(express.static(publicDir));
 
-app.listen(PORT, () => {
+// Render and other hosts require listening on 0.0.0.0 — default listen() can be unreachable behind the proxy.
+app.listen(PORT, "0.0.0.0", () => {
   const baseUrl = getBaseUrl();
   const stripeEnabled = !!getStripeSecretKey();
-  console.log(`Leadsnipe running at http://localhost:${PORT}`);
+  console.log(`Leadsnipe listening on 0.0.0.0:${PORT}`);
   console.log(`  Base URL (for Stripe redirects): ${baseUrl}`);
   console.log(`  Stripe: ${stripeEnabled ? "enabled" : "not configured (set STRIPE_SECRET_KEY in .env)"}`);
   console.log("  Search API: no IP rate limit (add middleware in production if needed)");

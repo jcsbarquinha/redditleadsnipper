@@ -16,7 +16,6 @@ COPY --from=build /app/dist ./dist
 COPY public ./public
 RUN mkdir -p /data && chown -R node:node /data
 ENV DATABASE_URL=/data/reddit-leads.db
-ENV PORT=3001
-EXPOSE 3001
+# PORT is set by Render at runtime
 USER node
 CMD ["node", "dist/server.js"]
