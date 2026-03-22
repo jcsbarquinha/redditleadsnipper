@@ -70,6 +70,13 @@ To enable “Unlock all leads” → payment → dashboard:
    - `STRIPE_UNLOCK_AMOUNT_CENTS=990` — price in cents (default 990 = $9.90).  
    - `STRIPE_CURRENCY=usd`.
 
+4. **Webhooks (recommended for production)**  
+   - In Stripe → **Developers** → **Webhooks** → **Add endpoint**: `https://your-domain.com/api/stripe/webhook`.  
+   - Subscribe to `checkout.session.completed`.  
+   - Copy the **Signing secret** (`whsec_...`) into `.env` as `STRIPE_WEBHOOK_SECRET`.  
+   - This applies the same entitlement + run attach as `GET /welcome` if the customer closes the browser before the redirect.  
+   - **Local testing (Stripe CLI):** Install CLI (`brew install stripe/stripe-cli/stripe`). **You cannot pass a live `sk_live_...` key to `stripe listen`** — Stripe requires either **`stripe login`** once (browser) or use **`sk_test_...`** in `.env` for local-only tests. Then run `npm run stripe:listen`, copy the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`, restart `npm run api`, and keep both terminals open.
+
 **Flows**
 
 1. **Search → pay (recommended)**  
@@ -80,6 +87,13 @@ To enable “Unlock all leads” → payment → dashboard:
 
 3. **Cancel / errors**  
    Stripe cancel returns to `/?canceled=1#pricing` so they land on pricing again. Session cookie keeps them logged in after payment.
+
+### Sign-in: Google vs email magic link
+
+- **Google** — Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` (see comments in `.env.example`). No email server needed.
+- **Email magic link** — Requires SMTP. Add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `EMAIL_FROM` to `.env`.  
+  Easiest options: **[Resend](https://resend.com)** (SMTP host `smtp.resend.com`, user `resend`, password = API key) or **Gmail** with an [App Password](https://support.google.com/accounts/answer/185833).  
+  Copy from `.env.example` for full examples. Restart the API after changing `.env`.
 
 ### Usage
 

@@ -6,23 +6,201 @@
   <title>Sign in - Leadsnipe</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: "#F25C37",
-          },
-        },
-      },
+  <style>
+    .login-page-body {
+      background: #fafafa;
     }
-  </script>
+    /* Two-column header: logo left, actions right (skip empty center column). */
+    .login-page-body .header-inner {
+      grid-template-columns: 1fr auto;
+    }
+    .login-main {
+      max-width: 440px;
+      margin: 0 auto;
+      padding: 2.25rem var(--header-margin-x) 3.5rem;
+    }
+    .login-wrap {
+      text-align: left;
+    }
+    .login-title {
+      font-size: clamp(1.5rem, 4vw, 1.85rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin: 0 0 0.75rem;
+      color: var(--text);
+    }
+    .login-sub {
+      margin: 0 0 1.75rem;
+      font-size: 1rem;
+      font-weight: 500;
+      line-height: 1.55;
+      color: var(--text-muted);
+    }
+    h2.login-sub {
+      font-size: 1rem;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+    }
+    .login-google-btn {
+      width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      padding: 0.7rem 1rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #3c4043;
+      background: #fff;
+      border: 1px solid #dadce0;
+      border-radius: 10px;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    }
+    .login-google-btn:hover {
+      background: #f8f9fa;
+      border-color: #c6c9ce;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+    .login-google-btn:active {
+      background: #f1f3f4;
+    }
+    .login-google-btn svg {
+      flex-shrink: 0;
+    }
+    .login-or {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 1.35rem 0;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+    }
+    .login-or::before,
+    .login-or::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: rgba(0, 0, 0, 0.08);
+    }
+    .login-label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.45rem;
+    }
+    .login-field {
+      width: 100%;
+      padding: 0.7rem 0.85rem;
+      font-size: 1rem;
+      font-family: inherit;
+      border: 1px solid #e2e4e7;
+      border-radius: 10px;
+      background: #fff;
+      color: var(--text);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .login-field::placeholder {
+      color: #9ca3af;
+    }
+    .login-field:hover {
+      border-color: #d1d5db;
+    }
+    .login-field:focus {
+      outline: none;
+      border-color: rgba(255, 69, 0, 0.45);
+      box-shadow: 0 0 0 3px rgba(255, 69, 0, 0.12);
+    }
+    .login-row-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.85rem;
+    }
+    .login-cta {
+      flex: 1;
+      min-width: 0;
+      padding: 0.72rem 1rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--reddit-orange, #ff4500);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: filter 0.15s, transform 0.1s;
+    }
+    .login-cta:hover {
+      filter: brightness(1.05);
+    }
+    .login-cta:active {
+      transform: translateY(1px);
+    }
+    .login-cta:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .login-status {
+      margin: 1rem 0 0;
+      min-height: 1.35rem;
+      font-size: 0.9rem;
+      line-height: 1.45;
+      color: var(--text-muted);
+    }
+    .login-status.is-error {
+      color: #dc2626;
+    }
+    .login-features {
+      list-style: none;
+      margin: 1.75rem 0 0;
+      padding: 1.15rem 0 0;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .login-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin-bottom: 0.55rem;
+      font-size: 0.9rem;
+      line-height: 1.45;
+      color: var(--text);
+    }
+    .login-features li:last-child {
+      margin-bottom: 0;
+    }
+    .login-features .check {
+      color: #16a34a;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .login-legal {
+      margin: 1.5rem 0 0;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+    .login-legal a {
+      color: var(--text-muted);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .login-legal a:hover {
+      color: var(--reddit-orange, #ff4500);
+    }
+  </style>
 </head>
-<body>
+<body class="login-page-body">
   <header class="header">
     <div class="header-inner">
       <a href="/" class="logo">
@@ -30,66 +208,90 @@
         <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
       </a>
       <div class="header-actions">
-        <a href="/" class="header-link">Back</a>
+        <a href="/dashboard" class="header-link">Dashboard</a>
+        <a href="/" class="header-link">Back to home</a>
       </div>
     </div>
   </header>
 
-  <main class="main" style="max-width: 720px;">
-    <section class="paywall-cta">
-      <h1 style="font-size: 1.6rem; margin: 0 0 0.75rem; letter-spacing: -0.02em;">Sign in</h1>
-      <p class="paywall-cta-text" style="margin-bottom: 1.25rem;">
-        Use Google or email magic link to access your dashboard. You’ll still need an active unlock to view leads.
+  <main class="login-main">
+    <div class="login-wrap">
+      <h1 class="login-title">Stop scrolling Reddit for leads. Start with threads worth a reply.</h1>
+      <h2 class="login-sub">
+        Leadsnipe ranks Reddit posts by buyer intent for what you sell. Built for B2B teams who reply by hand and care about conversion.
+      </h2>
+
+      <button type="button" id="googleSignInBtn" class="login-google-btn" aria-label="Continue with Google">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+          <path fill="#34A853" d="M9.003 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.96v2.332C2.428 15.983 5.482 18 9.003 18z"/>
+          <path fill="#FBBC05" d="M3.964 10.712c-.18-.54-.282-1.117-.282-1.712s.102-1.172.282-1.712V4.956H.957C.348 6.175 0 7.55 0 9s.348 2.825.957 4.044l3.007-2.332z"/>
+          <path fill="#EA4335" d="M9.003 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.464.891 11.426 0 9.003 0 5.483 0 2.428 2.017.96 4.956L3.967 7.287c.708-2.127 2.692-3.707 5.036-3.707z"/>
+        </svg>
+        Sign in with Google
+      </button>
+
+      <div class="login-or" role="presentation"><span>OR</span></div>
+
+      <label for="magicEmail" class="login-label">Email address</label>
+      <input
+        id="magicEmail"
+        type="email"
+        class="login-field"
+        placeholder="you@company.com"
+        autocomplete="email"
+      />
+
+      <div class="login-row-actions">
+        <button type="button" id="sendMagicLinkBtn" class="login-cta">Email me a sign-in link</button>
+      </div>
+
+      <p id="authStatus" class="login-status" aria-live="polite"></p>
+
+      <ul class="login-features" aria-label="What you get">
+        <li><span class="check" aria-hidden="true">✓</span> Easy setup targeting built directly from your URL</li>
+        <li><span class="check" aria-hidden="true">✓</span> Dedicated workflow dashboard with 0-100 intent scoring</li>
+        <li><span class="check" aria-hidden="true">✓</span> Real-time email alerts for new high-intent conversations</li>
+      </ul>
+
+      <p class="login-legal">
+        By continuing, you agree to our <a href="#terms">Terms</a> and <a href="#privacy">Privacy Policy</a>.
       </p>
-
-      <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
-        <button type="button" id="googleSignInBtn" class="paywall-cta-btn" style="background: #111827;">
-          Continue with Google
-        </button>
-      </div>
-
-      <div style="border-top: 1px solid rgba(0,0,0,0.06); padding-top: 1.25rem;">
-        <label for="magicEmail" class="paywall-cta-text" style="margin: 0 0 0.5rem; display: block; font-weight: 600; color: var(--text);">
-          Email magic link
-        </label>
-        <input
-          id="magicEmail"
-          type="email"
-          placeholder="you@company.com"
-          autocomplete="email"
-          class="search-input"
-          style="width: 100%;"
-        />
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.75rem;">
-          <button type="button" id="sendMagicLinkBtn" class="paywall-cta-btn">
-            Send magic link
-          </button>
-          <button type="button" id="cancelMagicLinkBtn" class="paywall-cta-btn" style="background: rgba(0,0,0,0.06); color: #111827;">
-            Clear
-          </button>
-        </div>
-        <p id="authStatus" class="paywall-cta-text" style="margin-top: 1rem; min-height: 1.25rem;"></p>
-      </div>
-    </section>
+    </div>
   </main>
 
   <script>
+    (function () {
+      var p = new URLSearchParams(location.search).get("return");
+      if (p && p.startsWith("/") && !p.startsWith("//")) {
+        document.cookie =
+          "post_login_redirect=" +
+          encodeURIComponent(p) +
+          "; path=/; max-age=600; SameSite=Lax";
+      }
+    })();
+
     const googleBtn = document.getElementById("googleSignInBtn");
     const sendMagicLinkBtn = document.getElementById("sendMagicLinkBtn");
-    const cancelBtn = document.getElementById("cancelMagicLinkBtn");
     const emailEl = document.getElementById("magicEmail");
     const statusEl = document.getElementById("authStatus");
 
     function setStatus(msg, isError) {
       statusEl.textContent = msg || "";
-      statusEl.style.color = isError ? "#dc2626" : "var(--text)";
+      statusEl.classList.toggle("is-error", !!isError);
+    }
+
+    function postLoginDestination() {
+      const p = new URLSearchParams(location.search).get("return");
+      if (p && p.startsWith("/") && !p.startsWith("//")) return p;
+      return "/dashboard";
     }
 
     async function redirectIfAuthed() {
       try {
         const r = await fetch("/api/me", { credentials: "same-origin" });
         if (!r.ok) return;
-        window.location.href = "/dashboard";
+        window.location.href = postLoginDestination();
       } catch (_e) {
         // ignore
       }
@@ -107,7 +309,7 @@
       }
 
       sendMagicLinkBtn.disabled = true;
-      setStatus("Sending magic link...");
+      setStatus("Sending…");
 
       try {
         const r = await fetch("/api/auth/magic-link/request", {
@@ -119,10 +321,19 @@
 
         if (!r.ok) {
           const data = await r.json().catch(() => ({}));
-          throw new Error(data.error || "Could not send magic link.");
+          let msg = data.error || "Could not send magic link.";
+          if (
+            r.status === 503 &&
+            typeof msg === "string" &&
+            (msg.includes("not configured") || msg.includes("SMTP"))
+          ) {
+            msg =
+              "Email sign-in isn’t configured on this server. Use Sign in with Google above, or set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and EMAIL_FROM in .env (see .env.example).";
+          }
+          throw new Error(msg);
         }
 
-        setStatus("Check your email for the sign-in link.");
+        setStatus("Check your inbox for the sign-in link.", false);
       } catch (err) {
         setStatus(err instanceof Error ? err.message : "Something went wrong.", true);
       } finally {
@@ -130,13 +341,7 @@
       }
     });
 
-    cancelBtn?.addEventListener("click", () => {
-      if (emailEl) emailEl.value = "";
-      setStatus("");
-    });
-
     redirectIfAuthed();
   </script>
 </body>
 </html>
-

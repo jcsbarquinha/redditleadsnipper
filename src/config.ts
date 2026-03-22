@@ -44,6 +44,12 @@ export function getStripeSecretKey(): string | undefined {
   return process.env.STRIPE_SECRET_KEY?.trim() || undefined;
 }
 
+/** Webhook signing secret from Stripe Dashboard (whsec_...). Required for POST /api/stripe/webhook. */
+export function getStripeWebhookSecret(): string | undefined {
+  const s = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  return s || undefined;
+}
+
 /** Amount in cents for "unlock" payment — monthly option (e.g. 999 = $9.99). Default 999. */
 export function getStripeUnlockAmountCents(): number {
   const n = Number(process.env.STRIPE_UNLOCK_AMOUNT_CENTS);

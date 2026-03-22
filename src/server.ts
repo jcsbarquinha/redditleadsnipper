@@ -7,6 +7,7 @@ import {
   loadConfig,
   getBaseUrl,
   getStripeSecretKey,
+  getStripeWebhookSecret,
   getStripeUnlockAmountCents,
   getStripeUnlockYearlyAmountCents,
   getStripeCurrency,
@@ -47,12 +48,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, "..", "public");
 
 const app = express();
-app.use(express.json());
 app.use(cookieParser());
 
 const PORT = Number(process.env.PORT) || 3001;
 const SESSION_COOKIE_NAME = getSessionCookieName();
 const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const POST_LOGIN_REDIRECT_COOKIE = "post_login_redirect";
+
+/** Active paid entitlement window (Stripe welcome sets entitled_until). */
+function isEntitled(entitledUntil: string | null | undefined): boolean {
+  if (!entitledUntil) return false;
+  const d = new Date(String(entitledUntil));
+  return Number.isFinite(d.getTime()) && d.getTime() > Date.now();
+}
 
 // Allow frontend (any origin for MVP; restrict later)
 app.use((_req, res, next) => {
@@ -63,6 +71,90 @@ app.use((_req, res, next) => {
 });
 
 app.options("*", (_req, res) => res.sendStatus(204));
+
+/**
+ * Apply entitlement + optional run attach from a paid Checkout Session (used by GET /welcome and Stripe webhooks).
+ */
+function applyPaidCheckoutFromSession(session: Stripe.Checkout.Session): { userId: string; runId: string } | null {
+  // $0 / 100% coupon checkouts use `no_payment_required`, not `paid` (Stripe docs: no-cost orders).
+  const ok =
+    session.payment_status === "paid" || session.payment_status === "no_payment_required";
+  if (!ok) return null;
+  const emailRaw = session.customer_details?.email ?? session.customer_email;
+  const email = typeof emailRaw === "string" && emailRaw.length > 0 ? emailRaw.trim().toLowerCase() : null;
+  if (!email) return null;
+
+  const runId = typeof session.metadata?.run_id === "string" ? session.metadata.run_id.trim() : "";
+  const billingInterval = session.metadata?.billing_interval === "yearly" ? "yearly" : "monthly";
+
+  const stripeCustomerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : (session.customer as Stripe.Customer)?.id ?? null;
+
+  let user = findUserByEmail(email);
+  if (!user) {
+    const userId = randomUUID();
+    createUser(userId, email, stripeCustomerId);
+    user = findUserByEmail(email);
+  }
+  if (!user) return null;
+
+  setStripeCustomerId(user.id, stripeCustomerId);
+
+  const entitlementMs =
+    billingInterval === "yearly" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+  const entitledUntil = new Date(Date.now() + entitlementMs).toISOString();
+  setEntitledUntil(user.id, entitledUntil);
+
+  if (runId) {
+    const run = getRunById(runId);
+    if (run && !run.user_id) attachRunToUser(runId, user.id);
+  }
+
+  return { userId: user.id, runId };
+}
+
+/** Stripe webhook — must use raw body (signature verification). */
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  (req: express.Request, res: express.Response) => {
+    const stripeKey = getStripeSecretKey();
+    const whSecret = getStripeWebhookSecret();
+    if (!stripeKey || !whSecret) {
+      res.status(503).send("Webhook not configured");
+      return;
+    }
+    const stripe = new Stripe(stripeKey);
+    const sig = req.headers["stripe-signature"];
+    if (typeof sig !== "string") {
+      res.status(400).send("Missing stripe-signature");
+      return;
+    }
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, whSecret);
+    } catch (err) {
+      console.error("Stripe webhook signature error:", err);
+      res.status(400).send("Webhook signature verification failed");
+      return;
+    }
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      try {
+        applyPaidCheckoutFromSession(session);
+      } catch (e) {
+        console.error("applyPaidCheckoutFromSession (webhook):", e);
+      }
+    }
+
+    res.json({ received: true });
+  }
+);
+
+app.use(express.json());
 
 function leadRowToApi(row: LeadRow) {
   return {
@@ -100,7 +192,11 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
     res.status(401).json({ error: "Session expired." });
     return;
   }
-  (req as express.Request & { user: { id: string; email: string } }).user = { id: session.user_id, email: session.email };
+  (req as express.Request & { user: { id: string; email: string; entitled_until: string | null } }).user = {
+    id: session.user_id,
+    email: session.email,
+    entitled_until: session.entitled_until,
+  };
   next();
 }
 
@@ -134,8 +230,19 @@ app.post("/api/create-checkout", (req, res) => {
       return;
     }
     if (run.user_id) {
-      res.status(400).json({ error: "This run is already unlocked." });
-      return;
+      const token = req.cookies?.[SESSION_COOKIE_NAME];
+      const sess = token ? getSession(token) : null;
+      if (!sess || sess.user_id !== run.user_id) {
+        res.status(403).json({
+          error:
+            "This search belongs to another account. Sign in with the same account you used when you saved it, then unlock.",
+        });
+        return;
+      }
+      if (isEntitled(sess.entitled_until)) {
+        res.status(400).json({ error: "You already have an active plan." });
+        return;
+      }
     }
   }
 
@@ -237,57 +344,19 @@ app.get("/welcome", async (req, res) => {
     return;
   }
 
-  if (session.payment_status !== "paid") {
-    res.redirect(getBaseUrl() + "/?error=payment_not_completed");
-    return;
-  }
-
-  const emailRaw = session.customer_details?.email ?? session.customer_email;
-  const email = typeof emailRaw === "string" && emailRaw.length > 0 ? emailRaw.trim().toLowerCase() : null;
-  if (!email) {
+  const applied = applyPaidCheckoutFromSession(session);
+  if (!applied) {
+    if (session.payment_status !== "paid") {
+      res.redirect(getBaseUrl() + "/?error=payment_not_completed");
+      return;
+    }
     res.redirect(getBaseUrl() + "/?error=no_email");
     return;
   }
 
   const runId = typeof session.metadata?.run_id === "string" ? session.metadata.run_id.trim() : "";
-  const billingInterval =
-    session.metadata?.billing_interval === "yearly" ? "yearly" : "monthly";
 
-  const stripeCustomerId =
-    typeof session.customer === "string"
-      ? session.customer
-      : (session.customer as Stripe.Customer)?.id ?? null;
-
-  let user = findUserByEmail(email);
-  if (!user) {
-    const userId = randomUUID();
-    createUser(userId, email, stripeCustomerId);
-    user = {
-      id: userId,
-      email,
-      password_hash: null,
-      stripe_customer_id: stripeCustomerId,
-      entitled_until: null,
-      created_at: "",
-      updated_at: "",
-    };
-  }
-
-  // If the user existed from Google/email login before Stripe checkout,
-  // persist the Stripe customer id so account linking stays consistent.
-  setStripeCustomerId(user.id, stripeCustomerId);
-
-  const entitlementMs =
-    billingInterval === "yearly" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
-  const entitledUntil = new Date(Date.now() + entitlementMs).toISOString();
-  setEntitledUntil(user.id, entitledUntil);
-
-  if (runId) {
-    const run = getRunById(runId);
-    if (run && !run.user_id) attachRunToUser(runId, user.id);
-  }
-
-  const { id: token } = createSession(user.id);
+  const { id: token } = createSession(applied.userId);
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -301,15 +370,25 @@ app.get("/welcome", async (req, res) => {
   res.redirect(redirectUrl.toString());
 });
 
+
 /** Current user (requires auth). */
 app.get("/api/me", requireAuth, (req, res) => {
-  const user = (req as express.Request & { user: { id: string; email: string } }).user;
-  res.json({ id: user.id, email: user.email });
+  const user = (req as express.Request & { user: { id: string; email: string; entitled_until: string | null } }).user;
+  res.json({
+    id: user.id,
+    email: user.email,
+    entitled_until: user.entitled_until,
+    entitled: isEntitled(user.entitled_until),
+  });
 });
 
 /** All leads for the current user (requires auth). Query params: subreddit, days, minScore, query, includeArchived, includeDeleted, runId. */
 app.get("/api/dashboard/leads", requireAuth, (req, res) => {
-  const user = (req as express.Request & { user: { id: string } }).user;
+  const user = (req as express.Request & { user: { id: string; entitled_until: string | null } }).user;
+  if (!isEntitled(user.entitled_until)) {
+    res.json({ leads: [], entitled: false });
+    return;
+  }
   const subreddit = typeof req.query.subreddit === "string" ? req.query.subreddit.trim() : undefined;
   const days = req.query.days !== undefined ? Number(req.query.days) : undefined;
   const minScore = req.query.minScore !== undefined ? Number(req.query.minScore) : undefined;
@@ -326,7 +405,7 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
     includeArchived,
     includeDeleted,
   });
-  res.json({ leads: leads.map(leadRowToApi) });
+  res.json({ leads: leads.map(leadRowToApi), entitled: true });
 });
 
 /** List runs for the current user (for dashboard query dropdown). */
@@ -343,7 +422,13 @@ app.get("/api/dashboard/runs", requireAuth, (req, res) => {
  * Runs the full pipeline, attaches the run to the current user, and returns { runId }.
  */
 app.post("/api/dashboard/search", requireAuth, (req, res) => {
-  const user = (req as express.Request & { user: { id: string } }).user;
+  const user = (req as express.Request & { user: { id: string; entitled_until: string | null } }).user;
+  if (!isEntitled(user.entitled_until)) {
+    res.status(403).json({
+      error: "An active plan is required to run searches from the dashboard. Unlock below or search from the home page first.",
+    });
+    return;
+  }
   const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
   const context = typeof req.body?.context === "string" ? req.body.context.trim() : "";
 
@@ -485,6 +570,49 @@ app.post("/api/auth/magic-link/request", async (req, res) => {
   res.json({ ok: true });
 });
 
+/** After Google or magic-link login, redirect to `post_login_redirect` cookie path or /dashboard. */
+function redirectAfterLogin(req: express.Request, res: express.Response): void {
+  const raw = req.cookies?.[POST_LOGIN_REDIRECT_COOKIE];
+  res.clearCookie(POST_LOGIN_REDIRECT_COOKIE, { path: "/" });
+  let path = "/dashboard";
+  if (typeof raw === "string") {
+    try {
+      const t = decodeURIComponent(raw).trim();
+      if (t.startsWith("/") && !t.startsWith("//")) path = t;
+    } catch {
+      path = "/dashboard";
+    }
+  }
+  const base = getBaseUrl().replace(/\/$/, "");
+  res.redirect(base + path);
+}
+
+/**
+ * POST /api/dashboard/attach-pending-run
+ * Links an anonymous landing-page run to the logged-in user (same flow as post-Stripe attach).
+ */
+app.post("/api/dashboard/attach-pending-run", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const runId = typeof req.body?.runId === "string" ? req.body.runId.trim() : "";
+  if (!runId) {
+    res.status(400).json({ error: "Missing runId." });
+    return;
+  }
+  const run = getRunById(runId);
+  if (!run) {
+    res.status(404).json({ error: "Run not found." });
+    return;
+  }
+  if (run.user_id && run.user_id !== user.id) {
+    res.status(403).json({ error: "This search is already linked to another account." });
+    return;
+  }
+  if (!run.user_id) {
+    attachRunToUser(runId, user.id);
+  }
+  res.json({ ok: true, runId });
+});
+
 /**
  * GET /magic-link?token=...
  * Verifies token, creates session cookie, redirects to dashboard.
@@ -511,7 +639,7 @@ app.get("/magic-link", (req, res) => {
     path: "/",
   });
 
-  res.redirect("/dashboard");
+  redirectAfterLogin(req, res);
 });
 
 /**
@@ -538,12 +666,13 @@ app.get("/api/auth/google/start", (req, res) => {
     path: "/",
   });
 
-  const scope = encodeURIComponent("openid email profile");
+  // Space-separated scopes only — do not pre-encode; URLSearchParams encodes correctly.
+  // Pre-encoding made Google treat "openid%20email%20profile" as one invalid scope (Error 400: invalid_scope).
   const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", scope);
+  authUrl.searchParams.set("scope", "openid email profile");
   authUrl.searchParams.set("state", state);
   authUrl.searchParams.set("prompt", "select_account");
 
@@ -635,7 +764,8 @@ app.get("/api/auth/google/callback", async (req, res) => {
       path: "/",
     });
 
-    res.redirect("/dashboard");
+    res.clearCookie("google_oauth_state", { path: "/" });
+    redirectAfterLogin(req, res);
   } catch (e) {
     console.error("Google auth error:", e);
     res.redirect("/?error=google_auth_error");
@@ -724,4 +854,8 @@ app.listen(PORT, () => {
   console.log("  Landing: GET /");
   console.log("  API:     POST /api/search with { \"query\": \"...\" }");
   if (stripeEnabled) console.log("  Unlock:   POST /api/create-checkout → Stripe → GET /welcome → /dashboard");
+  const wh = getStripeWebhookSecret();
+  if (stripeEnabled) {
+    console.log(`  Stripe webhooks: ${wh ? "POST /api/stripe/webhook (signing secret set)" : "set STRIPE_WEBHOOK_SECRET for checkout.session.completed backup"}`);
+  }
 });

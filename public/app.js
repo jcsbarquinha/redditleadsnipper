@@ -124,7 +124,7 @@
   // If dashboard bounced the user to landing due to auth requirements, show a friendly message.
   if (params.get("auth") === "required") {
     try {
-      alert("Please unlock to access your dashboard.");
+      alert("Please sign in to access your dashboard.");
     } catch (e) {}
     try {
       params.delete("auth");

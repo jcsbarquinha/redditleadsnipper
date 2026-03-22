@@ -15,7 +15,7 @@
     .dashboard-page .logout-btn { font-size: 0.95rem; font-weight: 600; color: var(--text); background: none; border: none; cursor: pointer; padding: 0.5rem 1rem; text-decoration: none; }
     .dashboard-page .logout-btn:hover { color: var(--reddit-orange); }
     .dashboard-main { max-width: var(--header-max-width); margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
-    .dashboard-layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; align-items: start; }
+    .dashboard-layout { display: grid; grid-template-columns: 380px 1fr; gap: 1.5rem; align-items: start; }
     .dashboard-rail {
       position: sticky;
       top: 110px; /* fixed site header (64px) + title spacing */
@@ -28,7 +28,14 @@
       overflow-y: auto;
     }
     .dashboard-content { min-width: 0; }
-    .dashboard-title { font-size: 2.15rem; font-weight: 700; margin: 0 0 1rem; color: var(--text); line-height: 1.2; }
+    .dashboard-title {
+      font-size: 2.15rem;
+      font-weight: 700;
+      margin: 0 0 1rem;
+      padding-left: 0.85rem;
+      color: var(--text);
+      line-height: 1.2;
+    }
     .dashboard-title .dashboard-scribble::after { bottom: -0.03em; }
     .dashboard-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; padding: 1rem 0; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
     .dashboard-toolbar label { font-size: 0.9rem; color: var(--text-muted); margin-right: 0.25rem; }
@@ -185,6 +192,47 @@
       font-style: normal;
       font-weight: 400;
     }
+    .search-input-wrap {
+      display: flex;
+      align-items: stretch;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      overflow: hidden;
+    }
+    .search-input-wrap:focus-within {
+      border-color: rgba(255, 69, 0, 0.35);
+    }
+    .search-input-lock-btn {
+      flex-shrink: 0;
+      width: 42px;
+      border: none;
+      background: rgba(0, 0, 0, 0.03);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      border-right: 1px solid var(--border);
+      padding: 0;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .search-input-lock-btn:hover {
+      background: rgba(255, 69, 0, 0.08);
+      color: var(--reddit-orange, #ff4500);
+    }
+    .search-input-lock-btn[aria-pressed="true"] {
+      color: var(--reddit-orange, #ff4500);
+      background: rgba(255, 69, 0, 0.06);
+    }
+    .search-input-wrap .search-query-input {
+      width: auto;
+      flex: 1;
+      min-width: 0;
+      border: none;
+      border-radius: 0;
+      padding: 0.6rem 0.75rem;
+    }
     .search-query-input {
       width: 100%;
       font-size: 0.95rem;
@@ -196,7 +244,24 @@
       color: var(--text);
       outline: none;
     }
+    .search-query-input:read-only {
+      cursor: default;
+      background: rgba(0, 0, 0, 0.02);
+    }
     .search-query-input:focus { border-color: rgba(255, 69, 0, 0.35); }
+    .search-input-wrap .search-query-input:focus {
+      border-color: transparent;
+      box-shadow: none;
+    }
+
+    .schedule-hint {
+      margin: 0.55rem 0 0;
+      text-align: center;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--reddit-orange, #ff4500);
+      line-height: 1.35;
+    }
     .primary-btn {
       width: 100%;
       font-size: 0.95rem;
@@ -475,6 +540,126 @@
     .lead-card .card-actions .btn-copy { color: var(--link); }
     .lead-card .card-actions .btn-copy:hover { text-decoration: underline; }
     .lead-card.archived { opacity: 0.85; }
+    .dashboard-entitlement-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.15rem;
+      margin-bottom: 1.25rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 69, 0, 0.35);
+      background: rgba(255, 69, 0, 0.06);
+    }
+    .dashboard-entitlement-banner.hidden {
+      display: none !important;
+    }
+    .dashboard-entitlement-banner p {
+      margin: 0;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: var(--text);
+      max-width: 42rem;
+    }
+    .dashboard-entitlement-banner .primary-btn {
+      flex-shrink: 0;
+    }
+    .dashboard-onboarding-empty {
+      padding: 1.5rem 1rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      margin-bottom: 1rem;
+    }
+    .dashboard-onboarding-empty.hidden {
+      display: none !important;
+    }
+    .dashboard-onboarding-empty a {
+      color: var(--reddit-orange, #ff4500);
+      font-weight: 600;
+    }
+    .dashboard-get-started {
+      padding: 1.25rem 1.1rem;
+      margin-bottom: 1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+    .dashboard-get-started.hidden {
+      display: none !important;
+    }
+    .dashboard-get-started h3 {
+      margin: 0 0 0.5rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .dashboard-get-started p {
+      margin: 0 0 1rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+    .dashboard-get-started-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      align-items: center;
+    }
+    .dashboard-get-started-actions .primary-btn {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .dashboard-get-started-actions .secondary-link {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--reddit-orange, #ff4500);
+      text-decoration: none;
+      background: none;
+      border: none;
+      padding: 0.45rem 0;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .dashboard-get-started-actions .secondary-link:hover {
+      text-decoration: underline;
+    }
+    .dashboard-logged-out-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.15rem;
+      margin-bottom: 1.25rem;
+      border-radius: 12px;
+      border: 1px solid rgba(29, 78, 216, 0.35);
+      background: rgba(29, 78, 216, 0.06);
+    }
+    .dashboard-logged-out-banner.hidden {
+      display: none !important;
+    }
+    .dashboard-logged-out-banner p {
+      margin: 0;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: var(--text);
+      max-width: 42rem;
+    }
+    .dashboard-logged-out-banner .primary-btn {
+      flex-shrink: 0;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
   </style>
 </head>
 <body class="dashboard-page">
@@ -485,8 +670,9 @@
         <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
       </a>
       <nav class="header-nav" aria-label="Main">
-        <a href="/how-it-works" class="header-link">How it Works</a>
-        <a href="/pricing" class="header-link">Pricing</a>
+        <a href="/#how-it-works" class="header-link">How it Works</a>
+        <a href="/#pricing" class="header-link">Pricing</a>
+        <a href="/dashboard" class="header-link" aria-current="page">Dashboard</a>
       </nav>
       <div class="header-actions">
         <span id="userEmail" class="user-email"></span>
@@ -498,12 +684,53 @@
   <main class="dashboard-main">
     <h1 class="dashboard-title"><span class="headline-scribble dashboard-scribble">Dashboard</span></h1>
 
+    <div id="dashboardLoggedOutBanner" class="dashboard-logged-out-banner hidden" role="region" aria-label="Sign in">
+      <p>
+        <strong>Preview mode.</strong> You’re not signed in. Sign in to load your leads and saved searches, or run a free search on the home page first.
+      </p>
+      <a href="/login?return=%2Fdashboard" class="primary-btn">Sign in</a>
+    </div>
+
+    <div id="dashboardEntitlementBanner" class="dashboard-entitlement-banner hidden" role="region" aria-label="Plan required">
+      <p>
+        <strong>Unlock to see ranked leads.</strong>
+        You’re signed in — choose a plan to view full results and run new searches from the dashboard. Free searches from the home page are saved to your account.
+      </p>
+      <button type="button" id="dashboardUnlockBtn" class="primary-btn">Choose plan &amp; unlock</button>
+    </div>
+
     <div class="dashboard-layout">
       <aside class="dashboard-rail" aria-label="Inbox filters">
         <div class="rail-section">
-          <h2 class="rail-section-title">Search</h2>
+          <h2 class="rail-section-title">Search input</h2>
           <div class="rail-control">
-            <input id="searchQueryInput" type="text" class="search-query-input" aria-label="Search input" placeholder="Your search input" />
+            <div class="search-input-wrap" id="searchInputWrap">
+              <button
+                type="button"
+                class="search-input-lock-btn"
+                id="searchInputLockBtn"
+                aria-label="Unlock to edit search input"
+                aria-pressed="false"
+                title="Click to unlock and edit"
+              >
+                <svg class="search-input-lock-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <svg class="search-input-unlock-icon hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75"></path>
+                  <path d="M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25z"></path>
+                </svg>
+              </button>
+              <input
+                id="searchQueryInput"
+                type="text"
+                class="search-query-input"
+                readonly
+                aria-label="Search input"
+                placeholder="Your search input"
+              />
+            </div>
           </div>
           <div class="rail-control">
             <button type="button" id="toggleContextBtn" class="reply-toggle add-context-btn">Add context</button>
@@ -519,8 +746,9 @@
           </div>
 
           <div class="rail-control">
-            <button type="button" id="runSearchBtn" class="primary-btn" title="Run this search again">Run search again</button>
+            <button type="button" id="runSearchBtn" class="primary-btn" title="Run this search again" disabled>Run search again</button>
           </div>
+          <p class="schedule-hint">Search will run every 1 hour</p>
           <p id="runSearchMeta" class="run-search-meta hidden" aria-live="polite"></p>
         </div>
 
@@ -634,7 +862,7 @@
         <div class="rail-section">
           <h2 class="rail-section-title">CSV export</h2>
           <div class="rail-control">
-            <button type="button" id="exportCsvBtn" class="primary-btn" title="Export the currently shown posts as CSV">
+            <button type="button" id="exportCsvBtn" class="primary-btn" title="Export the currently shown posts as CSV" disabled>
               Export CSV
             </button>
           </div>
@@ -642,6 +870,19 @@
       </aside>
 
       <section class="dashboard-content">
+        <div id="dashboardGetStarted" class="dashboard-get-started hidden" aria-live="polite">
+          <h3>Get started</h3>
+          <p>
+            Run a <strong>free search</strong> on the home page — when you sign in, we attach it here. Or choose a plan to run searches from the dashboard and see full ranked leads.
+          </p>
+          <div class="dashboard-get-started-actions">
+            <a href="/" class="primary-btn">Run a free search</a>
+            <button type="button" class="secondary-link" id="dashboardGetStartedUnlockBtn">Choose plan &amp; unlock</button>
+          </div>
+        </div>
+        <div id="dashboardOnboardingEmpty" class="dashboard-onboarding-empty hidden" aria-live="polite">
+          No searches on your account yet. Run a free search on the <a href="/">home page</a>, then sign in — we’ll attach it here. Or unlock below to run searches from the dashboard.
+        </div>
         <div class="dashboard-list-wrap">
           <div id="leadsList" class="results-list"></div>
           <p id="emptyState" class="dashboard-empty hidden">No leads to show</p>
@@ -695,6 +936,10 @@
 
   var runs = [];
   var leads = [];
+  /** True when Stripe (or promo) has set entitled_until — user can see leads and run dashboard search. */
+  var dashUserEntitled = false;
+  /** True when /api/me failed — show preview UI without redirecting to login. */
+  var dashboardLoggedOut = false;
   var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
   if (unlockedRunId) {
     try {
@@ -854,6 +1099,111 @@
     return "/api/dashboard/leads?" + params.toString();
   }
 
+  var defaultOnboardingEmptyHtml =
+    'No searches on your account yet. Run a free search on the <a href="/">home page</a>, then sign in — we’ll attach it here. Or unlock below to run searches from the dashboard.';
+
+  function setDashEntitled(v) {
+    dashUserEntitled = !!v;
+    var banner = document.getElementById("dashboardEntitlementBanner");
+    if (banner) banner.classList.toggle("hidden", dashUserEntitled || dashboardLoggedOut);
+    var runBtn = document.getElementById("runSearchBtn");
+    if (runBtn) runBtn.disabled = !dashUserEntitled;
+    var exportBtn = document.getElementById("exportCsvBtn");
+    if (exportBtn) exportBtn.disabled = !dashUserEntitled;
+  }
+
+  function syncOnboardingEmpty() {
+    var el = document.getElementById("dashboardOnboardingEmpty");
+    if (!el) return;
+    if (dashboardLoggedOut) {
+      el.innerHTML = defaultOnboardingEmptyHtml;
+      el.classList.add("hidden");
+      return;
+    }
+    el.innerHTML = defaultOnboardingEmptyHtml;
+    el.classList.toggle("hidden", !(dashUserEntitled && runs.length === 0));
+  }
+
+  /** Signed in, no plan, no runs yet — CTA to home search + unlock. */
+  function syncDashboardGetStarted() {
+    var el = document.getElementById("dashboardGetStarted");
+    if (!el || dashboardLoggedOut) {
+      if (el) el.classList.add("hidden");
+      return;
+    }
+    el.classList.toggle("hidden", !(!dashUserEntitled && runs.length === 0));
+  }
+
+  function syncEmptyStatePanels() {
+    syncOnboardingEmpty();
+    syncDashboardGetStarted();
+  }
+
+  function isLikelyRunIdDash(s) {
+    return typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim());
+  }
+
+  function initLoggedOutPreview() {
+    dashboardLoggedOut = true;
+    var loBanner = document.getElementById("dashboardLoggedOutBanner");
+    if (loBanner) loBanner.classList.remove("hidden");
+    var userEmailSpan = document.getElementById("userEmail");
+    if (userEmailSpan) {
+      userEmailSpan.textContent = "";
+      userEmailSpan.style.display = "none";
+    }
+    var logoutBtn = document.getElementById("logoutBtn");
+    if (logoutBtn) {
+      logoutBtn.textContent = "Sign in";
+      logoutBtn.setAttribute("aria-label", "Sign in");
+    }
+    var entBanner = document.getElementById("dashboardEntitlementBanner");
+    if (entBanner) entBanner.classList.add("hidden");
+    setDashEntitled(false);
+    runs = [];
+    leads = [];
+    renderLeads();
+    syncEmptyStatePanels();
+    ["activeLeadsCount", "hotLeadsCount", "warmLeadsCount", "recentLeadsCount", "archivedLeadsCount", "deletedLeadsCount"].forEach(
+      function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = "0";
+      }
+    );
+  }
+
+  function attachPendingRunIfAny() {
+    var pending = "";
+    try {
+      pending = sessionStorage.getItem("leadsnipePendingRunId") || "";
+    } catch (e) {}
+    if (!pending || !isLikelyRunIdDash(pending)) return Promise.resolve();
+    return fetch("/api/dashboard/attach-pending-run", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId: pending.trim() }),
+    }).then(function (r) {
+      if (!r.ok) {
+        return r.json().then(function (body) {
+          console.warn("attach-pending-run:", body && body.error ? body.error : r.status);
+        }).catch(function () {
+          console.warn("attach-pending-run failed:", r.status);
+        });
+      }
+      try {
+        sessionStorage.removeItem("leadsnipePendingRunId");
+        sessionStorage.removeItem("leadsnipePendingQuery");
+      } catch (e2) {}
+      try {
+        var u = new URL(window.location.href);
+        u.searchParams.set("runId", pending.trim());
+        window.history.replaceState({}, "", u.toString());
+        unlockedRunId = pending.trim();
+      } catch (e3) {}
+    });
+  }
+
   function fetchLeads() {
     return fetch(buildLeadsUrl(), { credentials: "same-origin" })
       .then(function (r) {
@@ -861,6 +1211,9 @@
         return r.json();
       })
       .then(function (data) {
+        if (data && typeof data.entitled === "boolean") {
+          setDashEntitled(data.entitled);
+        }
         leads = data.leads || [];
         // API returns booleans for `is_archived` and `is_deleted`.
         var nonDeleted = leads.filter(function (l) { return l.is_deleted !== true; });
@@ -888,6 +1241,7 @@
 
         syncActiveOnlyUI();
         renderLeads();
+        syncEmptyStatePanels();
       });
   }
 
@@ -986,6 +1340,16 @@
     var working = computeWorkingLeads();
 
     if (working.length === 0) {
+      if (empty) {
+        if (dashboardLoggedOut) {
+          empty.textContent = "Sign in to load your leads and saved searches.";
+        } else if (!dashUserEntitled) {
+          empty.textContent =
+            "Unlock your plan to see ranked leads. Your searches are saved when you sign in.";
+        } else {
+          empty.textContent = "No leads to show";
+        }
+      }
       empty.classList.remove("hidden");
       return;
     }
@@ -1439,22 +1803,31 @@
   fetch("/api/me", { credentials: "same-origin" })
     .then(function (r) {
       if (!r.ok) {
-        // If user isn't authenticated, bounce back to landing with a visible reason.
-        try {
-          window.location.href = "/?auth=required";
-        } catch (e) {
-          redirectHome();
-        }
-        throw new Error("Not logged in");
+        initLoggedOutPreview();
+        return Promise.reject(new Error("logged_out"));
       }
       return r.json();
     })
     .then(function (me) {
-      document.getElementById("userEmail").textContent = me.email || "";
+      var loBanner = document.getElementById("dashboardLoggedOutBanner");
+      if (loBanner) loBanner.classList.add("hidden");
+      var userEmailSpan = document.getElementById("userEmail");
+      if (userEmailSpan) userEmailSpan.style.display = "";
+      var logoutBtnEl = document.getElementById("logoutBtn");
+      if (logoutBtnEl) {
+        logoutBtnEl.textContent = "Log out";
+        logoutBtnEl.setAttribute("aria-label", "Log out");
+      }
+      var emailEl = document.getElementById("userEmail");
+      if (emailEl) emailEl.textContent = me.email || "";
+      if (typeof me.entitled === "boolean") {
+        setDashEntitled(me.entitled);
+      }
+      return attachPendingRunIfAny();
     })
-    .catch(function () {});
-
-  fetch("/api/dashboard/runs", { credentials: "same-origin" })
+    .then(function () {
+      return fetch("/api/dashboard/runs", { credentials: "same-origin" });
+    })
     .then(function (r) {
       if (!r.ok) return { runs: [] };
       return r.json();
@@ -1476,7 +1849,55 @@
       if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
 
       return fetchLeads();
+    })
+    .catch(function (err) {
+      if (err && err.message === "logged_out") return;
     });
+
+  var dashboardUnlockBtn = document.getElementById("dashboardUnlockBtn");
+  var getStartedUnlockBtn = document.getElementById("dashboardGetStartedUnlockBtn");
+  if (dashboardUnlockBtn) {
+    dashboardUnlockBtn.addEventListener("click", function () {
+      var runId = unlockedRunId || (runs[0] && runs[0].id) || "";
+      var billing = "monthly";
+      try {
+        if (localStorage.getItem("leadsnipePricingBilling") === "yearly") billing = "yearly";
+      } catch (e) {}
+      var payload = { billing: billing };
+      if (runId) payload.runId = runId;
+      dashboardUnlockBtn.disabled = true;
+      fetch("/api/create-checkout", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(function (r) {
+          return r.json().then(function (body) {
+            return { ok: r.ok, body: body };
+          });
+        })
+        .then(function (result) {
+          var body = result.body || {};
+          if (body.url) {
+            window.location.href = body.url;
+            return;
+          }
+          dashboardUnlockBtn.disabled = false;
+          alert(body.error || "Could not start checkout.");
+        })
+        .catch(function () {
+          dashboardUnlockBtn.disabled = false;
+          alert("Network error.");
+        });
+    });
+  }
+
+  if (getStartedUnlockBtn && dashboardUnlockBtn) {
+    getStartedUnlockBtn.addEventListener("click", function () {
+      dashboardUnlockBtn.click();
+    });
+  }
   
   var daysEl = document.getElementById("filterDays");
   if (daysEl) daysEl.addEventListener("change", fetchLeads);
@@ -1534,6 +1955,37 @@
   if (runSearchEl) {
     runSearchEl.addEventListener("click", function () {
       runSearchAgain();
+    });
+  }
+
+  var searchQueryInputEl = document.getElementById("searchQueryInput");
+  var searchInputLockBtn = document.getElementById("searchInputLockBtn");
+  var lockIconClosed = searchInputLockBtn ? searchInputLockBtn.querySelector(".search-input-lock-icon") : null;
+  var lockIconOpen = searchInputLockBtn ? searchInputLockBtn.querySelector(".search-input-unlock-icon") : null;
+
+  function setSearchInputLocked(locked) {
+    if (!searchQueryInputEl || !searchInputLockBtn) return;
+    searchQueryInputEl.readOnly = locked;
+    searchInputLockBtn.setAttribute("aria-pressed", locked ? "false" : "true");
+    searchInputLockBtn.setAttribute("aria-label", locked ? "Unlock to edit search input" : "Lock search input");
+    searchInputLockBtn.setAttribute("title", locked ? "Click to unlock and edit" : "Click to lock editing");
+    if (lockIconClosed && lockIconOpen) {
+      lockIconClosed.classList.toggle("hidden", !locked);
+      lockIconOpen.classList.toggle("hidden", locked);
+    }
+  }
+
+  if (searchInputLockBtn && searchQueryInputEl) {
+    setSearchInputLocked(true);
+    searchInputLockBtn.addEventListener("click", function () {
+      var nowLocked = searchQueryInputEl.readOnly;
+      setSearchInputLocked(!nowLocked);
+      if (!searchQueryInputEl.readOnly) {
+        try {
+          searchQueryInputEl.focus();
+          searchQueryInputEl.select();
+        } catch (e) {}
+      }
     });
   }
 
@@ -1690,6 +2142,10 @@
   updateDropdownLabel();
 
   document.getElementById("logoutBtn").addEventListener("click", function () {
+    if (dashboardLoggedOut) {
+      window.location.href = "/login?return=" + encodeURIComponent("/dashboard");
+      return;
+    }
     fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
       redirectHome();
     });

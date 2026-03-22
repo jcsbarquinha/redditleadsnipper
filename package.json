@@ -12,7 +12,9 @@
     "keywords:test": "tsx scripts/test-keywords.ts",
     "pipeline": "tsx src/run-pipeline.ts",
     "report": "tsx src/report.ts",
-    "api": "tsx src/server.ts"
+    "api": "tsx src/server.ts",
+    "start:api": "node dist/server.js",
+    "stripe:listen": "stripe listen --forward-to localhost:3001/api/stripe/webhook"
   },
   "keywords": [
     "reddit",

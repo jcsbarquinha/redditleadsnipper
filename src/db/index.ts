@@ -443,9 +443,7 @@ export function getSession(sessionId: string): { user_id: string; email: string;
   const row = getDb()
     .prepare(
       `SELECT s.user_id, u.email, u.entitled_until FROM sessions s JOIN users u ON s.user_id = u.id
-       WHERE s.id = ? AND s.expires_at > datetime('now')
-         AND u.entitled_until IS NOT NULL
-         AND u.entitled_until > datetime('now')`
+       WHERE s.id = ? AND s.expires_at > datetime('now')`
     )
     .get(sessionId) as { user_id: string; email: string; entitled_until: string | null } | undefined;
   return row ?? null;
