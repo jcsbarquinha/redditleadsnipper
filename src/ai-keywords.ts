@@ -4,6 +4,7 @@
  */
 
 import { requireOpenAIKey } from "./config.js";
+import { fetchOpenAIChat } from "./openai-fetch.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
@@ -12,7 +13,7 @@ const WEBSITE_FETCH_TIMEOUT_MS = 15_000;
 const MAX_WEBSITE_TEXT_LENGTH = 12000;
 
 /** Number of final LLM-generated search queries. */
-export const DEFAULT_KEYWORD_COUNT = 10;
+export const DEFAULT_KEYWORD_COUNT = 8;
 
 interface WebsiteContext {
   url: string;
@@ -298,7 +299,7 @@ export async function getKeywordsForInput(
     console.warn("Website analysis fallback:", err instanceof Error ? err.message : err);
   }
 
-  const res = await fetch(OPENAI_API_URL, {
+  const res = await fetchOpenAIChat(OPENAI_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -312,7 +313,7 @@ export async function getKeywordsForInput(
       ],
       temperature: 0.2,
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(120_000),
   });
 
   if (!res.ok) {

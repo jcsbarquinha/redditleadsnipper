@@ -16,14 +16,16 @@ import { InvalidSearchInputError, validateUserInput } from "./input-validation.j
 import type { RedditPost } from "./types.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
-const DEFAULT_DELAY_MS = 500;
+/** Delay between Reddit listing fetches (same search, pagination). Higher = fewer 429s from Reddit. */
+const DEFAULT_DELAY_MS = 1100;
 /** Align with Reddit `t=week` (~7 days). */
 const MAX_POST_AGE_DAYS = 7;
 const MIN_CONTENT_LENGTH = 20;
-const SEARCH_KEYWORD_CONCURRENCY = 3;
+/** Parallel Reddit searches (keyword × sort). Lower = fewer 429s; higher = faster pipeline. */
+const SEARCH_KEYWORD_CONCURRENCY = 2;
 const INTENT_CONCURRENCY = 10;
-const INTENT_BATCH_SIZE = 2;
-const MAX_PAGES_PER_QUERY = 2;
+const INTENT_BATCH_SIZE = 1;
+const MAX_PAGES_PER_QUERY = 1;
 
 
 const PROMO_CALL_TO_ACTION_PATTERN =
@@ -294,13 +296,16 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
         ? productSummary.trim()
         : llmUserInput;
 
-  const intentContext = targetUser
+  let intentContext = targetUser
     ? `${baseContext}\n\nTarget user:\n${targetUser}`
     : `${baseContext}\n\nTarget user:\n(not specified)`;
+  if (trimmedContext) {
+    intentContext += `\n\nAdditional user context (preferences, exclusions, constraints):\n${trimmedContext}`;
+  }
   insertRun(runId, userInput, searchQueries, context, "running");
 
   try {
-    const SORT_MODES: Array<"new" | "relevance" | "hot"> = ["new", "relevance", "hot"];
+    const SORT_MODES: Array<"new" | "relevance"> = ["new", "relevance"];
     const searchTasks = searchQueries.flatMap((query) =>
       SORT_MODES.map((sort) => ({ query, sort }))
     );
