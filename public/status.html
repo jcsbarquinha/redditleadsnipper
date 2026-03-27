@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Leadsnipe System Status</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --ok: #16a34a;
+      --warn: #f59e0b;
+      --down: #dc2626;
+      --primary: #f25c37;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 950px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+    .brand {
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+    .brand-dot { color: var(--primary); }
+    .home-link {
+      text-decoration: none;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.3rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 1.2;
+    }
+    .hero p {
+      margin: 0.35rem 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.85rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ok);
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: currentColor;
+      display: inline-block;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1rem;
+      margin-top: 0.9rem;
+    }
+    .service-row {
+      margin-top: 0.7rem;
+      padding-top: 0.7rem;
+      border-top: 1px solid var(--border);
+    }
+    .service-row:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+    .service-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .service-name {
+      font-weight: 600;
+      font-size: 0.98rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      border-radius: 999px;
+      padding: 0.22rem 0.55rem;
+      border: 1px solid var(--border);
+      color: #1f2937;
+      background: #fff;
+      white-space: nowrap;
+    }
+    .uptime {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+    .bars {
+      display: grid;
+      grid-template-columns: repeat(30, minmax(0, 1fr));
+      gap: 3px;
+    }
+    .bar {
+      height: 11px;
+      border-radius: 3px;
+      background: #d1d5db;
+    }
+    .bar.ok { background: #22c55e; }
+    .bar.warn { background: #f59e0b; }
+    .bar.down { background: #ef4444; }
+    .footnote {
+      margin-top: 1rem;
+      color: var(--muted);
+      font-size: 0.83rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <a href="/" class="brand">leadsnipe<span class="brand-dot">.</span></a>
+      <a href="/" class="home-link">Back to home</a>
+    </div>
+
+    <section class="hero">
+      <h1>System Status</h1>
+      <p id="lastChecked">Last checked: -</p>
+      <div class="summary" id="overallSummary">
+        <span class="dot"></span>
+        <span>All systems operational</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="service-row">
+        <div class="service-head">
+          <div class="service-name">Website (`/`)</div>
+          <span class="pill" id="sitePill"><span class="dot"></span>Checking...</span>
+        </div>
+        <div class="uptime" id="siteUptime">Uptime: calculating...</div>
+        <div class="bars" id="siteBars"></div>
+      </div>
+
+      <div class="service-row">
+        <div class="service-head">
+          <div class="service-name">API (`/api/health`)</div>
+          <span class="pill" id="apiPill"><span class="dot"></span>Checking...</span>
+        </div>
+        <div class="uptime" id="apiUptime">Uptime: calculating...</div>
+        <div class="bars" id="apiBars"></div>
+      </div>
+
+      <p class="footnote">
+        Uptime history is generated by a server-side monitor and shared for all users.
+      </p>
+    </section>
+  </div>
+
+  <script>
+    const MAX_POINTS = 30;
+
+    function addPoint(arr, state) {
+      arr.push(state);
+      while (arr.length > MAX_POINTS) arr.shift();
+    }
+
+    function classForState(state) {
+      if (state === "ok") return "ok";
+      if (state === "warn") return "warn";
+      return "down";
+    }
+
+    function renderBars(containerId, states) {
+      const el = document.getElementById(containerId);
+      el.innerHTML = "";
+      const padded = Array.from({ length: MAX_POINTS - states.length }, () => "down").concat(states);
+      padded.forEach((state) => {
+        const d = document.createElement("div");
+        d.className = `bar ${classForState(state)}`;
+        el.appendChild(d);
+      });
+    }
+
+    function uptimePct(value) {
+      if (typeof value !== "number" || Number.isNaN(value)) return "0.0%";
+      return `${value.toFixed(1)}%`;
+    }
+
+    function setPill(id, state, text) {
+      const el = document.getElementById(id);
+      const color = state === "ok" ? "var(--ok)" : state === "warn" ? "var(--warn)" : "var(--down)";
+      el.style.color = color;
+      el.innerHTML = `<span class="dot"></span>${text}`;
+    }
+
+    async function runChecks() {
+      try {
+        const response = await fetch("/api/status", { method: "GET", cache: "no-store" });
+        if (!response.ok) throw new Error("status fetch failed");
+        const payload = await response.json();
+
+        const siteHistory = Array.isArray(payload?.services?.website?.history)
+          ? payload.services.website.history.map((r) => r.state).slice(-MAX_POINTS)
+          : [];
+        const apiHistory = Array.isArray(payload?.services?.api?.history)
+          ? payload.services.api.history.map((r) => r.state).slice(-MAX_POINTS)
+          : [];
+
+        const siteLatest = payload?.services?.website?.latest?.state || "down";
+        const apiLatest = payload?.services?.api?.latest?.state || "down";
+        const overallState = payload?.overall || "warn";
+
+        setPill("sitePill", siteLatest, siteLatest === "ok" ? "Operational" : "Degraded");
+        setPill("apiPill", apiLatest, apiLatest === "ok" ? "Operational" : "Degraded");
+        document.getElementById("siteUptime").textContent =
+          `Uptime: ${uptimePct(payload?.services?.website?.uptime_pct)} (last ${siteHistory.length} checks)`;
+        document.getElementById("apiUptime").textContent =
+          `Uptime: ${uptimePct(payload?.services?.api?.uptime_pct)} (last ${apiHistory.length} checks)`;
+        renderBars("siteBars", siteHistory);
+        renderBars("apiBars", apiHistory);
+
+        const overall = document.getElementById("overallSummary");
+        const allOk = overallState === "ok";
+        overall.style.color = allOk ? "var(--ok)" : "var(--warn)";
+        overall.innerHTML = `<span class="dot"></span><span>${allOk ? "All systems operational" : "Some systems are degraded"}</span>`;
+        document.getElementById("lastChecked").textContent = `Last checked: ${new Date(payload?.checked_at || Date.now()).toLocaleString()}`;
+      } catch {
+        setPill("sitePill", "down", "Unavailable");
+        setPill("apiPill", "down", "Unavailable");
+        document.getElementById("lastChecked").textContent = "Last checked: unavailable";
+        const overall = document.getElementById("overallSummary");
+        overall.style.color = "var(--warn)";
+        overall.innerHTML = "<span class=\"dot\"></span><span>Status temporarily unavailable</span>";
+        renderBars("siteBars", []);
+        renderBars("apiBars", []);
+      }
+    }
+
+    runChecks();
+  </script>
+</body>
+</html>

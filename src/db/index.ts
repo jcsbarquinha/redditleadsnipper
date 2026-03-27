@@ -109,6 +109,7 @@ function runSchema(database: Database.Database): void {
   migratePostIntent(database);
   migrateUsersAndSessions(database);
   migrateLeadActions(database);
+  migrateServiceStatus(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
 
@@ -579,4 +580,60 @@ export function clearLeadAction(userId: string, postId: string): void {
   getDb()
     .prepare(`DELETE FROM lead_actions WHERE user_id = ? AND post_id = ?`)
     .run(userId, postId);
+}
+
+// --- Service status checks (shared uptime history) ---
+
+export type ServiceStatusState = "ok" | "warn" | "down";
+
+export interface ServiceStatusPoint {
+  state: ServiceStatusState;
+  status_code: number | null;
+  latency_ms: number | null;
+  checked_at: string;
+}
+
+function migrateServiceStatus(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS service_status_checks (
+      id TEXT PRIMARY KEY,
+      service TEXT NOT NULL,
+      state TEXT NOT NULL,
+      status_code INTEGER,
+      latency_ms INTEGER,
+      checked_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_service_status_service_time ON service_status_checks(service, checked_at DESC)`);
+}
+
+export function insertServiceStatusCheck(
+  service: "website" | "api",
+  state: ServiceStatusState,
+  statusCode: number | null,
+  latencyMs: number | null,
+  checkedAtIso: string
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO service_status_checks (id, service, state, status_code, latency_ms, checked_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(randomUUID(), service, state, statusCode, latencyMs, checkedAtIso);
+}
+
+export function getRecentServiceStatusChecks(
+  service: "website" | "api",
+  limit: number = 30
+): ServiceStatusPoint[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT state, status_code, latency_ms, checked_at
+       FROM service_status_checks
+       WHERE service = ?
+       ORDER BY checked_at DESC
+       LIMIT ?`
+    )
+    .all(service, limit) as ServiceStatusPoint[];
+  return rows.reverse();
 }

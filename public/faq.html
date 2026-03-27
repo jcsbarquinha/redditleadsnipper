@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Leadsnipe FAQ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --text: #1a1a1a;
+      --muted: #5c6166;
+      --border: #e9ecef;
+      --bg: #ffffff;
+      --bg-muted: #f8f9fa;
+      --primary: #f25c37;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background: var(--bg-muted);
+      line-height: 1.6;
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+    .brand {
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+    .brand-dot { color: var(--primary); }
+    .home-link {
+      text-decoration: none;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .home-link:hover { color: var(--text); }
+    .hero {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.3rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      margin: 0 0 0.4rem;
+      font-size: 2rem;
+      line-height: 1.2;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+    details {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+      margin-top: 0.75rem;
+    }
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      list-style: none;
+      outline: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    details[open] summary { margin-bottom: 0.6rem; }
+    .answer {
+      margin: 0;
+      color: #2b2f33;
+      font-size: 0.96rem;
+    }
+    .cta {
+      margin-top: 1.35rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.2rem 1rem;
+      text-align: center;
+    }
+    .cta h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.25rem;
+    }
+    .cta p {
+      margin: 0 0 0.9rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .cta a {
+      display: inline-block;
+      text-decoration: none;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.95rem;
+      border-radius: 10px;
+      padding: 0.65rem 1.15rem;
+    }
+    .cta a:hover { background: #de4f2c; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <a href="/" class="brand">leadsnipe<span class="brand-dot">.</span></a>
+      <a href="/" class="home-link">Back to home</a>
+    </div>
+
+    <section class="hero">
+      <h1>Frequently Asked Questions</h1>
+      <p>Everything you need to know about how Leadsnipe works and what to expect.</p>
+    </section>
+
+    <details open>
+      <summary>What does Leadsnipe do exactly?</summary>
+      <p class="answer">Leadsnipe finds Reddit threads where people show buying intent for products like yours, then ranks those threads so you can prioritize the best reply opportunities.</p>
+    </details>
+
+    <details>
+      <summary>Do you send automated DMs or replies on my behalf?</summary>
+      <p class="answer">No. Leadsnipe is human-in-the-loop. We surface high-intent conversations; you decide if and how to respond to keep outreach safe and authentic.</p>
+    </details>
+
+    <details>
+      <summary>How fast can I see value after searching?</summary>
+      <p class="answer">In most cases you get first ranked leads in minutes. The goal is to quickly surface a small set of threads worth your next 15 minutes.</p>
+    </details>
+
+    <details>
+      <summary>What counts as a "high-intent" lead?</summary>
+      <p class="answer">Posts and comments where users are actively looking for recommendations, alternatives, or solutions related to your offer. We rank by likely buying intent, not just keyword mentions.</p>
+    </details>
+
+    <details>
+      <summary>Can I use Leadsnipe without signing in first?</summary>
+      <p class="answer">You can run an initial search preview from the homepage. Full ranked results, saved runs, and account-level access require sign-in and plan unlock.</p>
+    </details>
+
+    <details>
+      <summary>What do I get after unlocking?</summary>
+      <p class="answer">You get full dashboard access with ranked leads, filtering, archive/delete actions, reruns, and account-linked search history. Email alerts are designed to support ongoing lead discovery.</p>
+    </details>
+
+    <details>
+      <summary>Does Leadsnipe guarantee sales?</summary>
+      <p class="answer">No tool can guarantee outcomes. Leadsnipe improves lead quality and response prioritization, but your positioning and replies still drive conversion results.</p>
+    </details>
+
+    <details>
+      <summary>How often is lead data refreshed?</summary>
+      <p class="answer">Searches pull live data at run time. Scheduled refresh and recurring alert behavior can be configured as product capabilities expand.</p>
+    </details>
+
+    <details>
+      <summary>What if a lead is irrelevant?</summary>
+      <p class="answer">Use archive/delete to keep your feed clean. These actions help maintain focus while the scoring quality is continually improved.</p>
+    </details>
+
+    <details>
+      <summary>Who is Leadsnipe best for?</summary>
+      <p class="answer">It’s strongest for founders, indie SaaS teams, and small agencies that can personally reply to high-intent Reddit threads and want quality over volume.</p>
+    </details>
+
+    <section class="cta">
+      <h2>Ready to find your next buyer?</h2>
+      <p>Go back to the landing page and run your first search.</p>
+      <a href="/">Run a free search</a>
+    </section>
+  </div>
+</body>
+</html>

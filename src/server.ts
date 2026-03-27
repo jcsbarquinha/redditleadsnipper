@@ -41,7 +41,10 @@ import {
   getRunsForUser,
   setLeadAction,
   clearLeadAction,
+  insertServiceStatusCheck,
+  getRecentServiceStatusChecks,
   type LeadRow,
+  type ServiceStatusState,
 } from "./db/index.js";
 import { InvalidSearchInputError } from "./input-validation.js";
 
@@ -218,6 +221,43 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
 /** Health check */
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
+});
+
+/**
+ * Shared status history for website + API. Backed by DB checks from server monitor.
+ */
+app.get("/api/status", (_req, res) => {
+  const websiteHistory = getRecentServiceStatusChecks("website", 30);
+  const apiHistory = getRecentServiceStatusChecks("api", 30);
+
+  const websiteLatest = websiteHistory.length ? websiteHistory[websiteHistory.length - 1] : null;
+  const apiLatest = apiHistory.length ? apiHistory[apiHistory.length - 1] : null;
+
+  const pct = (rows: { state: ServiceStatusState }[]): number => {
+    if (!rows.length) return 0;
+    const okCount = rows.filter((r) => r.state === "ok").length;
+    return Number(((okCount / rows.length) * 100).toFixed(1));
+  };
+
+  const overall: ServiceStatusState =
+    websiteLatest?.state === "ok" && apiLatest?.state === "ok" ? "ok" : "warn";
+
+  res.json({
+    overall,
+    checked_at: new Date().toISOString(),
+    services: {
+      website: {
+        latest: websiteLatest,
+        uptime_pct: pct(websiteHistory),
+        history: websiteHistory,
+      },
+      api: {
+        latest: apiLatest,
+        uptime_pct: pct(apiHistory),
+        history: apiHistory,
+      },
+    },
+  });
 });
 
 /**
@@ -865,6 +905,14 @@ app.get("/terms", (_req, res) => {
   res.sendFile(join(publicDir, "terms.html"));
 });
 
+app.get("/faq", (_req, res) => {
+  res.sendFile(join(publicDir, "faq.html"));
+});
+
+app.get("/status", (_req, res) => {
+  res.sendFile(join(publicDir, "status.html"));
+});
+
 // Landing page and static assets (API routes above take precedence)
 app.use(express.static(publicDir));
 
@@ -883,4 +931,48 @@ app.listen(PORT, "0.0.0.0", () => {
   if (stripeEnabled) {
     console.log(`  Stripe webhooks: ${wh ? "POST /api/stripe/webhook (signing secret set)" : "set STRIPE_WEBHOOK_SECRET for checkout.session.completed backup"}`);
   }
+
+  /**
+   * Real shared uptime monitor (DB-backed):
+   * - website check: GET /
+   * - API check: GET /api/health (expects { ok: true })
+   */
+  const baseProbeUrl = `http://127.0.0.1:${PORT}`;
+  const intervalMs = 5 * 60 * 1000;
+
+  async function runStatusChecks(): Promise<void> {
+    async function check(path: string, expectsOkJson: boolean): Promise<{ state: ServiceStatusState; statusCode: number | null; latencyMs: number | null }> {
+      const startedAt = Date.now();
+      try {
+        const response = await fetch(baseProbeUrl + path, { method: "GET", cache: "no-store" });
+        const latencyMs = Date.now() - startedAt;
+        if (!response.ok) {
+          return { state: "down", statusCode: response.status, latencyMs };
+        }
+        if (!expectsOkJson) {
+          return { state: "ok", statusCode: response.status, latencyMs };
+        }
+        try {
+          const payload = await response.json() as { ok?: boolean };
+          if (payload?.ok === true) return { state: "ok", statusCode: response.status, latencyMs };
+          return { state: "warn", statusCode: response.status, latencyMs };
+        } catch {
+          return { state: "warn", statusCode: response.status, latencyMs };
+        }
+      } catch {
+        return { state: "down", statusCode: null, latencyMs: Date.now() - startedAt };
+      }
+    }
+
+    const checkedAt = new Date().toISOString();
+    const website = await check("/", false);
+    const api = await check("/api/health", true);
+    insertServiceStatusCheck("website", website.state, website.statusCode, website.latencyMs, checkedAt);
+    insertServiceStatusCheck("api", api.state, api.statusCode, api.latencyMs, checkedAt);
+  }
+
+  runStatusChecks().catch((err) => console.error("status checks (initial) failed:", err));
+  setInterval(() => {
+    runStatusChecks().catch((err) => console.error("status checks (interval) failed:", err));
+  }, intervalMs);
 });
