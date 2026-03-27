@@ -856,6 +856,15 @@ app.get("/login", (_req, res) => {
   res.sendFile(join(publicDir, "login.html"));
 });
 
+// Legal pages
+app.get("/privacy", (_req, res) => {
+  res.sendFile(join(publicDir, "privacy.html"));
+});
+
+app.get("/terms", (_req, res) => {
+  res.sendFile(join(publicDir, "terms.html"));
+});
+
 // Landing page and static assets (API routes above take precedence)
 app.use(express.static(publicDir));
 
