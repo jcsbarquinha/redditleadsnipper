@@ -41,6 +41,10 @@ import {
   getRunsForUser,
   setLeadAction,
   clearLeadAction,
+  setLeadFeedback,
+  getLeadFeedbackVote,
+  isPostInRun,
+  setLandingLeadFeedback,
   insertServiceStatusCheck,
   getRecentServiceStatusChecks,
   type LeadRow,
@@ -194,6 +198,7 @@ function leadRowToApi(row: LeadRow) {
     selftext: row.selftext ?? null,
     votes: row.post_score ?? 0,
     num_comments: row.num_comments ?? 0,
+    feedback_vote: row.feedback_vote === 1 ? 1 : row.feedback_vote === -1 ? -1 : null,
   };
 }
 
@@ -558,6 +563,59 @@ app.post("/api/dashboard/leads/reactivate", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+/** Save lead quality feedback vote once. Body: { post_id: string, vote: "up" | "down" }. */
+app.post("/api/dashboard/leads/feedback", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const postId = typeof req.body?.post_id === "string" ? req.body.post_id.trim() : "";
+  const voteRaw = typeof req.body?.vote === "string" ? req.body.vote.trim().toLowerCase() : "";
+  if (!postId) {
+    res.status(400).json({ error: "Missing post_id." });
+    return;
+  }
+  if (!["up", "down"].includes(voteRaw)) {
+    res.status(400).json({ error: "Invalid vote. Expected up or down." });
+    return;
+  }
+  const existingVote = getLeadFeedbackVote(user.id, postId);
+  if (existingVote != null) {
+    res.status(409).json({ error: "Feedback already submitted for this post.", feedback_vote: existingVote });
+    return;
+  }
+  const vote = voteRaw === "up" ? 1 : -1;
+  setLeadFeedback(user.id, postId, vote);
+  res.json({ ok: true, feedback_vote: vote });
+});
+
+/** Save landing lead feedback once. Body: { run_id: string, post_id: string, vote: "up" | "down" }. */
+app.post("/api/landing/leads/feedback", (req, res) => {
+  const runId = typeof req.body?.run_id === "string" ? req.body.run_id.trim() : "";
+  const postId = typeof req.body?.post_id === "string" ? req.body.post_id.trim() : "";
+  const voteRaw = typeof req.body?.vote === "string" ? req.body.vote.trim().toLowerCase() : "";
+  if (!runId) {
+    res.status(400).json({ error: "Missing run_id." });
+    return;
+  }
+  if (!postId) {
+    res.status(400).json({ error: "Missing post_id." });
+    return;
+  }
+  if (!["up", "down"].includes(voteRaw)) {
+    res.status(400).json({ error: "Invalid vote. Expected up or down." });
+    return;
+  }
+  if (!isPostInRun(postId, runId)) {
+    res.status(404).json({ error: "Lead not found for this run." });
+    return;
+  }
+  const vote = voteRaw === "up" ? 1 : -1;
+  const inserted = setLandingLeadFeedback(runId, postId, vote);
+  if (!inserted) {
+    res.status(409).json({ error: "Feedback already submitted for this post in this run." });
+    return;
+  }
+  res.json({ ok: true, feedback_vote: vote });
+});
+
 /** Log out: clear session cookie. */
 app.post("/api/logout", (req, res) => {
   res.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
@@ -859,6 +917,8 @@ app.post("/api/search", async (req, res) => {
       totalComments: 0,
       timings: result.timings,
       leads: leads.map((row) => ({
+        post_id: row.post_id,
+        run_id: row.run_id,
         title: row.title,
         full_link: row.full_link,
         subreddit: row.subreddit,

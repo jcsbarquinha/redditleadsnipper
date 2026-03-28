@@ -916,9 +916,10 @@
   function getIntentBadge(score) {
     var raw = score != null ? Number(score) : 0;
     if (raw >= 90) return { cls: "hot", label: "\uD83D\uDD25 " + Math.round(raw) + "% Hot Match" };
-    if (raw > 70) return { cls: "warm", label: "\uD83C\uDFAF " + Math.round(raw) + "% Warm Match" };
+    if (raw > 70) return { cls: "warm", label: "\uD83E\uDDD0 " + Math.round(raw) + "% Warm Match" };
     return { cls: "lead", label: "\u2728 " + Math.round(raw) + "% Lead" };
   }
+
   function summarizeWhy(lead) {
     if ((lead.explanation || "").trim()) return lead.explanation.trim();
     if (lead.is_high_intent) return "They are actively looking for a solution or recommendation.";
@@ -932,6 +933,12 @@
     var ageSeconds = Date.now() / 1000 - created;
     // "Recent" = posted within the last 24 hours.
     return ageSeconds <= 86400;
+  }
+
+  /** Hot Match (≥90) + Recent (24h) — rank these first (by newest), then by score. */
+  function isHotMatchAndRecent(lead) {
+    var s = lead.score != null ? Number(lead.score) : 0;
+    return s >= 90 && isRecentPost(lead.created_utc);
   }
 
   var runs = [];
@@ -1320,6 +1327,14 @@
       });
     } else {
       working.sort(function (a, b) {
+        var aPriority = isHotMatchAndRecent(a) ? 1 : 0;
+        var bPriority = isHotMatchAndRecent(b) ? 1 : 0;
+        if (aPriority !== bPriority) return bPriority - aPriority;
+        if (aPriority && bPriority) {
+          var ar = a.created_utc != null ? Number(a.created_utc) : 0;
+          var br = b.created_utc != null ? Number(b.created_utc) : 0;
+          return br - ar;
+        }
         var as = a.score != null ? Number(a.score) : -Infinity;
         var bs = b.score != null ? Number(b.score) : -Infinity;
         if (bs !== as) return bs - as;
@@ -1470,6 +1485,22 @@
 
     topActionsHtml = '<div class="top-actions">' + archiveBtnHtml + deleteBtnHtml + "</div>";
     var recent = isRecentPost(lead.created_utc);
+    var feedbackVote = lead.feedback_vote === 1 ? 1 : lead.feedback_vote === -1 ? -1 : 0;
+    var hasFeedback = feedbackVote !== 0;
+    var feedbackHtml = "";
+    if (why) {
+      feedbackHtml =
+        '<div class="lead-feedback-row" data-feedback-post-id="' + escapeHtml(lead.post_id || "") + '">' +
+        '<div class="lead-feedback-inline' + (hasFeedback ? " hidden" : "") + '">' +
+        '<span class="lead-feedback-label">Was this lead quality correct?</span>' +
+        '<div class="lead-feedback-actions">' +
+        '<button type="button" class="lead-feedback-btn up' + (feedbackVote === 1 ? " is-selected" : "") + '"' + (hasFeedback ? ' disabled' : '') + ' data-vote="up" aria-label="Yes">Yes</button>' +
+        '<button type="button" class="lead-feedback-btn down' + (feedbackVote === -1 ? " is-selected" : "") + '"' + (hasFeedback ? ' disabled' : '') + ' data-vote="down" aria-label="No">No</button>' +
+        "</div>" +
+        "</div>" +
+        '<div class="lead-feedback-thanks' + (hasFeedback ? "" : " hidden") + '">Thank you for your feedback.</div>' +
+        "</div>";
+    }
     card.innerHTML =
       '<div class="card-inner">' +
       topActionsHtml +
@@ -1485,7 +1516,7 @@
       '<h2 class="card-title"><a href="' + escapeHtml(lead.full_link || "#") + '" target="_blank" rel="noopener">' + escapeHtml(lead.title || "No title") + '</a></h2>' +
       (bodySnippet ? '<p class="card-body">' + escapeHtml(bodySnippet) + (bodySnippet.length >= 200 ? "\u2026" : "") + '</p>' : "") +
       '<p class="card-engagement">' + votes + ' vote' + (votes !== 1 ? "s" : "") + ' \u00B7 ' + comments + ' comment' + (comments !== 1 ? "s" : "") + '</p>' +
-      (why ? '<button type="button" class="reply-toggle" aria-expanded="false">Why this post</button><div class="reply-content hidden">' + escapeHtml(why) + '</div>' : "") +
+      (why ? '<button type="button" class="reply-toggle" aria-expanded="false">Why this post</button><div class="reply-content hidden"><div class="reply-text">' + escapeHtml(why) + '</div>' + feedbackHtml + '</div>' : "") +
       '</div>';
     var toggle = card.querySelector(".reply-toggle");
     var replyContent = card.querySelector(".reply-content");
@@ -1511,7 +1542,73 @@
         });
       });
     }
+    var feedbackBtns = card.querySelectorAll(".lead-feedback-btn");
+    if (feedbackBtns && feedbackBtns.length) {
+      feedbackBtns.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var vote = btn.getAttribute("data-vote");
+          submitLeadFeedback(lead.post_id, vote, card);
+        });
+      });
+    }
     return card;
+  }
+
+  function submitLeadFeedback(postId, vote, cardEl) {
+    if (!postId || !vote) return;
+    var buttons = cardEl ? cardEl.querySelectorAll(".lead-feedback-btn") : [];
+    var inline = cardEl ? cardEl.querySelector(".lead-feedback-inline") : null;
+    var thanks = cardEl ? cardEl.querySelector(".lead-feedback-thanks") : null;
+    if (buttons && buttons.length) {
+      buttons.forEach(function (b) { b.disabled = true; });
+    }
+    fetch("/api/dashboard/leads/feedback", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ post_id: postId, vote: vote })
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          return r.json().catch(function () { return null; }).then(function (body) {
+            var err = new Error((body && body.error) || r.statusText || "Feedback failed");
+            err.status = r.status;
+            err.feedback_vote = body && typeof body.feedback_vote === "number" ? body.feedback_vote : null;
+            throw err;
+          });
+        }
+        return r.json();
+      })
+      .then(function (data) {
+        var voteValue = data && typeof data.feedback_vote === "number" ? data.feedback_vote : null;
+        if (!(buttons && buttons.length)) return;
+        buttons.forEach(function (b) {
+          var bVote = b.getAttribute("data-vote");
+          var isSelected = (voteValue === 1 && bVote === "up") || (voteValue === -1 && bVote === "down");
+          b.classList.toggle("is-selected", isSelected);
+          b.disabled = true;
+        });
+        if (inline) inline.classList.add("hidden");
+        if (thanks) thanks.classList.remove("hidden");
+      })
+      .catch(function (err) {
+        if (err && err.status === 409 && buttons && buttons.length) {
+          var existingVote = typeof err.feedback_vote === "number" ? err.feedback_vote : null;
+          buttons.forEach(function (b) {
+            var bVote = b.getAttribute("data-vote");
+            var isSelected = (existingVote === 1 && bVote === "up") || (existingVote === -1 && bVote === "down");
+            b.classList.toggle("is-selected", isSelected);
+            b.disabled = true;
+          });
+          if (inline) inline.classList.add("hidden");
+          if (thanks) thanks.classList.remove("hidden");
+          return;
+        }
+        if (buttons && buttons.length) {
+          buttons.forEach(function (b) { b.disabled = false; });
+        }
+        alert("Feedback failed: " + (err instanceof Error ? err.message : String(err)));
+      });
   }
 
   function doAction(postId, action) {
@@ -1592,7 +1689,7 @@
       dashAlmostTimer = setTimeout(function () {
         dashIntentAlmost = true;
         if (dashActiveStepIndex === 3) renderDashboardSubline();
-      }, 40000);
+      }, 18000);
     }
 
     function renderDashboardSubline() {

@@ -36,7 +36,7 @@ function parseArgs(): {
 
 async function main(): Promise<void> {
   const { userInput, maxPages, delayMs } = parseArgs();
-  console.log("Pipeline: validate → keywords → Reddit search (new/relevance/hot) → dedup/filter → batch AI ranking");
+  console.log("Pipeline: validate → keywords → Reddit search (relevance/hot) → dedup/filter → batch AI ranking");
   console.log("Input:", userInput);
   try {
     const result = await runPipeline({

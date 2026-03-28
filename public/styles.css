@@ -457,8 +457,13 @@ body {
 }
 
 /* Grey box around entire analysis: loading stages, progress bar, scanning counter, skeleton/result cards */
+/* Match search bar row width (see .search-form --search-row-width) */
 .analysis-box {
   margin-top: 0;
+  width: min(100%, 46rem);
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 
 /* When analysis is visible, reduce gap between hero search and grey box (main’s top padding) */
@@ -508,7 +513,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.8rem;
+  font-size: 0.96rem; /* was 0.8rem; ~20% larger for readability */
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -553,13 +558,25 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Subline + time hint share one breathe so phase stays synced when subline text updates */
+.loading-breathe-group {
+  margin-top: 1.25rem;
+  text-align: center;
+  animation: loading-subline-breathe 2s ease-in-out infinite;
+}
+
+.loading-breathe-group--done {
+  animation: none;
+  opacity: 1;
+}
+
 /* Loading subline under steps: same typography as scanning line + breathing on all phases */
 .loading-subline {
   text-align: center;
   font-size: 0.95rem;
   font-weight: 500;
   color: var(--text-muted);
-  margin: 1.25rem 0 0;
+  margin: 0;
   letter-spacing: 0.01em;
   min-height: 1.5em;
   font-variant-numeric: normal;
@@ -567,7 +584,6 @@ body {
 
 .loading-subline .loading-subline-wrap {
   display: inline-block;
-  animation: loading-subline-breathe 2s ease-in-out infinite;
 }
 
 .loading-subline .loading-subline-text {
@@ -581,12 +597,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.loading-subline.loading-subline--done .loading-subline-wrap,
-.loading-subline.loading-subline--done .loading-subline-text {
-  animation: none;
-  opacity: 1;
-}
-
 @keyframes loading-subline-breathe {
   0%,
   100% {
@@ -598,21 +608,17 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loading-subline .loading-subline-wrap {
+  .loading-breathe-group {
     animation: none;
-  }
-
-  .loading-subline .loading-subline-wrap,
-  .loading-subline .loading-subline-text {
     opacity: 1;
   }
 }
 
-/* Subtle note under loading subline (landing) */
+/* Subtle note under loading subline (landing) — same grey as .loading-subline */
 .loading-time-hint {
-  font-size: 0.625rem;
+  font-size: 0.75rem; /* was 0.625rem; ~20% larger */
   line-height: 1.35;
-  color: #b4b4bc;
+  color: var(--text-muted);
   font-style: normal;
   font-weight: 400;
   margin: 0.75rem auto 0;
@@ -848,6 +854,23 @@ body {
   color: #6b7280;
 }
 
+.intent-badges-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.intent-badges-row .intent-badge {
+  margin-bottom: 0;
+}
+
+.intent-badge.recent {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
 .card-meta {
   display: flex;
   align-items: center;
@@ -953,7 +976,72 @@ body {
   border-radius: 6px;
   margin-top: 0.25rem;
   line-height: 1.45;
+}
+
+.reply-content .reply-text {
   white-space: pre-wrap;
+}
+
+.lead-feedback-row {
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid #e8eaed;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.lead-feedback-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.lead-feedback-label {
+  font-size: 0.76rem;
+  color: #666;
+}
+
+.lead-feedback-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.lead-feedback-btn {
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  min-width: 40px;
+  height: 28px;
+  line-height: 1.1;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0 0.4rem;
+}
+
+.lead-feedback-btn.up {
+  color: #15803d;
+}
+
+.lead-feedback-btn.down {
+  color: #b91c1c;
+}
+
+.lead-feedback-btn.is-selected {
+  text-decoration: underline;
+}
+
+.lead-feedback-btn:disabled {
+  opacity: 0.88;
+  cursor: not-allowed;
+}
+
+.lead-feedback-thanks {
+  font-size: 0.76rem;
+  color: #4b5563;
 }
 
 .hidden {

@@ -109,6 +109,8 @@ function runSchema(database: Database.Database): void {
   migratePostIntent(database);
   migrateUsersAndSessions(database);
   migrateLeadActions(database);
+  migrateLeadFeedback(database);
+  migrateLandingLeadFeedback(database);
   migrateServiceStatus(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
@@ -125,6 +127,35 @@ function migrateLeadActions(database: Database.Database): void {
     )
   `);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_lead_actions_user_id ON lead_actions(user_id)`);
+}
+
+function migrateLeadFeedback(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS lead_feedback (
+      user_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      vote INTEGER NOT NULL CHECK (vote IN (1, -1)),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, post_id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_lead_feedback_user_id ON lead_feedback(user_id)`);
+}
+
+function migrateLandingLeadFeedback(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS landing_lead_feedback (
+      run_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      vote INTEGER NOT NULL CHECK (vote IN (1, -1)),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (run_id, post_id),
+      FOREIGN KEY (run_id) REFERENCES runs(id)
+    )
+  `);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_landing_lead_feedback_run_id ON landing_lead_feedback(run_id)`);
 }
 
 function migratePostIntent(database: Database.Database): void {
@@ -341,6 +372,7 @@ export interface LeadRow {
   selftext: string | null;
   post_score: number | null;
   num_comments: number | null;
+  feedback_vote: number | null;
 }
 
 export interface LeadFilters {
@@ -364,6 +396,7 @@ export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
                 p.selftext,
                 p.score AS post_score,
                 COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments,
+                NULL AS feedback_vote,
                 ROW_NUMBER() OVER (PARTITION BY p.reddit_id ORDER BY pi.score DESC NULLS LAST, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST) AS rn
          FROM posts p
          JOIN runs r ON p.run_id = r.id
@@ -371,7 +404,7 @@ export function getLeadsForRun(runId: string, limit: number = 100): LeadRow[] {
          WHERE p.run_id = ?
        )
        SELECT post_id, run_id, user_input, score, label, title, full_link, subreddit, author, created_utc,
-              reasoning, suggested_reply, is_high_intent, is_archived, is_deleted, selftext, post_score, num_comments
+              reasoning, suggested_reply, is_high_intent, is_archived, is_deleted, selftext, post_score, num_comments, feedback_vote
        FROM ranked
        WHERE rn = 1
        ORDER BY score DESC NULLS LAST, created_utc DESC NULLS LAST, post_score DESC NULLS LAST
@@ -531,7 +564,7 @@ export function getLeadsForUser(
 
   const whereClause = conditions.join(" AND ");
   params.push(limit);
-  const allParams = [userId, ...params];
+  const allParams = [userId, userId, ...params];
 
   /* One row per Reddit post (reddit_id): same post from multiple runs was shown multiple times. */
   const rows = getDb()
@@ -544,15 +577,17 @@ export function getLeadsForUser(
                 p.selftext,
                 p.score AS post_score,
                 COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments,
+                lf.vote AS feedback_vote,
                 ROW_NUMBER() OVER (PARTITION BY p.reddit_id ORDER BY pi.score DESC NULLS LAST, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST) AS rn
          FROM posts p
          JOIN runs r ON p.run_id = r.id
          JOIN post_intent pi ON p.id = pi.post_id
          LEFT JOIN lead_actions la ON la.user_id = ? AND la.post_id = p.id
+         LEFT JOIN lead_feedback lf ON lf.user_id = ? AND lf.post_id = p.id
          WHERE ${whereClause}
        )
        SELECT post_id, run_id, user_input, score, label, title, full_link, subreddit, author, created_utc,
-              reasoning, suggested_reply, is_high_intent, is_archived, is_deleted, selftext, post_score, num_comments
+              reasoning, suggested_reply, is_high_intent, is_archived, is_deleted, selftext, post_score, num_comments, feedback_vote
        FROM ranked
        WHERE rn = 1
        ORDER BY score DESC NULLS LAST, created_utc DESC NULLS LAST, post_score DESC NULLS LAST
@@ -580,6 +615,50 @@ export function clearLeadAction(userId: string, postId: string): void {
   getDb()
     .prepare(`DELETE FROM lead_actions WHERE user_id = ? AND post_id = ?`)
     .run(userId, postId);
+}
+
+/** Save lead-quality feedback vote for a user/post. Pass null to clear vote. */
+export function setLeadFeedback(userId: string, postId: string, vote: 1 | -1 | null): void {
+  const database = getDb();
+  if (vote == null) {
+    database.prepare("DELETE FROM lead_feedback WHERE user_id = ? AND post_id = ?").run(userId, postId);
+    return;
+  }
+  database
+    .prepare(
+      `INSERT INTO lead_feedback (user_id, post_id, vote, created_at, updated_at)
+       VALUES (?, ?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(user_id, post_id) DO UPDATE SET vote = excluded.vote, updated_at = datetime('now')`
+    )
+    .run(userId, postId, vote);
+}
+
+export function getLeadFeedbackVote(userId: string, postId: string): 1 | -1 | null {
+  const row = getDb()
+    .prepare("SELECT vote FROM lead_feedback WHERE user_id = ? AND post_id = ?")
+    .get(userId, postId) as { vote: number } | undefined;
+  if (!row) return null;
+  if (row.vote === 1) return 1;
+  if (row.vote === -1) return -1;
+  return null;
+}
+
+export function isPostInRun(postId: string, runId: string): boolean {
+  const row = getDb()
+    .prepare("SELECT 1 AS ok FROM posts WHERE id = ? AND run_id = ? LIMIT 1")
+    .get(postId, runId) as { ok?: number } | undefined;
+  return Boolean(row?.ok);
+}
+
+/** Save landing-page lead feedback once per (run, post). */
+export function setLandingLeadFeedback(runId: string, postId: string, vote: 1 | -1): boolean {
+  const info = getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO landing_lead_feedback (run_id, post_id, vote, created_at)
+       VALUES (?, ?, ?, datetime('now'))`
+    )
+    .run(runId, postId, vote);
+  return info.changes > 0;
 }
 
 // --- Service status checks (shared uptime history) ---

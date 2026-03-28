@@ -129,7 +129,7 @@ The user will provide either:
 
 Your job:
 1. Understand what the product actually does
-2. Infer the target customer and the pain/problem it solves
+2. Infer the pain/problem it solves
 3. Generate exactly ${keywordCount} FINAL Reddit search queries that are most likely to surface people who need that product
 
 Important:
@@ -153,17 +153,14 @@ Good query styles:
 - tired of manual invoicing
 - alternative to hubspot
 
-You must also provide three descriptions that will be used to score lead intent later (be detailed but concise):
+You must also provide exactly these two fields for lead-intent scoring later (be detailed but concise). Do not include any other product metadata keys.
 - "what_product_does": 2–4 sentences describing what the product actually is and does (e.g. "AI SEO content generator that plugs into your existing CMS and publishes blog posts at scale.").
 - "what_problem_it_solves": 2–4 sentences describing the pain or need it addresses (e.g. "Solves the problem of producing enough quality blog/SEO content without hiring writers. For teams that already have a site and need to fill it with content.").
-- "target_user": 2–4 sentences describing who the buyer/user is (role, company type, situation, and what kind of person would realistically buy/use this).
 
 Return JSON only in this exact shape:
 {
-  "product_summary": "short summary",
   "what_product_does": "2-4 sentences: what the product is and does",
   "what_problem_it_solves": "2-4 sentences: the pain or need it addresses",
-  "target_user": "2-4 sentences: who the buyer/user is and their situation",
   "keywords": ["query1", "query2"]
 }`;
 }
@@ -203,10 +200,8 @@ Generate exactly ${keywordCount} final Reddit search queries to find people who 
 
 interface ParsedKeywordResponse {
   keywords: string[];
-  productSummary?: string;
   whatProductDoes?: string;
   whatProblemItSolves?: string;
-  targetUser?: string;
 }
 
 function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeywordResponse {
@@ -216,10 +211,8 @@ function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeyw
   if (codeBlock) jsonStr = codeBlock[1].trim();
   const parsed = JSON.parse(jsonStr) as {
     keywords?: string[];
-    product_summary?: string;
     what_product_does?: string;
     what_problem_it_solves?: string;
-    target_user?: string;
   };
   const list = parsed?.keywords ?? (Array.isArray(parsed) ? parsed : []);
   if (!Array.isArray(list)) throw new Error("Expected keywords array");
@@ -251,11 +244,6 @@ function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeyw
     }
   }
 
-  const productSummary =
-    typeof parsed?.product_summary === "string" && parsed.product_summary.trim()
-      ? parsed.product_summary.trim().slice(0, 500)
-      : undefined;
-
   const whatProductDoes =
     typeof parsed?.what_product_does === "string" && parsed.what_product_does.trim()
       ? parsed.what_product_does.trim().slice(0, 600)
@@ -266,24 +254,17 @@ function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeyw
       ? parsed.what_problem_it_solves.trim().slice(0, 600)
       : undefined;
 
-  const targetUser =
-    typeof parsed?.target_user === "string" && parsed.target_user.trim()
-      ? parsed.target_user.trim().slice(0, 600)
-      : undefined;
-
-  return { keywords: deduped, productSummary, whatProductDoes, whatProblemItSolves, targetUser };
+  return { keywords: deduped, whatProductDoes, whatProblemItSolves };
 }
 
 export interface KeywordResult {
   keywords: string[];
-  productSummary?: string;
   whatProductDoes?: string;
   whatProblemItSolves?: string;
-  targetUser?: string;
 }
 
 /**
- * Returns final Reddit search queries and optional product summary for the given user input.
+ * Returns final Reddit search queries plus two intent-scoring fields for the given user input.
  * URL inputs are enriched with website content first. Uses OPENAI_API_KEY from env.
  */
 export async function getKeywordsForInput(
@@ -330,7 +311,14 @@ export async function getKeywordsForInput(
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenAI returned no content");
 
-  const { keywords, productSummary, whatProductDoes, whatProblemItSolves, targetUser } = parseKeywordsResponse(content, keywordCount);
+  const { keywords, whatProductDoes, whatProblemItSolves } = parseKeywordsResponse(
+    content,
+    keywordCount
+  );
   if (keywords.length === 0) throw new Error("OpenAI returned no valid keywords");
-  return { keywords: keywords.slice(0, keywordCount), productSummary, whatProductDoes, whatProblemItSolves, targetUser };
+  return {
+    keywords: keywords.slice(0, keywordCount),
+    whatProductDoes,
+    whatProblemItSolves,
+  };
 }

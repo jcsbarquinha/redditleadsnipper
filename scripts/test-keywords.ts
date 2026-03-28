@@ -10,4 +10,5 @@ console.log("Input:", input);
 const result = await getKeywordsForInput(input);
 console.log("Queries:", result.keywords);
 console.log("Count:", result.keywords.length);
-if (result.productSummary) console.log("Product summary:", result.productSummary);
+if (result.whatProductDoes) console.log("What product does:", result.whatProductDoes);
+if (result.whatProblemItSolves) console.log("What problem it solves:", result.whatProblemItSolves);

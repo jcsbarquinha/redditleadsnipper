@@ -189,6 +189,7 @@
   const errorMessage = document.getElementById("errorMessage");
   const loadingSubline = document.getElementById("loadingSubline");
   const loadingTimeHint = document.getElementById("loadingTimeHint");
+  const loadingBreatheGroup = document.getElementById("loadingBreatheGroup");
   const skeletonCards = document.getElementById("skeletonCards");
   const teaserSection = document.getElementById("teaserSection");
 
@@ -233,11 +234,17 @@
     updateRollerVisibility();
   }
 
+  /** Same relative time rules as the dashboard (`formatAge`). */
   function formatAge(createdUtc) {
     if (createdUtc == null) return "";
     const now = Math.floor(Date.now() / 1000);
-    const days = Math.floor((now - createdUtc) / 86400);
-    if (days < 1) return "now";
+    const secondsAgo = now - createdUtc;
+    const days = Math.floor(secondsAgo / 86400);
+    if (days < 1) {
+      const hours = Math.floor(secondsAgo / 3600);
+      if (hours <= 0) return "now";
+      return hours + "h ago";
+    }
     if (days === 1) return "1d ago";
     if (days < 30) return days + "d ago";
     if (days < 365) return Math.floor(days / 30) + "mo ago";
@@ -257,7 +264,7 @@
     almostThereTimer = setTimeout(() => {
       intentShowingAlmost = true;
       if (activeStepIndex === 3) renderLoadingSubline();
-    }, 40000);
+    }, 18000);
   }
 
   function renderLoadingSubline() {
@@ -312,7 +319,11 @@
     errorSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
     loadingSection.classList.remove("hidden");
-    if (loadingTimeHint) loadingTimeHint.classList.remove("hidden");
+    if (loadingTimeHint) {
+      loadingTimeHint.classList.remove("hidden");
+      loadingTimeHint.textContent = "(takes ~60 seconds to run)";
+    }
+    if (loadingBreatheGroup) loadingBreatheGroup.classList.remove("loading-breathe-group--done");
     if (skeletonCards) skeletonCards.classList.remove("hidden");
     threadsAnalyzed = null;
     clearAlmostThereTimer();
@@ -341,6 +352,7 @@
       loadingSubline.innerHTML = `${count.toLocaleString()} threads scanned &#x2705;`;
     }
     if (loadingTimeHint) loadingTimeHint.classList.add("hidden");
+    if (loadingBreatheGroup) loadingBreatheGroup.classList.add("loading-breathe-group--done");
   }
 
   function showError(msg) {
@@ -357,8 +369,22 @@
     const s = score != null ? Math.round(score) : 0;
     if (s >= 90) return { cls: "hot", label: `\uD83D\uDD25 ${s}% Hot Match` };
     // Keep thresholds consistent with "high intent" (>70) so warm matches are real.
-    if (s > 70) return { cls: "warm", label: `\uD83C\uDFAF ${s}% Warm Match` };
+    if (s > 70) return { cls: "warm", label: `\uD83E\uDDD0 ${s}% Warm Match` };
     return { cls: "lead", label: `\u2728 ${s}% Lead` };
+  }
+
+  function roundScore(l) {
+    return l.score != null ? Math.round(l.score) : 0;
+  }
+
+  function isRecentPostLanding(createdUtc) {
+    if (createdUtc == null) return false;
+    const ageSeconds = Date.now() / 1000 - Number(createdUtc);
+    return Number.isFinite(ageSeconds) && ageSeconds <= 86400;
+  }
+
+  function isHotMatchAndRecent(l) {
+    return roundScore(l) >= 90 && isRecentPostLanding(l.created_utc);
   }
 
   function buildLeadCard(lead, blurred) {
@@ -366,20 +392,36 @@
     card.className = "lead-card" + (blurred ? " blurred" : "");
     const sub = lead.subreddit ? `r/${lead.subreddit}` : "r/community";
     const badge = getIntentBadge(lead.score);
+    const recent = isRecentPostLanding(lead.created_utc);
     const initial = (lead.subreddit || "r").charAt(0).toUpperCase();
     const bodySnippet = (lead.selftext || "").trim().slice(0, 200);
     const votes = lead.votes != null ? lead.votes : 0;
     const comments = lead.num_comments != null ? lead.num_comments : 0;
     const whyThisPost = summarizeWhyThisPost(lead);
+    const feedbackVote = lead.feedback_vote === 1 ? 1 : lead.feedback_vote === -1 ? -1 : 0;
+    const hasFeedback = feedbackVote !== 0;
+    const feedbackHtml = !blurred && whyThisPost
+      ? `<div class="lead-feedback-row" data-feedback-post-id="${escapeHtml(lead.post_id || "")}">
+          <div class="lead-feedback-inline${hasFeedback ? " hidden" : ""}">
+            <span class="lead-feedback-label">Was this lead quality correct?</span>
+            <div class="lead-feedback-actions">
+              <button type="button" class="lead-feedback-btn up${feedbackVote === 1 ? " is-selected" : ""}" data-vote="up" aria-label="Yes"${hasFeedback ? " disabled" : ""}>Yes</button>
+              <button type="button" class="lead-feedback-btn down${feedbackVote === -1 ? " is-selected" : ""}" data-vote="down" aria-label="No"${hasFeedback ? " disabled" : ""}>No</button>
+            </div>
+          </div>
+          <div class="lead-feedback-thanks${hasFeedback ? "" : " hidden"}">Thank you for your feedback.</div>
+        </div>`
+      : "";
     const whyThisPostHtml = !blurred && whyThisPost
       ? `<button type="button" class="reply-toggle" aria-expanded="false">Why this post</button>
-         <div class="reply-content hidden">${escapeHtml(whyThisPost)}</div>`
+         <div class="reply-content hidden"><div class="reply-text">${escapeHtml(whyThisPost)}</div>${feedbackHtml}</div>`
       : "";
 
     card.innerHTML = `
       <div class="card-inner">
-        <div class="intent-badge ${badge.cls}">
-          ${badge.label}
+        <div class="intent-badges-row">
+          <div class="intent-badge ${badge.cls}">${badge.label}</div>
+          ${recent ? '<div class="intent-badge recent">\uD83D\uDD52 Recent</div>' : ""}
         </div>
         <p class="card-meta">
           <span class="subreddit-icon" aria-hidden="true">${escapeHtml(initial)}</span>
@@ -405,18 +447,23 @@
           toggle.setAttribute("aria-expanded", String(!isHidden));
         });
       }
+      const feedbackBtns = card.querySelectorAll(".lead-feedback-btn");
+      if (feedbackBtns && feedbackBtns.length) {
+        feedbackBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const vote = btn.getAttribute("data-vote");
+            submitLandingLeadFeedback(lead, vote, card);
+          });
+        });
+      }
     }
 
     return card;
   }
 
-  function roundScore(l) {
-    return l.score != null ? Math.round(l.score) : 0;
-  }
-
-  /** Hot Match on landing = score >= 90 (same as teaser card badge). */
+  /** Landing "Hot leads" count: score &gt; 70 (aligned with ICP-focused ranking). */
   function isHotLead(l) {
-    return roundScore(l) >= 90;
+    return roundScore(l) > 70;
   }
 
   function showResults(data) {
@@ -436,19 +483,40 @@
     const highIntentLeads = data.leads.filter(function (l) { return l.is_high_intent; });
     const highIntentCount = highIntentLeads.length;
     const hotLeads = data.leads.filter(isHotLead);
+    hotLeads.sort(function (a, b) {
+      const ar = isHotMatchAndRecent(a) ? 1 : 0;
+      const br = isHotMatchAndRecent(b) ? 1 : 0;
+      if (ar !== br) return br - ar;
+      if (ar && br) {
+        const at = a.created_utc != null ? Number(a.created_utc) : 0;
+        const bt = b.created_utc != null ? Number(b.created_utc) : 0;
+        return bt - at;
+      }
+      return roundScore(b) - roundScore(a);
+    });
     const hotCount = hotLeads.length;
-    /** Match headline: "other" Hot leads only (not all high-intent / warm). */
     const remainingHotCount = Math.max(0, hotCount - 1);
+    const hotLabel = hotCount === 1 ? "Hot lead" : "Hot leads";
 
     resultsHeader.innerHTML =
       hotCount > 0
-        ? `<span class="results-count">${hotCount} Hot leads</span> found in the last 7 days \uD83D\uDD25`
-        : "No Hot leads found in the last 7 days for that query.";
+        ? `<span class="results-count">${hotCount} ${hotLabel}</span> from the last 3 days \uD83D\uDD25`
+        : "No Hot leads found in the last 3 days for that query.";
     resultsList.innerHTML = "";
 
     var teaserLead = hotLeads.length > 0 ? hotLeads[0] : (highIntentLeads.length > 0 ? highIntentLeads[0] : null);
     if (teaserLead) {
       resultsList.appendChild(buildLeadCard(teaserLead, false));
+    }
+
+    function attachUnlockCta(ctaEl) {
+      resultsList.appendChild(ctaEl);
+      const unlockBtn = ctaEl.querySelector("#unlockLeadsBtn");
+      if (unlockBtn) {
+        unlockBtn.addEventListener("click", function () {
+          scrollToPricingSection();
+        });
+      }
     }
 
     if (hotCount > 1) {
@@ -459,14 +527,16 @@
         <button type="button" class="paywall-cta-btn-large" id="unlockLeadsBtn">Unlock leads</button>
         <p class="paywall-cta-microcopy">Cancel anytime. No long-term commitment.</p>
       `;
-      resultsList.appendChild(cta);
-
-      const unlockBtn = document.getElementById("unlockLeadsBtn");
-      if (unlockBtn) {
-        unlockBtn.addEventListener("click", function () {
-          scrollToPricingSection();
-        });
-      }
+      attachUnlockCta(cta);
+    } else if (hotCount === 1) {
+      const cta = document.createElement("div");
+      cta.className = "paywall-cta";
+      cta.innerHTML = `
+        <p class="paywall-cta-text">Unlock to get <strong style="color:#ff4500;font-weight:700;">24/7 alerts</strong> on new leads and your full ranked list.</p>
+        <button type="button" class="paywall-cta-btn-large" id="unlockLeadsBtn">Unlock leads</button>
+        <p class="paywall-cta-microcopy">Cancel anytime. No long-term commitment.</p>
+      `;
+      attachUnlockCta(cta);
     }
 
     resultsSection.classList.remove("hidden");
@@ -502,6 +572,45 @@
     }
 
     return "It matches your search and shows a relevant pain point.";
+  }
+
+  function submitLandingLeadFeedback(lead, vote, cardEl) {
+    if (!lead || !lead.post_id || !vote) return;
+    const runId = (lead.run_id || "").trim() || getPendingRunId();
+    if (!runId) return;
+    const buttons = cardEl ? cardEl.querySelectorAll(".lead-feedback-btn") : [];
+    const inline = cardEl ? cardEl.querySelector(".lead-feedback-inline") : null;
+    const thanks = cardEl ? cardEl.querySelector(".lead-feedback-thanks") : null;
+    if (buttons && buttons.length) buttons.forEach((b) => { b.disabled = true; });
+
+    fetch("/api/landing/leads/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run_id: runId, post_id: lead.post_id, vote }),
+      credentials: "same-origin",
+    })
+      .then((r) => {
+        if (!r.ok) {
+          if (r.status === 409) return { alreadySubmitted: true };
+          return r.json().catch(() => ({})).then((body) => {
+            throw new Error(body.error || "Feedback failed");
+          });
+        }
+        return r.json();
+      })
+      .then(() => {
+        if (inline) inline.classList.add("hidden");
+        if (thanks) thanks.classList.remove("hidden");
+      })
+      .catch((err) => {
+        if (buttons && buttons.length) buttons.forEach((b) => { b.disabled = false; });
+        if (err && err.alreadySubmitted) {
+          if (inline) inline.classList.add("hidden");
+          if (thanks) thanks.classList.remove("hidden");
+          return;
+        }
+        console.warn("Landing feedback failed:", err);
+      });
   }
 
   searchForm.addEventListener("submit", async (e) => {
