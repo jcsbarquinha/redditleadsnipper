@@ -18,6 +18,7 @@ export interface SchedulerTickResult {
 export interface SchedulerTickOptions {
   limit?: number;
   maxPagesPerKeyword?: number;
+  force?: boolean;
 }
 
 function toContext(context: string | null): string | undefined {
@@ -34,8 +35,9 @@ export async function runSavedSearchSchedulerTick(
     Number.isFinite(options.maxPagesPerKeyword) && Number(options.maxPagesPerKeyword) > 0
       ? Math.floor(Number(options.maxPagesPerKeyword))
       : 1;
+  const force = options.force === true;
 
-  const claimed: SavedSearchRow[] = claimDueSavedSearches(limit);
+  const claimed: SavedSearchRow[] = claimDueSavedSearches(limit, 20, force);
   const result: SchedulerTickResult = {
     claimed: claimed.length,
     processed: 0,

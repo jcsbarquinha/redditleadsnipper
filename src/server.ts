@@ -286,11 +286,18 @@ app.post("/api/internal/scheduler/tick", async (req, res) => {
 
   const limitRaw = Number(req.body?.limit);
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 10;
+  const forceRaw = req.body?.force;
+  const force =
+    forceRaw === true ||
+    forceRaw === 1 ||
+    forceRaw === "1" ||
+    (typeof forceRaw === "string" && forceRaw.trim().toLowerCase() === "true");
   const startedAt = Date.now();
   try {
-    const result = await runSavedSearchSchedulerTick({ limit, maxPagesPerKeyword: 1 });
+    const result = await runSavedSearchSchedulerTick({ limit, maxPagesPerKeyword: 1, force });
     res.json({
       ok: true,
+      force,
       elapsed_ms: Date.now() - startedAt,
       ...result,
     });

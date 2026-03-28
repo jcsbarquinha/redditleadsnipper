@@ -11,6 +11,8 @@ const base = (process.env.APP_BASE_URL || "").trim().replace(/\/+$/, "");
 const secret = (process.env.CRON_SECRET || "").trim();
 const limitRaw = Number(process.env.SCHEDULER_LIMIT || "10");
 const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 10;
+const forceRaw = (process.env.SCHEDULER_FORCE || "").trim().toLowerCase();
+const force = forceRaw === "1" || forceRaw === "true" || forceRaw === "yes";
 
 if (!base) {
   console.error("Missing APP_BASE_URL.");
@@ -28,7 +30,7 @@ const res = await fetch(url, {
     "Content-Type": "application/json",
     "x-cron-secret": secret,
   },
-  body: JSON.stringify({ limit }),
+  body: JSON.stringify({ limit, force }),
 });
 
 const text = await res.text();

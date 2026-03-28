@@ -735,16 +735,21 @@ export function getSavedSearchForUser(userId: string): SavedSearchRow | null {
   return row ?? null;
 }
 
-export function claimDueSavedSearches(limit: number = 10, leaseMinutes: number = 20): SavedSearchRow[] {
+export function claimDueSavedSearches(
+  limit: number = 10,
+  leaseMinutes: number = 20,
+  force: boolean = false
+): SavedSearchRow[] {
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 10;
   const safeLease = Number.isFinite(leaseMinutes) && leaseMinutes > 0 ? Math.floor(leaseMinutes) : 20;
   const leaseIso = new Date(Date.now() + safeLease * 60_000).toISOString();
   const database = getDb();
+  const dueClause = force ? "1 = 1" : "datetime(next_run_at) <= datetime('now')";
   const dueRows = database
     .prepare(
       `SELECT * FROM saved_searches
        WHERE enabled = 1
-         AND datetime(next_run_at) <= datetime('now')
+         AND ${dueClause}
          AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))
        ORDER BY datetime(next_run_at) ASC
        LIMIT ?`
@@ -757,7 +762,7 @@ export function claimDueSavedSearches(limit: number = 10, leaseMinutes: number =
      SET locked_until = ?, updated_at = datetime('now')
      WHERE id = ?
        AND enabled = 1
-       AND datetime(next_run_at) <= datetime('now')
+       AND ${dueClause}
        AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))`
   );
 
