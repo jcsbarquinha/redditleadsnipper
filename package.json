@@ -11,6 +11,7 @@
     "db:verify": "tsx scripts/verify-db.ts",
     "keywords:test": "tsx scripts/test-keywords.ts",
     "pipeline": "tsx src/run-pipeline.ts",
+    "scheduler:tick": "tsx src/run-scheduler.ts",
     "report": "tsx src/report.ts",
     "api": "tsx src/server.ts",
     "start:api": "node dist/server.js",

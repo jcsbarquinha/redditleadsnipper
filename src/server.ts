@@ -45,12 +45,15 @@ import {
   getLeadFeedbackVote,
   isPostInRun,
   setLandingLeadFeedback,
+  upsertSavedSearchForUser,
+  getSavedSearchForUser,
   insertServiceStatusCheck,
   getRecentServiceStatusChecks,
   type LeadRow,
   type ServiceStatusState,
 } from "./db/index.js";
 import { InvalidSearchInputError } from "./input-validation.js";
+import { runSavedSearchSchedulerTick } from "./scheduler.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, "..", "public");
@@ -266,6 +269,39 @@ app.get("/api/status", (_req, res) => {
 });
 
 /**
+ * Internal scheduler tick endpoint for Render Cron.
+ * Protect with CRON_SECRET via `x-cron-secret` header.
+ */
+app.post("/api/internal/scheduler/tick", async (req, res) => {
+  const configuredSecret = (process.env.CRON_SECRET || "").trim();
+  if (!configuredSecret) {
+    res.status(503).json({ error: "CRON_SECRET is not configured." });
+    return;
+  }
+  const provided = typeof req.headers["x-cron-secret"] === "string" ? req.headers["x-cron-secret"].trim() : "";
+  if (!provided || provided !== configuredSecret) {
+    res.status(401).json({ error: "Unauthorized scheduler trigger." });
+    return;
+  }
+
+  const limitRaw = Number(req.body?.limit);
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 10;
+  const startedAt = Date.now();
+  try {
+    const result = await runSavedSearchSchedulerTick({ limit, maxPagesPerKeyword: 1 });
+    res.json({
+      ok: true,
+      elapsed_ms: Date.now() - startedAt,
+      ...result,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Scheduler tick failed.",
+    });
+  }
+});
+
+/**
  * POST /api/create-checkout
  * Body: { runId?: string, billing?: "monthly" | "yearly" }
  * If runId is set: unlock that search run after payment. If omitted: dashboard access only (user runs a search later).
@@ -475,6 +511,26 @@ app.get("/api/dashboard/runs", requireAuth, (req, res) => {
   res.json({ runs });
 });
 
+/** Saved search config for the current user. */
+app.get("/api/dashboard/saved-search", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const row = getSavedSearchForUser(user.id);
+  res.json({
+    savedSearch: row
+      ? {
+          query: row.query,
+          context: row.context,
+          enabled: row.enabled === 1,
+          interval_minutes: row.interval_minutes,
+          last_run_at: row.last_run_at,
+          next_run_at: row.next_run_at,
+          last_run_status: row.last_run_status,
+          last_error: row.last_error,
+        }
+      : null,
+  });
+});
+
 /**
  * POST /api/dashboard/search
  * Authenticated "run search again" flow.
@@ -505,6 +561,7 @@ app.post("/api/dashboard/search", requireAuth, (req, res) => {
         maxPagesPerKeyword: 1,
       });
       attachRunToUser(result.runId, user.id);
+      upsertSavedSearchForUser(user.id, query, context || null, 60);
       res.json({ runId: result.runId, totalPosts: result.totalPosts });
     } catch (err) {
       console.error("Dashboard search error:", err);
@@ -722,6 +779,9 @@ app.post("/api/dashboard/attach-pending-run", requireAuth, (req, res) => {
   }
   if (!run.user_id) {
     attachRunToUser(runId, user.id);
+  }
+  if (run.user_input && run.user_input.trim()) {
+    upsertSavedSearchForUser(user.id, run.user_input, run.context ?? null, 60);
   }
   res.json({ ok: true, runId });
 });

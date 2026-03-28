@@ -111,6 +111,7 @@ function runSchema(database: Database.Database): void {
   migrateLeadActions(database);
   migrateLeadFeedback(database);
   migrateLandingLeadFeedback(database);
+  migrateSavedSearches(database);
   migrateServiceStatus(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
@@ -156,6 +157,29 @@ function migrateLandingLeadFeedback(database: Database.Database): void {
     )
   `);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_landing_lead_feedback_run_id ON landing_lead_feedback(run_id)`);
+}
+
+function migrateSavedSearches(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS saved_searches (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      query TEXT NOT NULL,
+      context TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      interval_minutes INTEGER NOT NULL DEFAULT 60,
+      last_run_at TEXT,
+      next_run_at TEXT NOT NULL,
+      last_run_status TEXT,
+      last_error TEXT,
+      locked_until TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_saved_searches_user_id ON saved_searches(user_id)`);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_saved_searches_next_run ON saved_searches(next_run_at)`);
 }
 
 function migratePostIntent(database: Database.Database): void {
@@ -455,10 +479,10 @@ export function attachRunToUser(runId: string, userId: string): void {
   getDb().prepare("UPDATE runs SET user_id = ?, updated_at = datetime('now') WHERE id = ?").run(userId, runId);
 }
 
-export function getRunById(runId: string): { id: string; user_id: string | null; user_input: string } | undefined {
+export function getRunById(runId: string): { id: string; user_id: string | null; user_input: string; context: string | null } | undefined {
   const row = getDb()
-    .prepare("SELECT id, user_id, user_input FROM runs WHERE id = ?")
-    .get(runId) as { id: string; user_id: string | null; user_input: string } | undefined;
+    .prepare("SELECT id, user_id, user_input, context FROM runs WHERE id = ?")
+    .get(runId) as { id: string; user_id: string | null; user_input: string; context: string | null } | undefined;
   return row;
 }
 
@@ -659,6 +683,131 @@ export function setLandingLeadFeedback(runId: string, postId: string, vote: 1 | 
     )
     .run(runId, postId, vote);
   return info.changes > 0;
+}
+
+export interface SavedSearchRow {
+  id: string;
+  user_id: string;
+  query: string;
+  context: string | null;
+  enabled: number;
+  interval_minutes: number;
+  last_run_at: string | null;
+  next_run_at: string;
+  last_run_status: string | null;
+  last_error: string | null;
+  locked_until: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function upsertSavedSearchForUser(
+  userId: string,
+  query: string,
+  context: string | null,
+  intervalMinutes: number = 60
+): void {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return;
+  const normalizedContext = typeof context === "string" && context.trim() ? context.trim() : null;
+  const safeInterval = Number.isFinite(intervalMinutes) && intervalMinutes > 0 ? Math.floor(intervalMinutes) : 60;
+  const nextRunIso = new Date(Date.now() + safeInterval * 60_000).toISOString();
+  getDb()
+    .prepare(
+      `INSERT INTO saved_searches (
+        id, user_id, query, context, enabled, interval_minutes, next_run_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))
+      ON CONFLICT(user_id) DO UPDATE SET
+        query = excluded.query,
+        context = excluded.context,
+        enabled = 1,
+        interval_minutes = excluded.interval_minutes,
+        next_run_at = excluded.next_run_at,
+        updated_at = datetime('now')`
+    )
+    .run(randomUUID(), userId, trimmedQuery, normalizedContext, safeInterval, nextRunIso);
+}
+
+export function getSavedSearchForUser(userId: string): SavedSearchRow | null {
+  const row = getDb()
+    .prepare("SELECT * FROM saved_searches WHERE user_id = ? LIMIT 1")
+    .get(userId) as SavedSearchRow | undefined;
+  return row ?? null;
+}
+
+export function claimDueSavedSearches(limit: number = 10, leaseMinutes: number = 20): SavedSearchRow[] {
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 10;
+  const safeLease = Number.isFinite(leaseMinutes) && leaseMinutes > 0 ? Math.floor(leaseMinutes) : 20;
+  const leaseIso = new Date(Date.now() + safeLease * 60_000).toISOString();
+  const database = getDb();
+  const dueRows = database
+    .prepare(
+      `SELECT * FROM saved_searches
+       WHERE enabled = 1
+         AND datetime(next_run_at) <= datetime('now')
+         AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))
+       ORDER BY datetime(next_run_at) ASC
+       LIMIT ?`
+    )
+    .all(safeLimit) as SavedSearchRow[];
+
+  const claimed: SavedSearchRow[] = [];
+  const claimStmt = database.prepare(
+    `UPDATE saved_searches
+     SET locked_until = ?, updated_at = datetime('now')
+     WHERE id = ?
+       AND enabled = 1
+       AND datetime(next_run_at) <= datetime('now')
+       AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))`
+  );
+
+  const tx = database.transaction(() => {
+    for (const row of dueRows) {
+      const info = claimStmt.run(leaseIso, row.id);
+      if (info.changes > 0) {
+        claimed.push({ ...row, locked_until: leaseIso });
+      }
+    }
+  });
+  tx();
+  return claimed;
+}
+
+export function markSavedSearchRunSuccess(savedSearchId: string, intervalMinutes: number): void {
+  const safeInterval = Number.isFinite(intervalMinutes) && intervalMinutes > 0 ? Math.floor(intervalMinutes) : 60;
+  const nowIso = new Date().toISOString();
+  const nextRunIso = new Date(Date.now() + safeInterval * 60_000).toISOString();
+  getDb()
+    .prepare(
+      `UPDATE saved_searches
+       SET last_run_at = ?,
+           next_run_at = ?,
+           last_run_status = 'ok',
+           last_error = NULL,
+           locked_until = NULL,
+           updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(nowIso, nextRunIso, savedSearchId);
+}
+
+export function markSavedSearchRunFailure(savedSearchId: string, errorMessage: string, retryMinutes: number = 15): void {
+  const safeRetry = Number.isFinite(retryMinutes) && retryMinutes > 0 ? Math.floor(retryMinutes) : 15;
+  const nowIso = new Date().toISOString();
+  const nextRunIso = new Date(Date.now() + safeRetry * 60_000).toISOString();
+  const err = (errorMessage || "Unknown scheduler error").slice(0, 1200);
+  getDb()
+    .prepare(
+      `UPDATE saved_searches
+       SET last_run_at = ?,
+           next_run_at = ?,
+           last_run_status = 'error',
+           last_error = ?,
+           locked_until = NULL,
+           updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(nowIso, nextRunIso, err, savedSearchId);
 }
 
 // --- Service status checks (shared uptime history) ---
