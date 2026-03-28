@@ -954,6 +954,15 @@
       sessionStorage.removeItem("leadsnipePendingQuery");
     } catch (e) {}
   }
+  function clearRunIdFromUrlAndState() {
+    if (!unlockedRunId) return;
+    unlockedRunId = "";
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.delete("runId");
+      window.history.replaceState({}, "", u.toString());
+    } catch (e) {}
+  }
   var runSearchMetaEl = document.getElementById("runSearchMeta");
   var contextEditor = document.getElementById("contextEditor");
   var contextInputEl = document.getElementById("searchContextInput");
@@ -1102,7 +1111,6 @@
     params.set("includeArchived", "true");
     // Also fetch deleted leads so the "Deleted" filter can work instantly.
     params.set("includeDeleted", "true");
-    if (unlockedRunId) params.set("runId", unlockedRunId);
     return "/api/dashboard/leads?" + params.toString();
   }
 
@@ -1202,12 +1210,6 @@
         sessionStorage.removeItem("leadsnipePendingRunId");
         sessionStorage.removeItem("leadsnipePendingQuery");
       } catch (e2) {}
-      try {
-        var u = new URL(window.location.href);
-        u.searchParams.set("runId", pending.trim());
-        window.history.replaceState({}, "", u.toString());
-        unlockedRunId = pending.trim();
-      } catch (e3) {}
     });
   }
 
@@ -1843,16 +1845,6 @@
         return r.json();
       })
       .then(function (data) {
-        if (data && data.runId) {
-          unlockedRunId = data.runId;
-          try {
-            var url = new URL(window.location.href);
-            url.searchParams.set("runId", data.runId);
-            window.history.replaceState({}, "", url.toString());
-          } catch (e) {
-            // Ignore URL update issues (should not break the search flow).
-          }
-        }
         dashThreadsAnalyzed =
           data && typeof data.totalPosts === "number" ? data.totalPosts : null;
         try {
@@ -1944,6 +1936,8 @@
       restoreRunInputs(currentRun);
 
       if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
+      // URL runId is used only as an initial hint. Dashboard defaults to live user feed.
+      clearRunIdFromUrlAndState();
 
       return fetchLeads();
     })
