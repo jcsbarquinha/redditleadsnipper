@@ -495,7 +495,10 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const subreddit = typeof req.query.subreddit === "string" ? req.query.subreddit.trim() : undefined;
   const days = req.query.days !== undefined ? Number(req.query.days) : undefined;
   const minScore = req.query.minScore !== undefined ? Number(req.query.minScore) : undefined;
-  const query = typeof req.query.query === "string" ? req.query.query.trim() : undefined;
+  const queryFromReq = typeof req.query.query === "string" ? req.query.query.trim() : undefined;
+  const savedSearch = getSavedSearchForUser(user.id);
+  // Dashboard defaults to the user's current saved search to avoid mixing historical search themes.
+  const query = savedSearch?.query?.trim() || queryFromReq;
   const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : undefined;
   const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
   const includeDeleted = req.query.includeDeleted === "true" || req.query.includeDeleted === "1";
