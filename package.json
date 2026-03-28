@@ -12,6 +12,7 @@
     "keywords:test": "tsx scripts/test-keywords.ts",
     "pipeline": "tsx src/run-pipeline.ts",
     "scheduler:tick": "tsx src/run-scheduler.ts",
+    "cron:trigger": "tsx src/cron-trigger.ts",
     "report": "tsx src/report.ts",
     "api": "tsx src/server.ts",
     "start:api": "node dist/server.js",
