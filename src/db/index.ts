@@ -113,6 +113,7 @@ function runSchema(database: Database.Database): void {
   migrateLeadFeedback(database);
   migrateLandingLeadFeedback(database);
   migrateSavedSearches(database);
+  migrateSavedSearchProfileLink(database);
   migrateServiceStatus(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
@@ -181,6 +182,24 @@ function migrateSavedSearches(database: Database.Database): void {
   `);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_saved_searches_user_id ON saved_searches(user_id)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_saved_searches_next_run ON saved_searches(next_run_at)`);
+}
+
+/** Links cron to the user's current search profile only (see claimDueSavedSearches). */
+function migrateSavedSearchProfileLink(database: Database.Database): void {
+  const cols = (database.prepare("PRAGMA table_info(saved_searches)").all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("search_profile_id")) {
+    database.exec("ALTER TABLE saved_searches ADD COLUMN search_profile_id TEXT REFERENCES search_profiles(id)");
+  }
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_saved_searches_profile_id ON saved_searches(search_profile_id)`);
+  database.exec(`
+    UPDATE saved_searches SET search_profile_id = (
+      SELECT sp.id FROM search_profiles sp
+      WHERE sp.user_id = saved_searches.user_id AND sp.is_current = 1
+      LIMIT 1
+    )
+    WHERE search_profile_id IS NULL
+      AND EXISTS (SELECT 1 FROM search_profiles sp2 WHERE sp2.user_id = saved_searches.user_id AND sp2.is_current = 1)
+  `);
 }
 
 function migrateSearchProfiles(database: Database.Database): void {
@@ -579,18 +598,12 @@ export function getRunsForUser(
 ): { id: string; user_input: string; context: string | null; created_at: string }[] {
   const database = getDb();
   type RunListRow = { id: string; user_input: string; context: string | null; created_at: string };
-  const rows = (searchProfileId && searchProfileId.trim())
-    ? database
-        .prepare(
-          "SELECT id, user_input, context, created_at FROM runs WHERE user_id = ? AND search_profile_id = ? ORDER BY created_at DESC LIMIT ?"
-        )
-        .all(userId, searchProfileId.trim(), limit) as RunListRow[]
-    : database
-        .prepare(
-          "SELECT id, user_input, context, created_at FROM runs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
-        )
-        .all(userId, limit) as RunListRow[];
-  return rows;
+  if (!searchProfileId?.trim()) return [];
+  return database
+    .prepare(
+      "SELECT id, user_input, context, created_at FROM runs WHERE user_id = ? AND search_profile_id = ? ORDER BY created_at DESC LIMIT ?"
+    )
+    .all(userId, searchProfileId.trim(), limit) as RunListRow[];
 }
 
 /** All leads for a user (from all their runs), ranked by intent then time. Excludes deleted unless includeArchived. */
@@ -740,6 +753,7 @@ export interface SavedSearchRow {
   user_id: string;
   query: string;
   context: string | null;
+  search_profile_id: string | null;
   enabled: number;
   interval_minutes: number;
   last_run_at: string | null;
@@ -765,17 +779,64 @@ function normalizeQueryForProfile(query: string): string {
   return (query || "").trim();
 }
 
+/** Same product URL / text → same identity so minor URL variants share one profile. */
+function identityKeyForSearchInput(query: string): string {
+  const trimmed = (query || "").trim();
+  if (!trimmed) return "";
+  if (/\s/.test(trimmed)) {
+    return trimmed.toLowerCase().replace(/\s+/g, " ").trim();
+  }
+  try {
+    const withProto = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+    const u = new URL(withProto);
+    if (u.hostname && u.hostname.includes(".")) {
+      return u.hostname.replace(/^www\./i, "").toLowerCase();
+    }
+  } catch {
+    /* not a URL */
+  }
+  return trimmed.toLowerCase();
+}
+
 function normalizeContextForProfile(context: string | null): string | null {
   if (typeof context !== "string") return null;
   const trimmed = context.trim();
   return trimmed || null;
 }
 
+function repairCurrentProfileFromSavedSearch(userId: string): SearchProfileRow | null {
+  const database = getDb();
+  const hasCurrent = database
+    .prepare("SELECT 1 AS ok FROM search_profiles WHERE user_id = ? AND is_current = 1 LIMIT 1")
+    .get(userId) as { ok?: number } | undefined;
+  if (hasCurrent) return null;
+  const saved = getSavedSearchForUser(userId);
+  if (!saved?.search_profile_id?.trim()) return null;
+  const prof = database
+    .prepare("SELECT * FROM search_profiles WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(saved.search_profile_id.trim(), userId) as SearchProfileRow | undefined;
+  if (!prof) return null;
+  const tx = database.transaction(() => {
+    database
+      .prepare("UPDATE search_profiles SET is_current = 0, updated_at = datetime('now') WHERE user_id = ?")
+      .run(userId);
+    database
+      .prepare("UPDATE search_profiles SET is_current = 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
+      .run(prof.id, userId);
+    database.prepare("UPDATE users SET current_search_profile_id = ? WHERE id = ?").run(prof.id, userId);
+  });
+  tx();
+  return database
+    .prepare("SELECT * FROM search_profiles WHERE user_id = ? AND is_current = 1 LIMIT 1")
+    .get(userId) as SearchProfileRow | null;
+}
+
 export function getCurrentSearchProfileForUser(userId: string): SearchProfileRow | null {
   const row = getDb()
     .prepare("SELECT * FROM search_profiles WHERE user_id = ? AND is_current = 1 LIMIT 1")
     .get(userId) as SearchProfileRow | undefined;
-  return row ?? null;
+  if (row) return row;
+  return repairCurrentProfileFromSavedSearch(userId);
 }
 
 export function setRunSearchProfile(runId: string, searchProfileId: string): void {
@@ -792,11 +853,12 @@ export function ensureCurrentSearchProfileForInput(
   const normalizedQuery = normalizeQueryForProfile(query);
   if (!normalizedQuery) return null;
   const normalizedContext = normalizeContextForProfile(context);
+  const key = identityKeyForSearchInput(normalizedQuery);
   const database = getDb();
   const current = getCurrentSearchProfileForUser(userId);
   if (
     current &&
-    current.query.trim() === normalizedQuery &&
+    identityKeyForSearchInput(current.query) === key &&
     normalizeContextForProfile(current.context) === normalizedContext
   ) {
     return current;
@@ -825,27 +887,29 @@ export function upsertSavedSearchForUser(
   userId: string,
   query: string,
   context: string | null,
+  searchProfileId: string,
   intervalMinutes: number = 60
 ): void {
   const trimmedQuery = query.trim();
-  if (!trimmedQuery) return;
+  if (!trimmedQuery || !searchProfileId.trim()) return;
   const normalizedContext = typeof context === "string" && context.trim() ? context.trim() : null;
   const safeInterval = Number.isFinite(intervalMinutes) && intervalMinutes > 0 ? Math.floor(intervalMinutes) : 60;
   const nextRunIso = new Date(Date.now() + safeInterval * 60_000).toISOString();
   getDb()
     .prepare(
       `INSERT INTO saved_searches (
-        id, user_id, query, context, enabled, interval_minutes, next_run_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))
+        id, user_id, query, context, search_profile_id, enabled, interval_minutes, next_run_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))
       ON CONFLICT(user_id) DO UPDATE SET
         query = excluded.query,
         context = excluded.context,
+        search_profile_id = excluded.search_profile_id,
         enabled = 1,
         interval_minutes = excluded.interval_minutes,
         next_run_at = excluded.next_run_at,
         updated_at = datetime('now')`
     )
-    .run(randomUUID(), userId, trimmedQuery, normalizedContext, safeInterval, nextRunIso);
+    .run(randomUUID(), userId, trimmedQuery, normalizedContext, searchProfileId.trim(), safeInterval, nextRunIso);
 }
 
 export function getSavedSearchForUser(userId: string): SavedSearchRow | null {
@@ -867,11 +931,18 @@ export function claimDueSavedSearches(
   const dueClause = force ? "1 = 1" : "datetime(next_run_at) <= datetime('now')";
   const dueRows = database
     .prepare(
-      `SELECT * FROM saved_searches
-       WHERE enabled = 1
-         AND ${dueClause}
-         AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))
-       ORDER BY datetime(next_run_at) ASC
+      `SELECT s.* FROM saved_searches s
+       WHERE s.enabled = 1
+         AND ${dueClause.replace(/next_run_at/g, "s.next_run_at")}
+         AND (s.locked_until IS NULL OR datetime(s.locked_until) <= datetime('now'))
+         AND s.search_profile_id IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM search_profiles sp
+           WHERE sp.id = s.search_profile_id
+             AND sp.user_id = s.user_id
+             AND sp.is_current = 1
+         )
+       ORDER BY datetime(s.next_run_at) ASC
        LIMIT ?`
     )
     .all(safeLimit) as SavedSearchRow[];

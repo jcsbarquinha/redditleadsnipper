@@ -148,7 +148,7 @@ function applyPaidCheckoutFromSession(session: Stripe.Checkout.Session): { userI
       const profile = ensureCurrentSearchProfileForInput(user.id, run.user_input, run.context ?? null);
       if (profile) {
         setRunSearchProfile(runId, profile.id);
-        upsertSavedSearchForUser(user.id, run.user_input, run.context ?? null, 60);
+        upsertSavedSearchForUser(user.id, run.user_input, run.context ?? null, profile.id, 60);
       }
     }
   }
@@ -515,17 +515,18 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : undefined;
   const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
   const includeDeleted = req.query.includeDeleted === "true" || req.query.includeDeleted === "1";
-  const savedSearch = getSavedSearchForUser(user.id);
-  const currentProfile =
-    getCurrentSearchProfileForUser(user.id) ||
-    (savedSearch ? ensureCurrentSearchProfileForInput(user.id, savedSearch.query, savedSearch.context) : null);
+  const currentProfile = getCurrentSearchProfileForUser(user.id);
+  if (!currentProfile) {
+    res.json({ leads: [], entitled: true });
+    return;
+  }
   const leads = getLeadsForUser(user.id, 200, {
     subreddit: subreddit || undefined,
     days: Number.isFinite(days) ? days : undefined,
     minScore: Number.isFinite(minScore) ? minScore : undefined,
     query: query || undefined,
     runId: runId || undefined,
-    ...(currentProfile ? { searchProfileId: currentProfile.id } : {}),
+    searchProfileId: currentProfile.id,
     includeArchived,
     includeDeleted,
   });
@@ -535,10 +536,7 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
 /** List runs for the current user (for dashboard query dropdown). */
 app.get("/api/dashboard/runs", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string } }).user;
-  const savedSearch = getSavedSearchForUser(user.id);
-  const currentProfile =
-    getCurrentSearchProfileForUser(user.id) ||
-    (savedSearch ? ensureCurrentSearchProfileForInput(user.id, savedSearch.query, savedSearch.context) : null);
+  const currentProfile = getCurrentSearchProfileForUser(user.id);
   const runs = getRunsForUser(user.id, 50, currentProfile?.id);
   res.json({ runs });
 });
@@ -595,7 +593,7 @@ app.post("/api/dashboard/search", requireAuth, (req, res) => {
       attachRunToUser(result.runId, user.id);
       const profile = ensureCurrentSearchProfileForInput(user.id, query, context || null);
       if (profile) setRunSearchProfile(result.runId, profile.id);
-      upsertSavedSearchForUser(user.id, query, context || null, 60);
+      if (profile) upsertSavedSearchForUser(user.id, query, context || null, profile.id, 60);
       res.json({ runId: result.runId, totalPosts: result.totalPosts });
     } catch (err) {
       if (err instanceof RedditRateLimitedError) {
@@ -821,7 +819,7 @@ app.post("/api/dashboard/attach-pending-run", requireAuth, (req, res) => {
   if (run.user_input && run.user_input.trim()) {
     const profile = ensureCurrentSearchProfileForInput(user.id, run.user_input, run.context ?? null);
     if (profile) setRunSearchProfile(runId, profile.id);
-    upsertSavedSearchForUser(user.id, run.user_input, run.context ?? null, 60);
+    if (profile) upsertSavedSearchForUser(user.id, run.user_input, run.context ?? null, profile.id, 60);
   }
   res.json({ ok: true, runId });
 });
