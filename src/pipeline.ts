@@ -14,12 +14,13 @@ import {
 import { search } from "./reddit-search.js";
 import { InvalidSearchInputError, validateUserInput } from "./input-validation.js";
 import type { RedditPost } from "./types.js";
+import { POST_DISCOVERY_MAX_AGE_DAYS } from "./constants.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 /** Delay between Reddit listing fetches (same search, pagination). Higher = fewer 429s from Reddit. */
 const DEFAULT_DELAY_MS = 1500;
 /** Drop posts older than this many days (Reddit search still uses `t=week`). */
-const MAX_POST_AGE_DAYS = 3;
+const MAX_POST_AGE_DAYS = POST_DISCOVERY_MAX_AGE_DAYS;
 const MIN_CONTENT_LENGTH = 20;
 /** Parallel Reddit searches (keyword × sort). Lower = fewer 429s; higher = faster pipeline. */
 const SEARCH_KEYWORD_CONCURRENCY = 1;
@@ -160,17 +161,6 @@ function isLikelySelfPromotionalPost(post: RedditPost, userInput: string): boole
   return false;
 }
 
-
-function applyFinalScoreAdjustments(rawScore: number, post: RedditPost): number {
-  const ageDays = Math.min(MAX_POST_AGE_DAYS, getPostAgeDays(post));
-  // Recency should be a *small* boost only.
-  // The primary signal must remain the AI intent score (seeking-ness).
-  const recencyStrength = 5; // max points added by recency (keep AI dominant)
-  const recencyPoints = Number.isFinite(ageDays)
-    ? Math.round(((MAX_POST_AGE_DAYS - ageDays) / MAX_POST_AGE_DAYS) * recencyStrength)
-    : 0;
-  return clampScore(rawScore + recencyPoints);
-}
 
 function finalizeIntent(score: number, explanation: string | null, suggestedReply: string | null) {
   return {
@@ -379,7 +369,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
           const rowId = postRowId(runId, candidate.post.id);
 
           if (intent) {
-            const finalScore = applyFinalScoreAdjustments(intent.score, candidate.post);
+            const finalScore = clampScore(intent.score);
             const finalized = finalizeIntent(finalScore, intent.explanation, intent.suggested_reply);
             insertPostIntent(rowId, finalized.label, finalized.score, finalized.explanation, finalized.suggested_reply, finalized.is_high_intent);
             rankedCandidates.push({

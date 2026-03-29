@@ -6,7 +6,7 @@ import { requireOpenAIKey } from "./config.js";
 import { fetchOpenAIChat } from "./openai-fetch.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
-const MODEL = "gpt-4o-mini";
+const MODEL = "gpt-4o";
 
 export type IntentLabel = "high" | "medium" | "low";
 
@@ -23,10 +23,10 @@ const BATCH_SYSTEM_PROMPT = `You are qualifying sales leads from Reddit posts.
 You will be given:
 1) What the product does
 2) What problem it solves
-3) A batch of Reddit posts (title + body), each with a unique id
+3) A batch of Reddit posts: title, body, unique id, and optional metadata (matched search queries, Reddit upvotes, comment count, post age)
 
 Core task:
-For EACH post independently, score how strong a lead they are for THIS product, using only the post text and the product context above.
+For EACH post independently, score how strong a lead they are for THIS product. The PRIMARY signal is always the post text plus the product context. Metadata is supplementary only.
 
 Important principles:
 - Evaluate each post independently. Do not compare posts to each other.
@@ -39,6 +39,10 @@ Important principles:
 - If the author is selling/pitching their own service/product (e.g. "for hire", "DM me", "book with us", "try our tool"), score low unless they are clearly asking for a tool recommendation as a buyer.
 - Strategy-only discussions ("how to improve X" in general) without clear tool/vendor seeking should not score as high intent.
 
+Optional metadata (secondary only—intent stays primary):
+- Matched search queries: Show which searches surfaced this thread (e.g. pain/alternative vs brand). Use as context for why it appeared; they do not replace reading the post or override a clear read of the body.
+- Reddit upvotes and comment count: Weak hints about visibility or discussion. Low or zero engagement is common for niche subs or fresh posts—do NOT treat it as a bad lead by itself. Never use popularity to raise the score for a post that is clearly not seeking a solution. If and only if buying intent is borderline or ambiguous, you may use slightly higher engagement as a small tie-breaker toward the same score band; do not use engagement to jump bands (e.g. from medium to high).
+
 Scoring rubric (0-100):
 - 90-100: Exact, explicit match. The author is clearly looking for THIS exact type of solution OR clearly facing the exact core problem this product solves right now. Reserve for strongest opportunities only.
 - 70-89: Strong match. The post is clearly in the same solution/problem space and likely actionable, but less explicit or less immediate than 90+.
@@ -48,6 +52,18 @@ Scoring rubric (0-100):
 Hard rule for high scores:
 - Do NOT give 90+ unless the post text shows an explicit exact problem/solution match.
 - If key context is missing or inferred, keep the score at or below 89.
+
+Examples (calibration—same rubric as above):
+
+Example A — False positive (target band ~40–50):
+Title: "How do I grow my SaaS faster?"
+Body: "Been at it 6 months. Tried content and ads. Feeling stuck. What's the playbook people actually use?"
+Why this scores ~45: Broad growth/strategy venting without asking for a specific tool, vendor, or alternative. Adjacent to many B2B products but no concrete solution-seeking—keep in the partial/medium-lower band, not high intent.
+
+Example B — True positive (target band ~80–90):
+Title: "Need a lightweight CRM for a 3-person agency — spreadsheets are killing us"
+Body: "We outgrew Google Sheets for follow-ups. Looking for something under $50/mo with simple pipelines. What do you actually use?"
+Why this scores ~85: Explicit buyer intent, clear problem, asking for real tools in the CRM/workspace—strong match if the product is that category; reserve 90+ only if the text is an even tighter fit to THIS product's exact wedge.
 
 Output requirements (STRICT):
 - Return JSON only (no markdown, no prose).
@@ -62,7 +78,7 @@ Output schema:
     "id": "post_id",
     "score": 0-100,
     "explanation": "one short sentence explaining the score",
-    "suggested_reply": "one short, highly organic Reddit reply for scores >= 70. MUST NOT sound like a sales pitch or AI bot. Start by directly answering their question or validating their problem, then softly mention the product as a relevant resource. If score < 70, return null."
+    "suggested_reply": "one short, highly organic Reddit reply for scores >= 70. MUST NOT sound like a sales pitch or AI bot. Start by directly answering their question or validating their problem, then softly mention the product as a relevant resource. If score < 70, return null. Choose the score from the post and product fit alone—do not raise a score just to justify a reply."
   }
 ]`;
 
@@ -161,7 +177,18 @@ export async function classifyPostIntentBatch(
   const key = requireOpenAIKey();
 
   const postsBlock = posts.map((p, i) => {
+    const kw =
+      p.matchedKeywords && p.matchedKeywords.length > 0
+        ? p.matchedKeywords.map((k) => k.trim()).filter(Boolean).join("; ")
+        : "(none)";
+    const ups = p.score != null && Number.isFinite(Number(p.score)) ? String(p.score) : "unknown";
+    const ncom =
+      p.num_comments != null && Number.isFinite(Number(p.num_comments)) ? String(p.num_comments) : "unknown";
+    const ageLine = buildAgeLine(p.created_utc);
+    const ageDisplay = ageLine || "unknown";
     return `--- Post ${i + 1} (id: ${p.id}) ---
+Matched search queries (why this post was retrieved): ${kw}
+Reddit upvotes: ${ups} | Comments: ${ncom} | Post date: ${ageDisplay}
 Title: ${p.title || "(no title)"}
 Body: ${p.body || "(no body)"}`;
   }).join("\n\n");

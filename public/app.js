@@ -1,4 +1,7 @@
 (function () {
+  /** Must match server `POST_DISCOVERY_MAX_AGE_DAYS` in src/constants.ts */
+  const POST_DISCOVERY_MAX_AGE_DAYS = 2;
+
   const PRICING_BILLING_KEY = "leadsnipePricingBilling";
   const PENDING_RUN_ID_KEY = "leadsnipePendingRunId";
   const PENDING_QUERY_KEY = "leadsnipePendingQuery";
@@ -500,8 +503,8 @@
 
     resultsHeader.innerHTML =
       hotCount > 0
-        ? `<span class="results-count">${hotCount} ${hotLabel}</span> from the last 3 days \uD83D\uDD25`
-        : "No Hot leads found in the last 3 days for that query.";
+        ? `<span class="results-count">${hotCount} ${hotLabel}</span> from posts in the last ${POST_DISCOVERY_MAX_AGE_DAYS} days \uD83D\uDD25`
+        : `No Hot leads found in posts from the last ${POST_DISCOVERY_MAX_AGE_DAYS} days for that query.`;
     resultsList.innerHTML = "";
 
     var teaserLead = hotLeads.length > 0 ? hotLeads[0] : (highIntentLeads.length > 0 ? highIntentLeads[0] : null);
