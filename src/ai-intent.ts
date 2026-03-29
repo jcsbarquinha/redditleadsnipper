@@ -9,7 +9,7 @@ const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL_BOUNCER = "gpt-4o-mini";
 const MODEL_CLOSER = "gpt-4o";
 /** Mini scores above this go to gpt-4o for final score / explanation / suggested_reply. */
-const CLOSER_THRESHOLD_MINI_SCORE = 50;
+const CLOSER_THRESHOLD_MINI_SCORE = 30;
 
 export type IntentLabel = "high" | "medium" | "low";
 
