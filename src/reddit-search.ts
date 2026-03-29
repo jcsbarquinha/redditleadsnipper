@@ -129,27 +129,28 @@ function extractPost(child: ListingChild): RedditPost | null {
 }
 
 /**
- * Build a single Reddit `q` string: ("kw1" OR "kw2" OR ...).
- * Phrases are double-quoted; internal quotes stripped. Empty / duplicate keywords skipped.
+ * Build a single Reddit `q` string: (kw1 OR kw2 OR ...).
+ * Unquoted operands so Reddit matches all words in each keyword (looser than phrase quotes).
+ * Strips `"`, `(`, `)` from operands so they do not break the outer boolean group.
  */
 export function buildRedditBooleanOrQuery(keywords: string[]): string {
   const seen = new Set<string>();
-  const terms: string[] = [];
+  const operands: string[] = [];
   for (const raw of keywords) {
-    const t = raw.trim();
-    if (!t) continue;
-    const key = t.toLowerCase();
+    const normalized = raw
+      .replace(/"/g, " ")
+      .replace(/[()]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    terms.push(t);
+    operands.push(normalized);
   }
-  if (terms.length === 0) return "";
-  const quoted = terms.map((t) => {
-    const inner = t.replace(/"/g, " ").replace(/\s+/g, " ").trim();
-    return `"${inner}"`;
-  });
-  if (quoted.length === 1) return quoted[0];
-  return `(${quoted.join(" OR ")})`;
+  if (operands.length === 0) return "";
+  if (operands.length === 1) return operands[0];
+  return `(${operands.join(" OR ")})`;
 }
 
 /** Reddit search time filter (`t` param). `week` ≈ last 7 days. */
