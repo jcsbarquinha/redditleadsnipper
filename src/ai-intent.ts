@@ -6,7 +6,10 @@ import { requireOpenAIKey } from "./config.js";
 import { fetchOpenAIChat } from "./openai-fetch.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
-const MODEL = "gpt-4o";
+const MODEL_BOUNCER = "gpt-4o-mini";
+const MODEL_CLOSER = "gpt-4o";
+/** Mini scores above this go to gpt-4o for final score / explanation / suggested_reply. */
+const CLOSER_THRESHOLD_MINI_SCORE = 50;
 
 export type IntentLabel = "high" | "medium" | "low";
 
@@ -170,29 +173,34 @@ function parseBatchResponse(content: string, postIds: string[]): (PostIntentResu
   return postIds.map((id) => byId.get(id) ?? null);
 }
 
-export async function classifyPostIntentBatch(
-  context: string,
-  posts: BatchPostInput[]
-): Promise<(PostIntentResult | null)[]> {
-  const key = requireOpenAIKey();
-
-  const postsBlock = posts.map((p, i) => {
-    const kw =
-      p.matchedKeywords && p.matchedKeywords.length > 0
-        ? p.matchedKeywords.map((k) => k.trim()).filter(Boolean).join("; ")
-        : "(none)";
-    const ups = p.score != null && Number.isFinite(Number(p.score)) ? String(p.score) : "unknown";
-    const ncom =
-      p.num_comments != null && Number.isFinite(Number(p.num_comments)) ? String(p.num_comments) : "unknown";
-    const ageLine = buildAgeLine(p.created_utc);
-    const ageDisplay = ageLine || "unknown";
-    return `--- Post ${i + 1} (id: ${p.id}) ---
+function buildPostsBlock(posts: BatchPostInput[]): string {
+  return posts
+    .map((p, i) => {
+      const kw =
+        p.matchedKeywords && p.matchedKeywords.length > 0
+          ? p.matchedKeywords.map((k) => k.trim()).filter(Boolean).join("; ")
+          : "(none)";
+      const ups = p.score != null && Number.isFinite(Number(p.score)) ? String(p.score) : "unknown";
+      const ncom =
+        p.num_comments != null && Number.isFinite(Number(p.num_comments)) ? String(p.num_comments) : "unknown";
+      const ageLine = buildAgeLine(p.created_utc);
+      const ageDisplay = ageLine || "unknown";
+      return `--- Post ${i + 1} (id: ${p.id}) ---
 Matched search queries (why this post was retrieved): ${kw}
 Reddit upvotes: ${ups} | Comments: ${ncom} | Post date: ${ageDisplay}
 Title: ${p.title || "(no title)"}
 Body: ${p.body || "(no body)"}`;
-  }).join("\n\n");
+    })
+    .join("\n\n");
+}
 
+async function classifyPostIntentBatchSingleModel(
+  context: string,
+  posts: BatchPostInput[],
+  model: string
+): Promise<(PostIntentResult | null)[]> {
+  const key = requireOpenAIKey();
+  const postsBlock = buildPostsBlock(posts);
   const userContent = `Product context (what it does, problem it solves):
 
 ${context.trim()}
@@ -209,7 +217,7 @@ Return JSON only, exactly ${posts.length} objects, matching ids and order.`;
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        model: MODEL,
+        model,
         messages: [
           { role: "system", content: BATCH_SYSTEM_PROMPT },
           {
@@ -248,5 +256,39 @@ Return JSON only, exactly ${posts.length} objects, matching ids and order.`;
     ).catch(() => {
       throw firstErr;
     });
+  }
+}
+
+export async function classifyPostIntentBatch(
+  context: string,
+  posts: BatchPostInput[]
+): Promise<(PostIntentResult | null)[]> {
+  const miniResults = await classifyPostIntentBatchSingleModel(context, posts, MODEL_BOUNCER);
+
+  const closerPosts: BatchPostInput[] = [];
+  const closerFromIndex: number[] = [];
+  for (let i = 0; i < posts.length; i++) {
+    const r = miniResults[i];
+    if (r != null && r.score > CLOSER_THRESHOLD_MINI_SCORE) {
+      closerPosts.push(posts[i]);
+      closerFromIndex.push(i);
+    }
+  }
+
+  if (closerPosts.length === 0) {
+    return miniResults;
+  }
+
+  try {
+    const closerResults = await classifyPostIntentBatchSingleModel(context, closerPosts, MODEL_CLOSER);
+    const merged = [...miniResults];
+    for (let j = 0; j < closerPosts.length; j++) {
+      const r4 = closerResults[j];
+      const orig = closerFromIndex[j];
+      if (r4 != null) merged[orig] = r4;
+    }
+    return merged;
+  } catch {
+    return miniResults;
   }
 }
