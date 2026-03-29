@@ -128,6 +128,30 @@ function extractPost(child: ListingChild): RedditPost | null {
   };
 }
 
+/**
+ * Build a single Reddit `q` string: ("kw1" OR "kw2" OR ...).
+ * Phrases are double-quoted; internal quotes stripped. Empty / duplicate keywords skipped.
+ */
+export function buildRedditBooleanOrQuery(keywords: string[]): string {
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const raw of keywords) {
+    const t = raw.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    terms.push(t);
+  }
+  if (terms.length === 0) return "";
+  const quoted = terms.map((t) => {
+    const inner = t.replace(/"/g, " ").replace(/\s+/g, " ").trim();
+    return `"${inner}"`;
+  });
+  if (quoted.length === 1) return quoted[0];
+  return `(${quoted.join(" OR ")})`;
+}
+
 /** Reddit search time filter (`t` param). `week` ≈ last 7 days. */
 export type RedditTimeFilter = "hour" | "day" | "week" | "month" | "year" | "all";
 
@@ -173,7 +197,7 @@ export async function search(
     if (timeFilter && timeFilter !== "all") {
       url += `&t=${timeFilter}`;
     }
-    if (after) url += `&after=${after}`;
+    if (after) url += `&after=${encodeURIComponent(after)}`;
     await delay(delayMs);
     const data = await request<RedditListing>(url);
     const listing = data?.data ?? {};

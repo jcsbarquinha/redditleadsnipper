@@ -11,22 +11,22 @@ import {
   insertPost,
   insertPostIntent,
 } from "./db/index.js";
-import { search } from "./reddit-search.js";
+import { search, buildRedditBooleanOrQuery } from "./reddit-search.js";
 import { InvalidSearchInputError, validateUserInput } from "./input-validation.js";
 import type { RedditPost } from "./types.js";
 import { POST_DISCOVERY_MAX_AGE_DAYS } from "./constants.js";
 
+/** @deprecated Retained for API compat; Reddit uses {@link COMBINED_REDDIT_MAX_PAGES} for combined OR search. */
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 /** Delay between Reddit listing fetches (same search, pagination). Higher = fewer 429s from Reddit. */
 const DEFAULT_DELAY_MS = 1500;
 /** Drop posts older than this many days (Reddit search still uses `t=week`). */
 const MAX_POST_AGE_DAYS = POST_DISCOVERY_MAX_AGE_DAYS;
 const MIN_CONTENT_LENGTH = 20;
-/** Parallel Reddit searches (keyword × sort). Lower = fewer 429s; higher = faster pipeline. */
-const SEARCH_KEYWORD_CONCURRENCY = 1;
+/** Single boolean OR query, `sort=relevance`, paginated this many times. */
+const COMBINED_REDDIT_MAX_PAGES = 3;
 const INTENT_CONCURRENCY = 15;
 const INTENT_BATCH_SIZE = 5;
-const MAX_PAGES_PER_QUERY = 1;
 
 
 const PROMO_CALL_TO_ACTION_PATTERN =
@@ -207,6 +207,7 @@ export interface PipelineTimings {
   redditMs: number;
   intentMs: number;
   totalMs: number;
+  /** Reddit combined-search requests (1 query × pages = still one logical “search”). */
   searchTaskCount: number;
   uniqueAfterDedupe: number;
   postsAfterFilters: number;
@@ -236,30 +237,40 @@ function dedupeCandidatePostsById(candidates: CandidatePost[]): CandidatePost[] 
   return out;
 }
 
-function dedupePosts(
-  keywordResults: { keyword: string; posts: RedditPost[] }[]
-): Map<string, { post: RedditPost; matchedKeywords: string[] }> {
-  const byId = new Map<string, { post: RedditPost; matchedKeywords: string[] }>();
-  for (const { keyword, posts } of keywordResults) {
-    for (const post of posts) {
-      const id = post.id ?? "";
-      if (!id) continue;
-      const existing = byId.get(id);
-      if (existing) {
-        if (!existing.matchedKeywords.includes(keyword)) existing.matchedKeywords.push(keyword);
-      } else {
-        byId.set(id, { post, matchedKeywords: [keyword] });
-      }
-    }
+function dedupePostsByRedditId(posts: RedditPost[]): RedditPost[] {
+  const seen = new Set<string>();
+  const out: RedditPost[] = [];
+  for (const p of posts) {
+    const id = (p.id ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(p);
   }
-  return byId;
+  return out;
+}
+
+/** After one combined OR search: guess which original keywords match post text (fallback: all keywords). */
+function assignMatchedKeywordsToPosts(
+  posts: RedditPost[],
+  keywords: string[]
+): Map<string, { post: RedditPost; matchedKeywords: string[] }> {
+  const uniquePosts = dedupePostsByRedditId(posts);
+  const kwList = keywords.map((k) => k.trim()).filter(Boolean);
+  const map = new Map<string, { post: RedditPost; matchedKeywords: string[] }>();
+  for (const post of uniquePosts) {
+    const id = (post.id ?? "").trim();
+    if (!id) continue;
+    const hay = `${post.title ?? ""}\n${post.selftext ?? ""}`.toLowerCase();
+    const matched = kwList.filter((kw) => hay.includes(kw.toLowerCase()));
+    map.set(id, { post, matchedKeywords: matched.length > 0 ? matched : kwList.slice() });
+  }
+  return map;
 }
 
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
   const {
     userInput,
     context,
-    maxPagesPerKeyword = DEFAULT_MAX_PAGES_PER_KEYWORD,
     delayMs = DEFAULT_DELAY_MS,
     keywordCount = DEFAULT_KEYWORD_COUNT,
   } = options;
@@ -294,29 +305,22 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   insertRun(runId, userInput, searchQueries, context, "running");
 
   try {
-    const SORT_MODES: Array<"hot" | "relevance"> = ["hot", "relevance"];
-    const searchTasks = searchQueries.flatMap((query) =>
-      SORT_MODES.map((sort) => ({ query, sort }))
-    );
+    const combinedQ = buildRedditBooleanOrQuery(searchQueries);
+    if (!combinedQ.trim()) {
+      throw new Error("No search keywords generated for Reddit.");
+    }
 
     const redditT0 = performance.now();
-    const keywordResults = await mapWithConcurrency(
-      searchTasks,
-      SEARCH_KEYWORD_CONCURRENCY,
-      async ({ query, sort }) => ({
-        keyword: query,
-        posts: await search(query, {
-          maxPages: Math.min(maxPagesPerKeyword, MAX_PAGES_PER_QUERY),
-          delayMs,
-          exactPhrase: false,
-          sort,
-          timeFilter: "week",
-        }),
-      })
-    );
+    const redditPosts = await search(combinedQ, {
+      maxPages: COMBINED_REDDIT_MAX_PAGES,
+      delayMs,
+      exactPhrase: false,
+      sort: "relevance",
+      timeFilter: "week",
+    });
     const redditMs = Math.round(performance.now() - redditT0);
 
-    const uniquePosts = dedupePosts(keywordResults);
+    const uniquePosts = assignMatchedKeywordsToPosts(redditPosts, searchQueries);
     let recentCandidates: CandidatePost[] = dedupeCandidatePostsById(
       [...uniquePosts.values()]
         .filter(({ post }) => isPostWithinMaxAge(post))
@@ -421,7 +425,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       redditMs,
       intentMs,
       totalMs,
-      searchTaskCount: searchTasks.length,
+      searchTaskCount: 1,
       uniqueAfterDedupe: uniquePosts.size,
       postsAfterFilters: recentCandidates.length,
       scorableForLlm: scorableCandidates.length,
