@@ -137,8 +137,20 @@ function applyPaidCheckoutFromSession(session: Stripe.Checkout.Session): { userI
   setEntitledUntil(user.id, entitledUntil);
 
   if (runId) {
-    const run = getRunById(runId);
-    if (run && !run.user_id) attachRunToUser(runId, user.id);
+    let run = getRunById(runId);
+    if (run && !run.user_id) {
+      attachRunToUser(runId, user.id);
+      run = getRunById(runId);
+    }
+    // Match POST /api/dashboard/attach-pending-run: dashboard lists/filters by search profile; runs
+    // without search_profile_id vanish when the user has any other current profile.
+    if (run && run.user_id === user.id && run.user_input.trim()) {
+      const profile = ensureCurrentSearchProfileForInput(user.id, run.user_input, run.context ?? null);
+      if (profile) {
+        setRunSearchProfile(runId, profile.id);
+        upsertSavedSearchForUser(user.id, run.user_input, run.context ?? null, 60);
+      }
+    }
   }
 
   return { userId: user.id, runId };
@@ -507,17 +519,13 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const currentProfile =
     getCurrentSearchProfileForUser(user.id) ||
     (savedSearch ? ensureCurrentSearchProfileForInput(user.id, savedSearch.query, savedSearch.context) : null);
-  if (!currentProfile) {
-    res.json({ leads: [], entitled: true });
-    return;
-  }
   const leads = getLeadsForUser(user.id, 200, {
     subreddit: subreddit || undefined,
     days: Number.isFinite(days) ? days : undefined,
     minScore: Number.isFinite(minScore) ? minScore : undefined,
     query: query || undefined,
     runId: runId || undefined,
-    searchProfileId: currentProfile.id,
+    ...(currentProfile ? { searchProfileId: currentProfile.id } : {}),
     includeArchived,
     includeDeleted,
   });
