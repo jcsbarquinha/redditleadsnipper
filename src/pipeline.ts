@@ -207,7 +207,7 @@ export interface PipelineTimings {
   redditMs: number;
   intentMs: number;
   totalMs: number;
-  /** Reddit combined-search requests (1 query × pages = still one logical “search”). */
+  /** Reddit `search()` invocations (combined relevance/new fallbacks + optional per-keyword pass). */
   searchTaskCount: number;
   uniqueAfterDedupe: number;
   postsAfterFilters: number;
@@ -267,12 +267,30 @@ function assignMatchedKeywordsToPosts(
   return map;
 }
 
+function postsToRecentCandidates(
+  redditPosts: RedditPost[],
+  searchQueries: string[],
+  userInput: string
+): CandidatePost[] {
+  const uniquePosts = assignMatchedKeywordsToPosts(redditPosts, searchQueries);
+  return dedupeCandidatePostsById(
+    [...uniquePosts.values()]
+      .filter(({ post }) => isPostWithinMaxAge(post))
+      .filter(({ post }) => !isLikelySelfPromotionalPost(post, userInput))
+      .map(({ post, matchedKeywords }) => ({
+        post: { ...post, comments: [] },
+        matchedKeywords,
+      }))
+  );
+}
+
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
   const {
     userInput,
     context,
     delayMs = DEFAULT_DELAY_MS,
     keywordCount = DEFAULT_KEYWORD_COUNT,
+    maxPagesPerKeyword = DEFAULT_MAX_PAGES_PER_KEYWORD,
   } = options;
 
   await validateUserInput(userInput);
@@ -311,25 +329,51 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     }
 
     const redditT0 = performance.now();
-    const redditPosts = await search(combinedQ, {
-      maxPages: COMBINED_REDDIT_MAX_PAGES,
-      delayMs,
-      exactPhrase: false,
-      sort: "relevance",
-      timeFilter: "week",
-    });
-    const redditMs = Math.round(performance.now() - redditT0);
+    let redditSearchCalls = 0;
+    let redditPosts: RedditPost[] = [];
 
-    const uniquePosts = assignMatchedKeywordsToPosts(redditPosts, searchQueries);
-    let recentCandidates: CandidatePost[] = dedupeCandidatePostsById(
-      [...uniquePosts.values()]
-        .filter(({ post }) => isPostWithinMaxAge(post))
-        .filter(({ post }) => !isLikelySelfPromotionalPost(post, userInput))
-        .map(({ post, matchedKeywords }) => ({
-          post: { ...post, comments: [] },
-          matchedKeywords,
-        }))
-    );
+    async function fetchCombined(sort: "relevance" | "new") {
+      const batch = await search(combinedQ, {
+        maxPages: COMBINED_REDDIT_MAX_PAGES,
+        delayMs,
+        exactPhrase: false,
+        sort,
+        timeFilter: "week",
+      });
+      redditSearchCalls++;
+      redditPosts = dedupePostsByRedditId([...redditPosts, ...batch]);
+    }
+
+    await fetchCombined("relevance");
+    let recentCandidates = postsToRecentCandidates(redditPosts, searchQueries, userInput);
+
+    // Relevance surfaces older threads first; with a 2-day cutoff we often get zero usable posts.
+    if (recentCandidates.length === 0) {
+      await fetchCombined("new");
+      recentCandidates = postsToRecentCandidates(redditPosts, searchQueries, userInput);
+    }
+
+    // Long boolean OR queries often return far fewer listings than the same terms searched alone.
+    if (recentCandidates.length === 0) {
+      const perKwPages = Math.max(1, Math.min(maxPagesPerKeyword, COMBINED_REDDIT_MAX_PAGES));
+      for (const kw of searchQueries) {
+        const term = kw.trim();
+        if (!term) continue;
+        const batch = await search(term, {
+          maxPages: perKwPages,
+          delayMs,
+          exactPhrase: false,
+          sort: "new",
+          timeFilter: "week",
+        });
+        redditSearchCalls++;
+        redditPosts = dedupePostsByRedditId([...redditPosts, ...batch]);
+      }
+      recentCandidates = postsToRecentCandidates(redditPosts, searchQueries, userInput);
+    }
+
+    const redditMs = Math.round(performance.now() - redditT0);
+    const uniqueAfterDedupe = assignMatchedKeywordsToPosts(redditPosts, searchQueries).size;
 
     for (const candidate of recentCandidates) {
       insertPost(runId, candidate.post, candidate.matchedKeywords);
@@ -425,8 +469,8 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       redditMs,
       intentMs,
       totalMs,
-      searchTaskCount: 1,
-      uniqueAfterDedupe: uniquePosts.size,
+      searchTaskCount: redditSearchCalls,
+      uniqueAfterDedupe,
       postsAfterFilters: recentCandidates.length,
       scorableForLlm: scorableCandidates.length,
       intentBatches: batches.length,
