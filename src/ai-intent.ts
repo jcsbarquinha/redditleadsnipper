@@ -6,22 +6,7 @@ import { requireOpenAIKey } from "./config.js";
 import { fetchOpenAIChat } from "./openai-fetch.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
-const MODEL_BOUNCER = "gpt-4o-mini";
-const MODEL_CLOSER = "gpt-4o";
-
-type TriageTier = "reject" | "uncertain" | "promising";
-
-const BOUNCER_TRIAGE_SYSTEM_PROMPT = `You are a fast triage filter for Reddit posts against a product context.
-
-For EACH post independently, assign exactly one label (lowercase string):
-- reject — spam or junk, hiring/recruiting (unless the product is clearly for recruiters), obvious off-topic, pure self-promo or for-hire pitch with no genuine buyer question
-- uncertain — thin, ambiguous, or could plausibly relate to the product/problem space; not clear trash
-- promising — clear problem, tool seek, recommendation ask, or pain/workflow that fits what the product solves
-
-If unsure between reject and anything else, prefer uncertain. Do not output numeric scores.
-
-Output: JSON only. Array with one object per input post, same order, all ids preserved:
-[{ "id": "<exact id>", "tier": "reject" | "uncertain" | "promising" }]`;
+const MODEL_INTENT = "gpt-4o";
 
 export type IntentLabel = "high" | "medium" | "low";
 
@@ -185,82 +170,6 @@ function parseBatchResponse(content: string, postIds: string[]): (PostIntentResu
   return postIds.map((id) => byId.get(id) ?? null);
 }
 
-function normalizeTriageTier(raw: unknown): TriageTier {
-  const s = String(raw ?? "")
-    .toLowerCase()
-    .trim();
-  if (s === "reject" || s === "rejected") return "reject";
-  if (s === "promising") return "promising";
-  if (s === "uncertain" || s === "maybe" || s === "unclear") return "uncertain";
-  return "uncertain";
-}
-
-function parseTriageResponse(content: string, postIds: string[]): TriageTier[] {
-  const trimmed = content.trim();
-  let jsonStr = trimmed;
-  const codeBlock = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/);
-  if (codeBlock) jsonStr = codeBlock[1].trim();
-
-  const parsed = JSON.parse(jsonStr) as Array<{ id?: string; tier?: unknown }>;
-
-  if (!Array.isArray(parsed)) throw new Error("Expected JSON array from triage response");
-  if (parsed.length !== postIds.length) {
-    throw new Error(`Triage: expected ${postIds.length} results, got ${parsed.length}`);
-  }
-
-  const inputSet = new Set(postIds);
-  const byId = new Map<string, TriageTier>();
-  for (const item of parsed) {
-    const id = String(item?.id ?? "");
-    if (!inputSet.has(id)) throw new Error(`Unexpected id in triage: ${id}`);
-    if (byId.has(id)) throw new Error(`Duplicate triage id: ${id}`);
-    byId.set(id, normalizeTriageTier(item?.tier));
-  }
-  for (const id of postIds) {
-    if (!byId.has(id)) throw new Error(`Missing triage id: ${id}`);
-  }
-  return postIds.map((id) => byId.get(id)!);
-}
-
-/** Safety net: strong retrieval/engagement signal overrides mini reject. */
-function shouldEscalateRejectToCloser(post: BatchPostInput): boolean {
-  const kws = post.matchedKeywords.map((k) => k.trim().toLowerCase()).filter(Boolean);
-  if (kws.length === 0) return false;
-  const title = (post.title || "").toLowerCase();
-  const bodySnippet = (post.body || "").toLowerCase().slice(0, 900);
-  const ncom = post.num_comments ?? 0;
-  const ups = post.score ?? 0;
-  for (const kw of kws) {
-    const wordCount = kw.split(/\s+/).filter(Boolean).length;
-    const inTitle = title.includes(kw);
-    const inBody = bodySnippet.includes(kw);
-    if (wordCount >= 2 && inTitle) return true;
-    if (kw.length >= 12 && inTitle) return true;
-    if ((inTitle || inBody) && (ncom >= 5 || ups >= 10)) return true;
-  }
-  return false;
-}
-
-function rejectOnlyIntentResult(): PostIntentResult {
-  return {
-    score: 18,
-    label: "low",
-    is_high_intent: false,
-    explanation: "Filtered in triage as unlikely match (spam, off-topic, hiring, or self-promo).",
-    suggested_reply: null,
-  };
-}
-
-function triageCloserFallbackResult(): PostIntentResult {
-  return {
-    score: 40,
-    label: "medium",
-    is_high_intent: false,
-    explanation: "Passed triage but full scoring was unavailable.",
-    suggested_reply: null,
-  };
-}
-
 function buildPostsBlock(posts: BatchPostInput[]): string {
   return posts
     .map((p, i) => {
@@ -280,65 +189,6 @@ Title: ${p.title || "(no title)"}
 Body: ${p.body || "(no body)"}`;
     })
     .join("\n\n");
-}
-
-async function triagePostsBatch(context: string, posts: BatchPostInput[]): Promise<TriageTier[]> {
-  const key = requireOpenAIKey();
-  const postsBlock = buildPostsBlock(posts);
-  const userContent = `Product context:
-
-${context.trim()}
-
-${postsBlock}
-
-Return JSON only: array of ${posts.length} objects, one per post, with "id" (exact) and "tier" (reject | uncertain | promising).`;
-
-  async function requestTriage(extraLine?: string): Promise<TriageTier[]> {
-    const res = await fetchOpenAIChat(OPENAI_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model: MODEL_BOUNCER,
-        messages: [
-          { role: "system", content: BOUNCER_TRIAGE_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: extraLine ? `${userContent}\n\n${extraLine}` : userContent,
-          },
-        ],
-        temperature: 0.1,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`OpenAI API error ${res.status}: ${errBody || res.statusText}`);
-    }
-
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      error?: { message?: string };
-    };
-    if (data.error?.message) throw new Error(`OpenAI: ${data.error.message}`);
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error("OpenAI returned no triage content");
-
-    return parseTriageResponse(content, posts.map((p) => p.id));
-  }
-
-  try {
-    return await requestTriage();
-  } catch (firstErr) {
-    return requestTriage(
-      "CRITICAL: Return valid JSON only. Same number of items as posts; ids must match exactly; tier must be reject, uncertain, or promising."
-    ).catch(() => {
-      throw firstErr;
-    });
-  }
 }
 
 async function classifyPostIntentBatchSingleModel(
@@ -410,42 +260,5 @@ export async function classifyPostIntentBatch(
   context: string,
   posts: BatchPostInput[]
 ): Promise<(PostIntentResult | null)[]> {
-  const tiers = await triagePostsBatch(context, posts);
-
-  const sendCloser = posts.map((p, i) => {
-    const t = tiers[i];
-    return t !== "reject" || shouldEscalateRejectToCloser(p);
-  });
-
-  const closerPosts: BatchPostInput[] = [];
-  const closerFromIndex: number[] = [];
-  for (let i = 0; i < posts.length; i++) {
-    if (sendCloser[i]) {
-      closerPosts.push(posts[i]);
-      closerFromIndex.push(i);
-    }
-  }
-
-  if (closerPosts.length === 0) {
-    return posts.map(() => rejectOnlyIntentResult());
-  }
-
-  let closerResults: (PostIntentResult | null)[];
-  try {
-    closerResults = await classifyPostIntentBatchSingleModel(context, closerPosts, MODEL_CLOSER);
-  } catch {
-    closerResults = closerPosts.map(() => null);
-  }
-
-  const merged: (PostIntentResult | null)[] = new Array(posts.length);
-  let j = 0;
-  for (let i = 0; i < posts.length; i++) {
-    if (!sendCloser[i]) {
-      merged[i] = rejectOnlyIntentResult();
-    } else {
-      const r4 = closerResults[j++];
-      merged[i] = r4 ?? triageCloserFallbackResult();
-    }
-  }
-  return merged;
+  return classifyPostIntentBatchSingleModel(context, posts, MODEL_INTENT);
 }
