@@ -4,12 +4,13 @@
  */
 
 import type { RedditComment } from "./types.js";
-import { BASE_URL, DEFAULT_DELAY_MS } from "./reddit-search.js";
+import { BASE_URL, DEFAULT_DELAY_MS, RedditRateLimitedError } from "./reddit-search.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const MAX_RETRIES = 10;
 const RETRY_BACKOFF_MS = 5000;
+const MAX_RETRY_AFTER_MS = 120_000;
 
 function headers(): HeadersInit {
   return {
@@ -27,6 +28,16 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function parseRetryAfterMs(res: Response): number | null {
+  const raw = res.headers.get("Retry-After");
+  if (!raw) return null;
+  const sec = Number(raw);
+  if (!Number.isNaN(sec) && sec >= 0) return Math.min(sec * 1000, MAX_RETRY_AFTER_MS);
+  const when = Date.parse(raw);
+  if (!Number.isNaN(when)) return Math.min(Math.max(0, when - Date.now()), MAX_RETRY_AFTER_MS);
+  return null;
+}
+
 async function request<T>(url: string): Promise<T> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
@@ -34,11 +45,15 @@ async function request<T>(url: string): Promise<T> {
         headers: headers(),
         signal: AbortSignal.timeout(30_000),
       });
-      if (res.status === 429 || res.status === 503 || res.status === 403) {
-        if (attempt < MAX_RETRIES - 1) {
-          await delay(RETRY_BACKOFF_MS * (attempt + 1));
-          continue;
-        }
+      const isRateOrBlock = res.status === 429 || res.status === 503 || res.status === 403;
+      if (isRateOrBlock && attempt < MAX_RETRIES - 1) {
+        const retryAfter = res.status === 429 ? parseRetryAfterMs(res) : null;
+        const backoff = retryAfter ?? RETRY_BACKOFF_MS * (attempt + 1);
+        await delay(backoff);
+        continue;
+      }
+      if (res.status === 429) {
+        throw new RedditRateLimitedError();
       }
       if (!res.ok) {
         const body = await res.text();
@@ -47,6 +62,7 @@ async function request<T>(url: string): Promise<T> {
       }
       return (await res.json()) as T;
     } catch (err) {
+      if (err instanceof RedditRateLimitedError) throw err;
       if (attempt === MAX_RETRIES - 1) throw err;
       await delay(RETRY_BACKOFF_MS * (attempt + 1));
     }

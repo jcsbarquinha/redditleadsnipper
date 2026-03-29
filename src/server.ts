@@ -25,6 +25,7 @@ import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import nodemailer from "nodemailer";
 import { runPipeline } from "./pipeline.js";
+import { RedditRateLimitedError } from "./reddit-search.js";
 import {
   getLeadsForRun,
   getRunById,
@@ -589,6 +590,10 @@ app.post("/api/dashboard/search", requireAuth, (req, res) => {
       upsertSavedSearchForUser(user.id, query, context || null, 60);
       res.json({ runId: result.runId, totalPosts: result.totalPosts });
     } catch (err) {
+      if (err instanceof RedditRateLimitedError) {
+        res.status(429).json({ error: err.message });
+        return;
+      }
       console.error("Dashboard search error:", err);
       res.status(500).json({
         error: err instanceof Error ? err.message : "Search failed",
@@ -1024,6 +1029,10 @@ app.post("/api/search", async (req, res) => {
   } catch (err) {
     if (err instanceof InvalidSearchInputError) {
       res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof RedditRateLimitedError) {
+      res.status(429).json({ error: err.message });
       return;
     }
     console.error("Pipeline error:", err);

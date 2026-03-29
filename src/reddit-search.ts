@@ -24,26 +24,53 @@ function headers(): HeadersInit {
   };
 }
 
-export const DEFAULT_DELAY_MS = 1000; // 1 s between requests; use --delay 0.5 for faster (risk of 429)
+export const DEFAULT_DELAY_MS = 1500;
+
+/** Shown to users when Reddit keeps returning 429 after retries. */
+export const REDDIT_RATE_LIMIT_MESSAGE =
+  "Too many searches at the moment, please retry in a few minutes.";
+
+export class RedditRateLimitedError extends Error {
+  constructor(message: string = REDDIT_RATE_LIMIT_MESSAGE) {
+    super(message);
+    this.name = "RedditRateLimitedError";
+  }
+}
+
 const MAX_RETRIES = 10;
 const RETRY_BACKOFF_MS = 4000;
+const MAX_RETRY_AFTER_MS = 120_000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function request<T>(url: string, delayMs: number): Promise<T> {
+function parseRetryAfterMs(res: Response): number | null {
+  const raw = res.headers.get("Retry-After");
+  if (!raw) return null;
+  const sec = Number(raw);
+  if (!Number.isNaN(sec) && sec >= 0) return Math.min(sec * 1000, MAX_RETRY_AFTER_MS);
+  const when = Date.parse(raw);
+  if (!Number.isNaN(when)) return Math.min(Math.max(0, when - Date.now()), MAX_RETRY_AFTER_MS);
+  return null;
+}
+
+async function request<T>(url: string): Promise<T> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(url, {
         headers: headers(),
         signal: AbortSignal.timeout(30_000),
       });
-      if (res.status === 429 || res.status === 503 || res.status === 403) {
-        if (attempt < MAX_RETRIES - 1) {
-          await delay(RETRY_BACKOFF_MS * (attempt + 1));
-          continue;
-        }
+      const isRateOrBlock = res.status === 429 || res.status === 503 || res.status === 403;
+      if (isRateOrBlock && attempt < MAX_RETRIES - 1) {
+        const retryAfter = res.status === 429 ? parseRetryAfterMs(res) : null;
+        const backoff = retryAfter ?? RETRY_BACKOFF_MS * (attempt + 1);
+        await delay(backoff);
+        continue;
+      }
+      if (res.status === 429) {
+        throw new RedditRateLimitedError();
       }
       if (!res.ok) {
         const body = await res.text();
@@ -52,6 +79,7 @@ async function request<T>(url: string, delayMs: number): Promise<T> {
       }
       return (await res.json()) as T;
     } catch (err) {
+      if (err instanceof RedditRateLimitedError) throw err;
       if (attempt === MAX_RETRIES - 1) throw err;
       await delay(RETRY_BACKOFF_MS * (attempt + 1));
     }
@@ -147,7 +175,7 @@ export async function search(
     }
     if (after) url += `&after=${after}`;
     await delay(delayMs);
-    const data = await request<RedditListing>(url, delayMs);
+    const data = await request<RedditListing>(url);
     const listing = data?.data ?? {};
     const children = (listing.children ?? []) as ListingChild[];
     for (const child of children) {

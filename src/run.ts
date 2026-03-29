@@ -17,7 +17,7 @@ import { search } from "./reddit-search.js";
 import { fetchComments } from "./reddit-comments.js";
 import type { SearchResultPayload } from "./types.js";
 
-const DEFAULT_DELAY_MS = 1000; // 1 s; override with --delay (min 0.5)
+const DEFAULT_DELAY_MS = 1500; // override with --delay (min 0.5)
 const DEFAULT_MAX_PAGES = 4; // 4 pages × 25 = 100 posts per keyword; used for lead discovery runs
 const DEFAULT_OUTPUT_DIR = "output";
 

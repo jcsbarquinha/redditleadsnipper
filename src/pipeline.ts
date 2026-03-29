@@ -17,12 +17,12 @@ import type { RedditPost } from "./types.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 /** Delay between Reddit listing fetches (same search, pagination). Higher = fewer 429s from Reddit. */
-const DEFAULT_DELAY_MS = 1100;
+const DEFAULT_DELAY_MS = 1500;
 /** Drop posts older than this many days (Reddit search still uses `t=week`). */
 const MAX_POST_AGE_DAYS = 3;
 const MIN_CONTENT_LENGTH = 20;
 /** Parallel Reddit searches (keyword × sort). Lower = fewer 429s; higher = faster pipeline. */
-const SEARCH_KEYWORD_CONCURRENCY = 2;
+const SEARCH_KEYWORD_CONCURRENCY = 1;
 const INTENT_CONCURRENCY = 15;
 const INTENT_BATCH_SIZE = 5;
 const MAX_PAGES_PER_QUERY = 1;
