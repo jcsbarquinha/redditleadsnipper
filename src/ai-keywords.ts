@@ -30,6 +30,22 @@ function normalizeSearchQuery(query: string): string {
     .trim();
 }
 
+/** Keep Reddit OR operands short and phrase-friendly (2–4 words in prompt; enforce here). */
+const KEYWORD_MAX_WORDS = 4;
+const KEYWORD_MAX_CHARS = 48;
+
+function clampKeywordLength(normalized: string): string {
+  let t = normalized.replace(/\s+/g, " ").trim();
+  const words = t.split(" ").filter(Boolean);
+  if (words.length > KEYWORD_MAX_WORDS) {
+    t = words.slice(0, KEYWORD_MAX_WORDS).join(" ");
+  }
+  if (t.length > KEYWORD_MAX_CHARS) {
+    t = t.slice(0, KEYWORD_MAX_CHARS).replace(/\s+\S*$/, "").trim();
+  }
+  return t;
+}
+
 function looksLikeUrl(input: string): boolean {
   const trimmed = input.trim();
   if (!trimmed || /\s/.test(trimmed)) return false;
@@ -137,13 +153,11 @@ Important:
 - Prioritize the problem/use case over the brand name
 - Include brand/competitor searches only when they are genuinely useful
 - Focus on buyer-intent, pain, alternatives, recommendations, workflow frustration, and active solution seeking
-- Queries should be short and realistic for Reddit search
-- Usually 2 to 6 words
-- No quotation marks
+- Queries must be short and realistic for Reddit search: **2 to 4 words each** (prefer 3). Never 5+ words, never a full sentence, never comma-separated lists of topics
+- No quotation marks in output
 - No hashtags
-- No long sentences
+- No generic single-word queries (e.g. avoid "headshots" or "AI" alone); use a tight phrase like "ai headshot tool" or "linkedin photo help"
 - No generic category fluff
-- Avoid single-topic queries that match generic discussion (e.g. avoid "social media" or "AI" alone; prefer "looking for social media scheduler", "need AI headshot tool")
 
 Good query styles:
 - mailchimp expensive
@@ -224,7 +238,7 @@ function parseKeywordsResponse(content: string, maxKeywords: number): ParsedKeyw
   // while still preferring uniqueness.
   for (const item of list) {
     if (typeof item !== "string") continue;
-    const normalized = normalizeSearchQuery(item);
+    const normalized = clampKeywordLength(normalizeSearchQuery(item));
     if (!normalized) continue;
     if (!seen.has(normalized)) {
       seen.add(normalized);
