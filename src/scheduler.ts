@@ -2,8 +2,10 @@ import { runPipeline } from "./pipeline.js";
 import {
   attachRunToUser,
   claimDueSavedSearches,
+  ensureCurrentSearchProfileForInput,
   markSavedSearchRunFailure,
   markSavedSearchRunSuccess,
+  setRunSearchProfile,
   type SavedSearchRow,
 } from "./db/index.js";
 
@@ -61,6 +63,8 @@ export async function runSavedSearchSchedulerTick(
         maxPagesPerKeyword,
       });
       attachRunToUser(pipelineResult.runId, saved.user_id);
+      const profile = ensureCurrentSearchProfileForInput(saved.user_id, userInput, saved.context);
+      if (profile) setRunSearchProfile(pipelineResult.runId, profile.id);
       markSavedSearchRunSuccess(saved.id, saved.interval_minutes || 60);
       result.succeeded += 1;
       result.runIds.push(pipelineResult.runId);

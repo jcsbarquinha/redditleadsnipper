@@ -1102,13 +1102,10 @@
 
   function buildLeadsUrl() {
     var days = document.getElementById("filterDays").value;
-    var queryInput = document.getElementById("searchQueryInput");
-    var activeQuery = queryInput && typeof queryInput.value === "string" ? queryInput.value.trim() : "";
     var params = new URLSearchParams();
     // Dashboard feed focuses on high intent only (>70).
     var scoreMin = 71;
     if (days) params.set("days", days);
-    if (activeQuery) params.set("query", activeQuery);
     if (scoreMin) params.set("minScore", scoreMin);
     // We always fetch archived so we can show counts and archived filter without another roundtrip.
     params.set("includeArchived", "true");

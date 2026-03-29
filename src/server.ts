@@ -47,6 +47,9 @@ import {
   setLandingLeadFeedback,
   upsertSavedSearchForUser,
   getSavedSearchForUser,
+  ensureCurrentSearchProfileForInput,
+  getCurrentSearchProfileForUser,
+  setRunSearchProfile,
   insertServiceStatusCheck,
   getRecentServiceStatusChecks,
   type LeadRow,
@@ -495,19 +498,25 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const subreddit = typeof req.query.subreddit === "string" ? req.query.subreddit.trim() : undefined;
   const days = req.query.days !== undefined ? Number(req.query.days) : undefined;
   const minScore = req.query.minScore !== undefined ? Number(req.query.minScore) : undefined;
-  const queryFromReq = typeof req.query.query === "string" ? req.query.query.trim() : undefined;
-  const savedSearch = getSavedSearchForUser(user.id);
-  // Dashboard defaults to the user's current saved search to avoid mixing historical search themes.
-  const query = savedSearch?.query?.trim() || queryFromReq;
+  const query = typeof req.query.query === "string" ? req.query.query.trim() : undefined;
   const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : undefined;
   const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
   const includeDeleted = req.query.includeDeleted === "true" || req.query.includeDeleted === "1";
+  const savedSearch = getSavedSearchForUser(user.id);
+  const currentProfile =
+    getCurrentSearchProfileForUser(user.id) ||
+    (savedSearch ? ensureCurrentSearchProfileForInput(user.id, savedSearch.query, savedSearch.context) : null);
+  if (!currentProfile) {
+    res.json({ leads: [], entitled: true });
+    return;
+  }
   const leads = getLeadsForUser(user.id, 200, {
     subreddit: subreddit || undefined,
     days: Number.isFinite(days) ? days : undefined,
     minScore: Number.isFinite(minScore) ? minScore : undefined,
     query: query || undefined,
     runId: runId || undefined,
+    searchProfileId: currentProfile.id,
     includeArchived,
     includeDeleted,
   });
@@ -517,7 +526,11 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
 /** List runs for the current user (for dashboard query dropdown). */
 app.get("/api/dashboard/runs", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string } }).user;
-  const runs = getRunsForUser(user.id, 50);
+  const savedSearch = getSavedSearchForUser(user.id);
+  const currentProfile =
+    getCurrentSearchProfileForUser(user.id) ||
+    (savedSearch ? ensureCurrentSearchProfileForInput(user.id, savedSearch.query, savedSearch.context) : null);
+  const runs = getRunsForUser(user.id, 50, currentProfile?.id);
   res.json({ runs });
 });
 
@@ -571,6 +584,8 @@ app.post("/api/dashboard/search", requireAuth, (req, res) => {
         maxPagesPerKeyword: 1,
       });
       attachRunToUser(result.runId, user.id);
+      const profile = ensureCurrentSearchProfileForInput(user.id, query, context || null);
+      if (profile) setRunSearchProfile(result.runId, profile.id);
       upsertSavedSearchForUser(user.id, query, context || null, 60);
       res.json({ runId: result.runId, totalPosts: result.totalPosts });
     } catch (err) {
@@ -791,6 +806,8 @@ app.post("/api/dashboard/attach-pending-run", requireAuth, (req, res) => {
     attachRunToUser(runId, user.id);
   }
   if (run.user_input && run.user_input.trim()) {
+    const profile = ensureCurrentSearchProfileForInput(user.id, run.user_input, run.context ?? null);
+    if (profile) setRunSearchProfile(runId, profile.id);
     upsertSavedSearchForUser(user.id, run.user_input, run.context ?? null, 60);
   }
   res.json({ ok: true, runId });

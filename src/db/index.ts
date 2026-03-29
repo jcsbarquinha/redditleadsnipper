@@ -108,6 +108,7 @@ function runSchema(database: Database.Database): void {
   `);
   migratePostIntent(database);
   migrateUsersAndSessions(database);
+  migrateSearchProfiles(database);
   migrateLeadActions(database);
   migrateLeadFeedback(database);
   migrateLandingLeadFeedback(database);
@@ -180,6 +181,33 @@ function migrateSavedSearches(database: Database.Database): void {
   `);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_saved_searches_user_id ON saved_searches(user_id)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_saved_searches_next_run ON saved_searches(next_run_at)`);
+}
+
+function migrateSearchProfiles(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS search_profiles (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      query TEXT NOT NULL,
+      context TEXT,
+      is_current INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_search_profiles_user_id ON search_profiles(user_id)`);
+  database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_search_profiles_current_user ON search_profiles(user_id) WHERE is_current = 1`);
+
+  const runCols = (database.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((r) => r.name);
+  if (!runCols.includes("search_profile_id")) {
+    database.exec("ALTER TABLE runs ADD COLUMN search_profile_id TEXT REFERENCES search_profiles(id)");
+  }
+  const userCols = (database.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((r) => r.name);
+  if (!userCols.includes("current_search_profile_id")) {
+    database.exec("ALTER TABLE users ADD COLUMN current_search_profile_id TEXT REFERENCES search_profiles(id)");
+  }
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_runs_search_profile_id ON runs(search_profile_id)`);
 }
 
 function migratePostIntent(database: Database.Database): void {
@@ -405,6 +433,7 @@ export interface LeadFilters {
   minScore?: number;
   query?: string;
   runId?: string;
+  searchProfileId?: string;
   includeArchived?: boolean;
   includeDeleted?: boolean;
 }
@@ -479,10 +508,18 @@ export function attachRunToUser(runId: string, userId: string): void {
   getDb().prepare("UPDATE runs SET user_id = ?, updated_at = datetime('now') WHERE id = ?").run(userId, runId);
 }
 
-export function getRunById(runId: string): { id: string; user_id: string | null; user_input: string; context: string | null } | undefined {
+export function getRunById(
+  runId: string
+): { id: string; user_id: string | null; user_input: string; context: string | null; search_profile_id: string | null } | undefined {
   const row = getDb()
-    .prepare("SELECT id, user_id, user_input, context FROM runs WHERE id = ?")
-    .get(runId) as { id: string; user_id: string | null; user_input: string; context: string | null } | undefined;
+    .prepare("SELECT id, user_id, user_input, context, search_profile_id FROM runs WHERE id = ?")
+    .get(runId) as {
+    id: string;
+    user_id: string | null;
+    user_input: string;
+    context: string | null;
+    search_profile_id: string | null;
+  } | undefined;
   return row;
 }
 
@@ -537,13 +574,22 @@ export function consumeMagicLink(token: string): string | null {
 /** All runs for a user, most recent first. */
 export function getRunsForUser(
   userId: string,
-  limit: number = 50
+  limit: number = 50,
+  searchProfileId?: string
 ): { id: string; user_input: string; context: string | null; created_at: string }[] {
-  const rows = getDb()
-    .prepare(
-      "SELECT id, user_input, context, created_at FROM runs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
-    )
-    .all(userId, limit) as { id: string; user_input: string; context: string | null; created_at: string }[];
+  const database = getDb();
+  type RunListRow = { id: string; user_input: string; context: string | null; created_at: string };
+  const rows = (searchProfileId && searchProfileId.trim())
+    ? database
+        .prepare(
+          "SELECT id, user_input, context, created_at FROM runs WHERE user_id = ? AND search_profile_id = ? ORDER BY created_at DESC LIMIT ?"
+        )
+        .all(userId, searchProfileId.trim(), limit) as RunListRow[]
+    : database
+        .prepare(
+          "SELECT id, user_input, context, created_at FROM runs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
+        )
+        .all(userId, limit) as RunListRow[];
   return rows;
 }
 
@@ -553,7 +599,7 @@ export function getLeadsForUser(
   limit: number = 200,
   filters: LeadFilters = {}
 ): LeadRow[] {
-  const { subreddit, days, minScore, query, runId, includeArchived, includeDeleted } = filters;
+  const { subreddit, days, minScore, query, runId, searchProfileId, includeArchived, includeDeleted } = filters;
   const conditions: string[] = ["r.user_id = ?"];
   const params: (string | number)[] = [userId];
 
@@ -584,6 +630,10 @@ export function getLeadsForUser(
   if (runId != null && runId.trim() !== "") {
     conditions.push("p.run_id = ?");
     params.push(runId.trim());
+  }
+  if (searchProfileId != null && searchProfileId.trim() !== "") {
+    conditions.push("r.search_profile_id = ?");
+    params.push(searchProfileId.trim());
   }
 
   const whereClause = conditions.join(" AND ");
@@ -699,6 +749,76 @@ export interface SavedSearchRow {
   locked_until: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SearchProfileRow {
+  id: string;
+  user_id: string;
+  query: string;
+  context: string | null;
+  is_current: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function normalizeQueryForProfile(query: string): string {
+  return (query || "").trim();
+}
+
+function normalizeContextForProfile(context: string | null): string | null {
+  if (typeof context !== "string") return null;
+  const trimmed = context.trim();
+  return trimmed || null;
+}
+
+export function getCurrentSearchProfileForUser(userId: string): SearchProfileRow | null {
+  const row = getDb()
+    .prepare("SELECT * FROM search_profiles WHERE user_id = ? AND is_current = 1 LIMIT 1")
+    .get(userId) as SearchProfileRow | undefined;
+  return row ?? null;
+}
+
+export function setRunSearchProfile(runId: string, searchProfileId: string): void {
+  getDb()
+    .prepare("UPDATE runs SET search_profile_id = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(searchProfileId, runId);
+}
+
+export function ensureCurrentSearchProfileForInput(
+  userId: string,
+  query: string,
+  context: string | null
+): SearchProfileRow | null {
+  const normalizedQuery = normalizeQueryForProfile(query);
+  if (!normalizedQuery) return null;
+  const normalizedContext = normalizeContextForProfile(context);
+  const database = getDb();
+  const current = getCurrentSearchProfileForUser(userId);
+  if (
+    current &&
+    current.query.trim() === normalizedQuery &&
+    normalizeContextForProfile(current.context) === normalizedContext
+  ) {
+    return current;
+  }
+
+  const tx = database.transaction(() => {
+    database
+      .prepare("UPDATE search_profiles SET is_current = 0, updated_at = datetime('now') WHERE user_id = ? AND is_current = 1")
+      .run(userId);
+    const id = randomUUID();
+    database
+      .prepare(
+        `INSERT INTO search_profiles (id, user_id, query, context, is_current, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 1, datetime('now'), datetime('now'))`
+      )
+      .run(id, userId, normalizedQuery, normalizedContext);
+    database
+      .prepare("UPDATE users SET current_search_profile_id = ? WHERE id = ?")
+      .run(id, userId);
+  });
+  tx();
+  return getCurrentSearchProfileForUser(userId);
 }
 
 export function upsertSavedSearchForUser(
