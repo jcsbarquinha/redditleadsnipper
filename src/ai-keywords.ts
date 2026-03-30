@@ -137,39 +137,42 @@ async function fetchWebsiteContext(input: string): Promise<WebsiteContext | null
 }
 
 function buildSystemPrompt(keywordCount: number): string {
-  return `You are generating Reddit search queries for a founder who wants to find potential paying users.
+  return `You are an expert Reddit growth hacker generating search queries for a SaaS founder.
 
 The user will provide either:
 - a SaaS or product URL
 - a plain-English description of their product
 
 Your job:
-1. Understand what the product actually does
-2. Infer the pain/problem it solves
-3. Generate exactly ${keywordCount} FINAL Reddit search queries that are most likely to surface people who need that product
+1. Understand what the product actually does.
+2. Infer the exact PAIN or FRUSTRATION it solves.
+3. Generate exactly ${keywordCount} FINAL Reddit search queries most likely to surface people experiencing that pain.
 
-Important:
-- For URL inputs, rely heavily on the provided website content
-- Prioritize the problem/use case over the brand name
-- Include brand/competitor searches only when they are genuinely useful
-- Focus on buyer-intent, pain, alternatives, recommendations, workflow frustration, and active solution seeking
-- Queries must be short and realistic for Reddit search: **2 to 4 words each** (prefer 3). Never 5+ words, never a full sentence, never comma-separated lists of topics
-- No quotation marks in output
-- No hashtags
-- No generic single-word queries (e.g. avoid "headshots" or "AI" alone); use a tight phrase like "ai headshot tool" or "linkedin photo help"
-- No generic category fluff
+CRITICAL REDDIT PHILOSOPHY:
+Reddit is not Google. Users do not type "B2B SaaS solution for X". They complain about their workflows, ask for hacks, or look for alternatives to tools they hate.
+- DO NOT write SEO keywords (e.g., "best cold email tool", "AI headshot generator").
+- DO write "natural gripes" and "competitor displacement" phrases.
 
-Good query styles:
-- mailchimp expensive
-- looking for crm
-- need scheduling software
-- best tool for cold email
-- tired of manual invoicing
-- alternative to hubspot
+Important Rules:
+- Prioritize the problem/use case over the brand name.
+- ALWAYS include 1-2 competitor searches if competitors are obvious (e.g., "alternative to [competitor]" or "[competitor] is too expensive").
+- Queries must be short and realistic for Reddit's blunt search engine: **2 to 4 words each** (prefer 3). Never 5+ words.
+- No quotation marks, no hashtags, no commas.
+- No generic single-word queries (e.g., avoid "headshots" or "AI").
 
-You must also provide exactly these two fields for lead-intent scoring later (be detailed but concise). Do not include any other product metadata keys.
-- "what_product_does": 2–4 sentences describing what the product actually is and does (e.g. "AI SEO content generator that plugs into your existing CMS and publishes blog posts at scale.").
-- "what_problem_it_solves": 2–4 sentences describing the pain or need it addresses (e.g. "Solves the problem of producing enough quality blog/SEO content without hiring writers. For teams that already have a site and need to fill it with content.").
+Good query styles (Natural Gripes & Competitors):
+- [competitor] expensive
+- alternative to [competitor]
+- anyone tried [competitor]
+- tired of [manual process]
+- [current tool] sucks
+- how to [achieve result] quickly
+- [specific problem] driving me crazy
+- spreadsheets are killing me
+
+You must also provide exactly these two fields for lead-intent scoring later. Be detailed but concise. Do not include any other product metadata keys.
+- "what_product_does": 2–4 sentences describing what the product actually is and does.
+- "what_problem_it_solves": 2–4 sentences describing the exact pain, frustration, or bottleneck it addresses.
 
 Return JSON only in this exact shape:
 {
@@ -182,34 +185,28 @@ Return JSON only in this exact shape:
 function buildUserPrompt(userInput: string, keywordCount: number, websiteContext: WebsiteContext | null): string {
   if (!websiteContext) {
     return `Input type: product description
-
 Original input:
 "${userInput.trim()}"
 
-Generate exactly ${keywordCount} final Reddit search queries to find people who would pay for this product.`;
+Generate exactly ${keywordCount} natural Reddit search queries to find people complaining about the problem this product solves or asking for alternatives to competitors.`;
   }
 
   return `Input type: website URL
-
 Original input:
 "${userInput.trim()}"
 
 Website URL:
 ${websiteContext.url}
-
 Website title:
 ${websiteContext.title || "(none)"}
-
 Meta description:
 ${websiteContext.metaDescription || "(none)"}
-
 Headings:
 ${websiteContext.headings.length > 0 ? websiteContext.headings.map((heading) => `- ${heading}`).join("\n") : "- (none)"}
-
 Website copy excerpt:
 ${websiteContext.bodyExcerpt || "(none)"}
 
-Generate exactly ${keywordCount} final Reddit search queries to find people who would pay for this product.`;
+Generate exactly ${keywordCount} natural Reddit search queries to find people complaining about the problem this product solves or asking for alternatives to competitors.`;
 }
 
 interface ParsedKeywordResponse {

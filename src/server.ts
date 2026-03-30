@@ -53,10 +53,13 @@ import {
   setRunSearchProfile,
   insertServiceStatusCheck,
   getRecentServiceStatusChecks,
+  getManualSearchQuota,
+  consumeManualDashboardSearch,
   type LeadRow,
   type ServiceStatusState,
 } from "./db/index.js";
 import { InvalidSearchInputError } from "./input-validation.js";
+import { DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD } from "./constants.js";
 import { runSavedSearchSchedulerTick } from "./scheduler.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -310,7 +313,11 @@ app.post("/api/internal/scheduler/tick", async (req, res) => {
     (typeof forceRaw === "string" && forceRaw.trim().toLowerCase() === "true");
   const startedAt = Date.now();
   try {
-    const result = await runSavedSearchSchedulerTick({ limit, maxPagesPerKeyword: 1, force });
+    const result = await runSavedSearchSchedulerTick({
+      limit,
+      maxPagesPerKeyword: DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD,
+      force,
+    });
     res.json({
       ok: true,
       force,
@@ -498,6 +505,7 @@ app.get("/api/me", requireAuth, (req, res) => {
     email: user.email,
     entitled_until: user.entitled_until,
     entitled: isEntitled(user.entitled_until),
+    manualSearch: getManualSearchQuota(user.id),
   });
 });
 
@@ -583,18 +591,30 @@ app.post("/api/dashboard/search", requireAuth, (req, res) => {
     return;
   }
 
+  const quotaBefore = getManualSearchQuota(user.id);
+  if (quotaBefore.used >= quotaBefore.limit) {
+    res.status(403).json({
+      error: "Manual search limit reached for today.",
+      code: "manual_search_quota",
+      manualSearch: quotaBefore,
+    });
+    return;
+  }
+
   (async () => {
     try {
       const result = await runPipeline({
         userInput: query,
         context: context ? context : undefined,
-        maxPagesPerKeyword: 1,
+        maxPagesPerKeyword: DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD,
+        searchMode: "dashboard",
       });
       attachRunToUser(result.runId, user.id);
       const profile = ensureCurrentSearchProfileForInput(user.id, query, context || null);
       if (profile) setRunSearchProfile(result.runId, profile.id);
       if (profile) upsertSavedSearchForUser(user.id, query, context || null, profile.id, 60);
-      res.json({ runId: result.runId, totalPosts: result.totalPosts });
+      const manualSearch = consumeManualDashboardSearch(user.id);
+      res.json({ runId: result.runId, totalPosts: result.totalPosts, manualSearch });
     } catch (err) {
       if (err instanceof RedditRateLimitedError) {
         res.status(429).json({ error: err.message });
@@ -1003,6 +1023,7 @@ app.post("/api/search", async (req, res) => {
     const result = await runPipeline({
       userInput: query,
       maxPagesPerKeyword: maxPages,
+      searchMode: "homepage",
     });
 
     const leads = getLeadsForRun(result.runId, 100);

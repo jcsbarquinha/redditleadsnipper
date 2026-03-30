@@ -656,6 +656,20 @@ body {
   margin-top: 1.5rem;
 }
 
+/* Dashboard run overlay: generous vertical rhythm (in-panel loading feels cramped otherwise) */
+#dashboardLoadingSection .loading-steps {
+  margin-bottom: 1.5rem;
+}
+#dashboardLoadingSection .loading-bar {
+  margin-bottom: 2rem;
+}
+#dashboardLoadingSection .loading-subline {
+  margin-bottom: 0.25rem;
+}
+#dashboardLoadingSection .skeleton-cards {
+  margin-top: 4rem;
+}
+
 .skeleton-card {
   background: #fff;
   border-radius: 10px;

@@ -186,11 +186,12 @@
     }
 
     .run-search-meta-hint {
-      font-size: 0.625rem;
-      line-height: 1.35;
-      color: #b4b4bc;
+      font-size: 0.88rem;
+      line-height: 1.4;
+      color: #5c6370;
       font-style: normal;
-      font-weight: 400;
+      font-weight: 600;
+      letter-spacing: 0.01em;
     }
     .search-input-wrap {
       display: flex;
@@ -262,6 +263,27 @@
       color: var(--reddit-orange, #ff4500);
       line-height: 1.35;
     }
+    .schedule-hint--alerts-cta {
+      margin-top: 1.25rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .schedule-hint-link {
+      display: inline;
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: none;
+      font: inherit;
+      font-weight: 700;
+      color: var(--reddit-orange, #ff4500);
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .schedule-hint-link:hover {
+      opacity: 0.88;
+    }
     .primary-btn {
       width: 100%;
       font-size: 0.95rem;
@@ -277,6 +299,24 @@
     .primary-btn:hover { background: #e5e7eb; border-color: #d1d5db; }
     .primary-btn:active { transform: translateY(1px); }
     .primary-btn:disabled { cursor: default; opacity: 0.6; }
+
+    .primary-btn.primary-btn--cta {
+      background: var(--reddit-orange, #ff4500);
+      color: #fff;
+      border-color: var(--reddit-orange, #ff4500);
+    }
+    .primary-btn.primary-btn--cta:hover:not(:disabled) {
+      filter: brightness(1.06);
+      border-color: var(--reddit-orange, #ff4500);
+    }
+
+    .run-search-input-warning {
+      margin: 0.45rem 0 0;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      color: #b45309;
+      font-weight: 600;
+    }
 
     .context-textarea {
       min-height: 110px;
@@ -448,6 +488,14 @@
       font-size: 0.9rem;
       font-weight: 800;
       color: #000;
+    }
+
+    .csv-export-hint {
+      margin: 0.5rem 0 0;
+      font-size: 0.82rem;
+      line-height: 1.4;
+      color: var(--text-muted);
+      font-weight: 500;
     }
     .leads-scope-btn:disabled { cursor: default; opacity: 0.6; }
 
@@ -746,10 +794,15 @@
           </div>
 
           <div class="rail-control">
-            <button type="button" id="runSearchBtn" class="primary-btn" title="Run this search again" disabled>Run search again</button>
+            <button type="button" id="runSearchBtn" class="primary-btn" title="Run full dashboard search (more keywords, full ranked list)" disabled>Run complete search</button>
           </div>
-          <p class="schedule-hint">Search will run every 1 hour</p>
+          <p id="runSearchInputWarning" class="run-search-input-warning hidden" aria-live="polite"></p>
           <p id="runSearchMeta" class="run-search-meta hidden" aria-live="polite"></p>
+          <p class="schedule-hint schedule-hint--alerts-cta" id="scheduleAlertsCta">
+            New search every hour. Click
+            <button type="button" class="schedule-hint-link" id="scrollToAlertsBtn" aria-label="Scroll to alerts and turn on email alerts">here</button>
+            to set up alerts.
+          </p>
         </div>
 
         <div class="rail-section">
@@ -788,7 +841,7 @@
           </div>
         </div>
 
-        <div class="rail-section">
+        <div class="rail-section" id="dashboardAlertsSection">
           <h2 class="rail-section-title">Alerts</h2>
           <div class="alert-email-subtitle">Get email alerts for new leads</div>
 
@@ -866,6 +919,7 @@
               Export CSV
             </button>
           </div>
+          <p class="csv-export-hint">Only posts in your current filtered list are exported.</p>
         </div>
       </aside>
 
@@ -942,6 +996,10 @@
   }
 
   var runs = [];
+  var dashManualSearchQuota = { used: 0, limit: 3, resetsAt: "" };
+  var baselineQuery = "";
+  var baselineContext = "";
+  var baselineContextEnabled = false;
   var leads = [];
   /** True when Stripe (or promo) has set entitled_until — user can see leads and run dashboard search. */
   var dashUserEntitled = false;
@@ -990,6 +1048,100 @@
     }
   }
 
+  function commitBaselineFromInputs() {
+    var input = document.getElementById("searchQueryInput");
+    var ctx = document.getElementById("searchContextInput");
+    baselineQuery = input ? input.value.trim() : "";
+    baselineContext = ctx ? (ctx.value || "").trim() : "";
+    baselineContextEnabled = !!isContextEnabled;
+  }
+
+  function computeInputDirtyFlags() {
+    var input = document.getElementById("searchQueryInput");
+    var ctx = document.getElementById("searchContextInput");
+    var q = input ? input.value.trim() : "";
+    var c = ctx ? (ctx.value || "").trim() : "";
+    var dirtyQuery = q !== baselineQuery;
+    var dirtyContext = c !== baselineContext || !!isContextEnabled !== baselineContextEnabled;
+    return { dirtyQuery: dirtyQuery, dirtyContext: dirtyContext, anyDirty: dirtyQuery || dirtyContext };
+  }
+
+  function formatResetsInHours(iso) {
+    if (!iso) return "?";
+    var t = new Date(iso).getTime() - Date.now();
+    if (!Number.isFinite(t)) return "?";
+    if (t <= 0) return "0";
+    var h = Math.ceil(t / 3600000);
+    return String(Math.max(0, h));
+  }
+
+  function syncRunButtonUI() {
+    var runBtn = document.getElementById("runSearchBtn");
+    var warnEl = document.getElementById("runSearchInputWarning");
+    if (!runBtn) return;
+
+    function hideWarn() {
+      if (!warnEl) return;
+      warnEl.textContent = "";
+      warnEl.classList.add("hidden");
+    }
+
+    if (dashboardLoggedOut || !dashUserEntitled) {
+      runBtn.disabled = true;
+      runBtn.classList.remove("primary-btn--cta", "is-running");
+      runBtn.textContent = "Run complete search";
+      runBtn.removeAttribute("aria-disabled");
+      hideWarn();
+      return;
+    }
+
+    if (runBtn.classList.contains("is-running")) return;
+
+    var flags = computeInputDirtyFlags();
+    var limit = dashManualSearchQuota.limit != null ? Number(dashManualSearchQuota.limit) : 3;
+    var used = dashManualSearchQuota.used != null ? Number(dashManualSearchQuota.used) : 0;
+    var atLimit = used >= limit;
+
+    if (atLimit) {
+      runBtn.disabled = true;
+      runBtn.classList.remove("primary-btn--cta");
+      var hrs = formatResetsInHours(dashManualSearchQuota.resetsAt);
+      runBtn.textContent = "Manual search limit reached (Resets in " + hrs + " hours)";
+      hideWarn();
+      return;
+    }
+
+    if (flags.anyDirty) {
+      runBtn.disabled = false;
+      runBtn.classList.add("primary-btn--cta");
+      runBtn.textContent = "Run complete search";
+      if (warnEl) {
+        if (flags.dirtyQuery) {
+          warnEl.textContent =
+            "Running a search with new input replaces your current lead list. Previous results for this saved search will be cleared.";
+          warnEl.classList.remove("hidden");
+        } else {
+          hideWarn();
+        }
+      }
+      return;
+    }
+
+    // Orange idle: homepage-style (≤1 run) and no successful manual dashboard search yet today.
+    if (runs.length <= 1 && used === 0) {
+      runBtn.disabled = false;
+      runBtn.classList.add("primary-btn--cta");
+      runBtn.textContent = "Run complete search";
+      hideWarn();
+      return;
+    }
+
+    runBtn.disabled = true;
+    runBtn.classList.remove("primary-btn--cta");
+    runBtn.textContent = "Full search completed";
+    hideWarn();
+  }
+
   function parseDbDateTime(s) {
     if (!s) return null;
     var str = String(s).trim();
@@ -1024,7 +1176,7 @@
 
   function setRunSearchMetaRunning() {
     if (!runSearchMetaEl) return;
-    runSearchMetaEl.innerHTML = '<span class="run-search-meta-hint">(takes ~2 min to run)</span>';
+    runSearchMetaEl.innerHTML = '<span class="run-search-meta-hint">(takes ~5 min to run)</span>';
     runSearchMetaEl.classList.remove("hidden");
   }
 
@@ -1121,10 +1273,9 @@
     dashUserEntitled = !!v;
     var banner = document.getElementById("dashboardEntitlementBanner");
     if (banner) banner.classList.toggle("hidden", dashUserEntitled || dashboardLoggedOut);
-    var runBtn = document.getElementById("runSearchBtn");
-    if (runBtn) runBtn.disabled = !dashUserEntitled;
     var exportBtn = document.getElementById("exportCsvBtn");
     if (exportBtn) exportBtn.disabled = !dashUserEntitled;
+    syncRunButtonUI();
   }
 
   function syncOnboardingEmpty() {
@@ -1251,6 +1402,7 @@
         syncActiveOnlyUI();
         renderLeads();
         syncEmptyStatePanels();
+        syncRunButtonUI();
       });
   }
 
@@ -1651,6 +1803,7 @@
     var btn = document.getElementById("runSearchBtn");
     var input = document.getElementById("searchQueryInput");
     if (!input) return;
+    if (btn && (btn.disabled || btn.classList.contains("is-running"))) return;
 
     var query = (input.value || "").trim();
     if (!query) {
@@ -1668,6 +1821,12 @@
     if (btn) btn.disabled = true;
     if (btn) btn.textContent = "Running...";
     if (btn) btn.classList.add("is-running");
+    var inputWarnOnRun = document.getElementById("runSearchInputWarning");
+    if (inputWarnOnRun) {
+      inputWarnOnRun.textContent = "";
+      inputWarnOnRun.classList.add("hidden");
+    }
+    setSearchInputLocked(true);
     setRunSearchMetaRunning();
 
     // Show landing-page style loading stage inside the posts panel.
@@ -1837,14 +1996,31 @@
       body: JSON.stringify({ query: query, context: context })
     })
       .then(function (r) {
-        if (!r.ok) {
-          return r.text().then(function (t) {
-            throw new Error(t || r.statusText || "Search failed");
-          });
-        }
-        return r.json();
+        return r.json().then(
+          function (body) {
+            if (!r.ok) {
+              var msg = body && body.error ? String(body.error) : r.statusText || "Search failed";
+              var err = new Error(msg);
+              err.status = r.status;
+              err.code = body && body.code;
+              err.manualSearch = body && body.manualSearch;
+              throw err;
+            }
+            return body;
+          },
+          function () {
+            throw new Error(r.statusText || "Search failed");
+          }
+        );
       })
       .then(function (data) {
+        if (data && data.manualSearch && typeof data.manualSearch === "object") {
+          dashManualSearchQuota = {
+            used: data.manualSearch.used != null ? Number(data.manualSearch.used) : dashManualSearchQuota.used,
+            limit: data.manualSearch.limit != null ? Number(data.manualSearch.limit) : dashManualSearchQuota.limit,
+            resetsAt: typeof data.manualSearch.resetsAt === "string" ? data.manualSearch.resetsAt : dashManualSearchQuota.resetsAt,
+          };
+        }
         dashThreadsAnalyzed =
           data && typeof data.totalPosts === "number" ? data.totalPosts : null;
         try {
@@ -1854,11 +2030,7 @@
         try {
           completeDashboardLoading(data && typeof data.totalPosts === "number" ? data.totalPosts : null);
         } catch (e) {}
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = "Run search again";
-          btn.classList.remove("is-running");
-        }
+        if (btn) btn.classList.remove("is-running");
         // Refresh runs list so we show the correct last run datetime.
         return fetch("/api/dashboard/runs", { credentials: "same-origin" })
           .then(function (r) {
@@ -1872,6 +2044,7 @@
             if (!currentRun) currentRun = runs[0] || null;
             restoreRunInputs(currentRun, contextSnapshot);
             if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
+            commitBaselineFromInputs();
             return fetchLeads();
           });
       })
@@ -1879,12 +2052,16 @@
         if (dashStepInterval) clearInterval(dashStepInterval);
         dashStepInterval = null;
         clearDashAlmostTimer();
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = "Run search again";
-          btn.classList.remove("is-running");
-        }
+        if (btn) btn.classList.remove("is-running");
         setRunSearchMetaError();
+        if (err && err.manualSearch && typeof err.manualSearch === "object") {
+          dashManualSearchQuota = {
+            used: err.manualSearch.used != null ? Number(err.manualSearch.used) : dashManualSearchQuota.used,
+            limit: err.manualSearch.limit != null ? Number(err.manualSearch.limit) : dashManualSearchQuota.limit,
+            resetsAt: typeof err.manualSearch.resetsAt === "string" ? err.manualSearch.resetsAt : dashManualSearchQuota.resetsAt,
+          };
+        }
+        syncRunButtonUI();
         alert(err instanceof Error ? err.message : String(err));
       });
   }
@@ -1912,6 +2089,14 @@
       if (typeof me.entitled === "boolean") {
         setDashEntitled(me.entitled);
       }
+      if (me.manualSearch && typeof me.manualSearch === "object") {
+        dashManualSearchQuota = {
+          used: me.manualSearch.used != null ? Number(me.manualSearch.used) : 0,
+          limit: me.manualSearch.limit != null ? Number(me.manualSearch.limit) : 3,
+          resetsAt: typeof me.manualSearch.resetsAt === "string" ? me.manualSearch.resetsAt : "",
+        };
+        syncRunButtonUI();
+      }
       return attachPendingRunIfAny();
     })
     .then(function () {
@@ -1934,6 +2119,7 @@
       if (input) input.value = (currentRun && currentRun.user_input) ? String(currentRun.user_input) : "";
 
       restoreRunInputs(currentRun);
+      commitBaselineFromInputs();
 
       if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
       // URL runId is used only as an initial hint. Dashboard defaults to live user feed.
@@ -2031,6 +2217,13 @@
       isContextEnabled = !isContextEnabled;
       contextEditor.classList.toggle("hidden", !isContextEnabled);
       toggleContextBtn.textContent = isContextEnabled ? "Remove context" : "Add context";
+      syncRunButtonUI();
+    });
+  }
+
+  if (contextInputEl) {
+    contextInputEl.addEventListener("input", function () {
+      syncRunButtonUI();
     });
   }
 
@@ -2077,6 +2270,10 @@
           searchQueryInputEl.select();
         } catch (e) {}
       }
+      syncRunButtonUI();
+    });
+    searchQueryInputEl.addEventListener("input", function () {
+      syncRunButtonUI();
     });
   }
 
@@ -2182,6 +2379,27 @@
     }
     applyEmailToggleState();
     emailAlertsEnabled.addEventListener("change", applyEmailToggleState);
+  }
+
+  var scrollToAlertsBtn = document.getElementById("scrollToAlertsBtn");
+  var dashboardAlertsSection = document.getElementById("dashboardAlertsSection");
+  if (scrollToAlertsBtn && dashboardAlertsSection && emailAlertsEnabled) {
+    scrollToAlertsBtn.addEventListener("click", function () {
+      var rail = document.querySelector(".dashboard-rail");
+      if (rail) {
+        var railRect = rail.getBoundingClientRect();
+        var secRect = dashboardAlertsSection.getBoundingClientRect();
+        var pad = 12;
+        var nextTop = rail.scrollTop + (secRect.top - railRect.top) - pad;
+        rail.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+      } else {
+        dashboardAlertsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (!emailAlertsEnabled.checked) {
+        emailAlertsEnabled.checked = true;
+        emailAlertsEnabled.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
   }
 
   // Dropdown open/close

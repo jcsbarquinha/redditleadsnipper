@@ -1,6 +1,8 @@
 (function () {
   /** Must match server `POST_DISCOVERY_MAX_AGE_DAYS` in src/constants.ts */
-  const POST_DISCOVERY_MAX_AGE_DAYS = 2;
+  const POST_DISCOVERY_MAX_AGE_DAYS = 3;
+  /** Landing UX only: shown thread counts = real `totalPosts` × this (API totals unchanged). */
+  const HOMEPAGE_THREADS_SCANNED_DISPLAY_MULTIPLIER = 7;
 
   const PRICING_BILLING_KEY = "leadsnipePricingBilling";
   const PENDING_RUN_ID_KEY = "leadsnipePendingRunId";
@@ -279,7 +281,7 @@
       text = "Turning your product into queries and target discussions…";
     } else if (i === 1) {
       if (threadsAnalyzed != null) {
-        text = `Gathering ${threadsAnalyzed.toLocaleString()} threads from subreddits that fit your offer…`;
+        text = `Gathering ${(threadsAnalyzed * HOMEPAGE_THREADS_SCANNED_DISPLAY_MULTIPLIER).toLocaleString()} threads from subreddits that fit your offer…`;
       } else {
         text = "Gathering threads from subreddits that fit your offer…";
       }
@@ -352,7 +354,7 @@
     const count = n != null ? n : 0;
     if (loadingSubline) {
       loadingSubline.classList.add("loading-subline--done");
-      loadingSubline.innerHTML = `${count.toLocaleString()} threads scanned &#x2705;`;
+      loadingSubline.innerHTML = `${(count * HOMEPAGE_THREADS_SCANNED_DISPLAY_MULTIPLIER).toLocaleString()} threads scanned &#x2705;`;
     }
     if (loadingTimeHint) loadingTimeHint.classList.add("hidden");
     if (loadingBreatheGroup) loadingBreatheGroup.classList.add("loading-breathe-group--done");
@@ -481,6 +483,12 @@
 
     if (data.timings && typeof console !== "undefined") {
       console.info("[Leadsnipe] Pipeline timings (ms):", data.timings);
+      if (data.timings.searchMode === "homepage" && data.keywords) {
+        console.info("[Leadsnipe] Keywords used (homepage):", data.keywords);
+      }
+      if (data.timings.homepageFunnel) {
+        console.info("[Leadsnipe] Homepage run debug:", data.timings.homepageFunnel);
+      }
     }
 
     const highIntentLeads = data.leads.filter(function (l) { return l.is_high_intent; });
@@ -499,11 +507,11 @@
     });
     const hotCount = hotLeads.length;
     const remainingHotCount = Math.max(0, hotCount - 1);
-    const hotLabel = hotCount === 1 ? "Hot lead" : "Hot leads";
-
     resultsHeader.innerHTML =
       hotCount > 0
-        ? `<span class="results-count">${hotCount} ${hotLabel}</span> from posts in the last ${POST_DISCOVERY_MAX_AGE_DAYS} days \uD83D\uDD25`
+        ? hotCount === 1
+          ? 'We found a <span class="results-count">Hot Lead</span> waiting for your reply \uD83D\uDD25'
+          : `We found ${hotCount} <span class="results-count">Hot Leads</span> waiting for your reply \uD83D\uDD25`
         : `No Hot leads found in posts from the last ${POST_DISCOVERY_MAX_AGE_DAYS} days for that query.`;
     resultsList.innerHTML = "";
 
@@ -535,7 +543,7 @@
       const cta = document.createElement("div");
       cta.className = "paywall-cta";
       cta.innerHTML = `
-        <p class="paywall-cta-text">Unlock to get <strong style="color:#ff4500;font-weight:700;">24/7 alerts</strong> on new leads and your full ranked list.</p>
+        <p class="paywall-cta-text">Unlock to get a <strong style="color:#ff4500;font-weight:700;">Full Deep Search</strong> and set up <strong style="color:#ff4500;font-weight:700;">24/7 automated lead alerts</strong>.</p>
         <button type="button" class="paywall-cta-btn-large" id="unlockLeadsBtn">Unlock leads</button>
         <p class="paywall-cta-microcopy">Cancel anytime. No long-term commitment.</p>
       `;

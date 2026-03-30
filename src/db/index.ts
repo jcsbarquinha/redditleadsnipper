@@ -115,6 +115,7 @@ function runSchema(database: Database.Database): void {
   migrateSavedSearches(database);
   migrateSavedSearchProfileLink(database);
   migrateServiceStatus(database);
+  migrateManualSearchQuota(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
 
@@ -1017,6 +1018,17 @@ export interface ServiceStatusPoint {
   checked_at: string;
 }
 
+function migrateManualSearchQuota(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS user_manual_search_quota (
+      user_id TEXT PRIMARY KEY,
+      day_utc TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+}
+
 function migrateServiceStatus(database: Database.Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS service_status_checks (
@@ -1060,4 +1072,58 @@ export function getRecentServiceStatusChecks(
     )
     .all(service, limit) as ServiceStatusPoint[];
   return rows.reverse();
+}
+
+/** Max authenticated dashboard "run full search" actions per user per UTC day (abuse guard). */
+export const MANUAL_DASHBOARD_SEARCH_DAILY_LIMIT = 3;
+
+export interface ManualSearchQuotaInfo {
+  used: number;
+  limit: number;
+  resetsAt: string;
+}
+
+function utcDayString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function nextUtcMidnightIso(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const d = now.getUTCDate();
+  return new Date(Date.UTC(y, m, d + 1, 0, 0, 0, 0)).toISOString();
+}
+
+export function getManualSearchQuota(userId: string): ManualSearchQuotaInfo {
+  const database = getDb();
+  const day = utcDayString();
+  const row = database
+    .prepare("SELECT day_utc, count FROM user_manual_search_quota WHERE user_id = ?")
+    .get(userId) as { day_utc: string; count: number } | undefined;
+  let used = 0;
+  if (row && row.day_utc === day) used = row.count;
+  return {
+    used,
+    limit: MANUAL_DASHBOARD_SEARCH_DAILY_LIMIT,
+    resetsAt: nextUtcMidnightIso(),
+  };
+}
+
+/** Increments the daily manual dashboard search counter (call only after a successful run). */
+export function consumeManualDashboardSearch(userId: string): ManualSearchQuotaInfo {
+  const database = getDb();
+  const day = utcDayString();
+  database
+    .prepare(
+      `INSERT INTO user_manual_search_quota (user_id, day_utc, count) VALUES (?, ?, 1)
+       ON CONFLICT(user_id) DO UPDATE SET
+         day_utc = excluded.day_utc,
+         count = CASE
+           WHEN user_manual_search_quota.day_utc = excluded.day_utc THEN user_manual_search_quota.count + 1
+           ELSE 1
+         END`
+    )
+    .run(userId, day);
+  return getManualSearchQuota(userId);
 }

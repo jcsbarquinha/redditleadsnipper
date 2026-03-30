@@ -7,6 +7,42 @@ import { fetchOpenAIChat } from "./openai-fetch.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL_INTENT = "gpt-4o";
+const MODEL_MINI_SCREEN = "gpt-4o-mini";
+
+/** Homepage lightning triage: id + score only; full intent runs on 4o for finalists. */
+const LIGHTNING_MINI_SYSTEM_PROMPT = `You are a lightning-fast sales prospector. Your only job is to rapidly triage Reddit posts to find potential leads for a SaaS product.
+
+You will be given:
+1) What the product does
+2) What problem it solves
+3) A batch of Reddit posts (id, title, body)
+
+Core task:
+Assign a 0-100 score to each post based on its potential as a lead.
+
+CRITICAL PRINCIPLES (BE OPTIMISTIC BUT AVOID ADS):
+- Score on PROBLEM MATCH. If they are complaining about the exact pain point this product solves, score them 70+.
+- THE "NATIVE AD" CHECK: If the post is a glowing, overly positive success story about how one specific tool "changed their life" or "solved everything" (often with a link), score it 0-39. This is a disguised ad.
+- BRAND MENTIONS ARE GOOD: Do NOT penalize a post just because it names a software tool. If they are asking *if* a tool is good, complaining about a tool, or asking for alternatives, that is a HOT LEAD (80+).
+
+Scoring Rubric:
+- 80-100: Active buyer, explicitly stating the core problem, or asking for an alternative to a competitor.
+- 70-79: Venting about related workflows or adjacent pain points.
+- 40-69: Adjacent interest, general industry talk, no personal pain point.
+- 0-39: Wrong fit, unrelated, pure spam, or a glowing disguised ad for another product.
+
+Output requirements (STRICT):
+- Return JSON only.
+- Return exactly one object per input post id in the exact order provided.
+- NO extra fields. Just id and score. DO NOT generate explanations.
+
+Output schema:
+[
+  {
+    "id": "post_id",
+    "score": 0-100
+  }
+]`;
 
 export type IntentLabel = "high" | "medium" | "low";
 
@@ -18,67 +54,52 @@ export interface PostIntentResult {
   suggested_reply: string | null;
 }
 
-const BATCH_SYSTEM_PROMPT = `You are qualifying sales leads from Reddit posts.
+const BATCH_SYSTEM_PROMPT = `You are an expert social selling strategist and opportunistic sales prospector.
+You are qualifying sales leads from Reddit posts.
 
 You will be given:
 1) What the product does
 2) What problem it solves
-3) A batch of Reddit posts: title, body, unique id, and optional metadata (matched search queries, Reddit upvotes, comment count, post age)
+3) A batch of Reddit posts: title, body, unique id, and optional metadata.
 
 Core task:
-For EACH post independently, score how strong a lead they are for THIS product. The PRIMARY signal is always the post text plus the product context. Metadata is supplementary only.
+For EACH post independently, score how strong a lead they are for THIS product.
 
-Important principles:
-- Evaluate each post independently. Do not compare posts to each other.
-- Use only the provided product context + post content. Do not invent facts.
-- Be conservative. If intent or match is unclear, score lower.
-- The score is about PROBLEM/SOLUTION MATCH, not demographic persona fit.
-- Prioritize explicit intent in the post text over assumptions.
-- If a post is about legitimacy/scam/safety checks rather than solving the product problem, score low.
-- Disregard or score very low (typically 0–39) posts that are primarily hiring, recruiting, or job postings unless the product explicitly serves hiring or recruiting workflows.
-- If the author is selling/pitching their own service/product (e.g. "for hire", "DM me", "book with us", "try our tool"), score low unless they are clearly asking for a tool recommendation as a buyer.
-- Strategy-only discussions ("how to improve X" in general) without clear tool/vendor seeking should not score as high intent.
+CRITICAL PRINCIPLES:
+- PROBLEM MATCH IS KING: A user does NOT need to be asking for a software tool to be a high-intent lead. If they are complaining about the exact pain point this product solves, they are a HOT lead (70+).
+- THE "NATIVE AD" FILTER: Disregard (0-39) disguised native ads. These read like glowing success stories heavily promoting a single named vendor ("I struggled until a friend told me about X, it's amazing!").
+- THE "WATERING HOLE" RULE: If a user mentions a competitor but is complaining about it, comparing it, or asking for neutral opinions on it, SCORE IT HIGH (80+). Do not confuse a genuine question about a brand with a disguised ad.
 
-Optional metadata (secondary only—intent stays primary):
-- Matched search queries: Show which searches surfaced this thread (e.g. pain/alternative vs brand). Use as context for why it appeared; they do not replace reading the post or override a clear read of the body.
-- Reddit upvotes and comment count: Weak hints about visibility or discussion. Low or zero engagement is common for niche subs or fresh posts—do NOT treat it as a bad lead by itself. Never use popularity to raise the score for a post that is clearly not seeking a solution. If and only if buying intent is borderline or ambiguous, you may use slightly higher engagement as a small tie-breaker toward the same score band; do not use engagement to jump bands (e.g. from medium to high).
+Scoring Rubric (0-100):
+- 90-100 (Screaming Pain / Active Buyer): The author is explicitly asking for a tool recommendation, begging for an alternative to a competitor, or experiencing a critical bottleneck that this product perfectly solves.
+- 70-89 (Strong Problem Match): The author is venting about a workflow or asking for strategy advice related to the problem this product addresses. They might not know a software solution exists yet, but they NEED it.
+- 40-69 (Adjacent / Weak): General industry talk, no clear personal pain point.
+- 0-39 (Trash): Wrong fit, unrelated, spam, or a glowing disguised advertisement for another tool.
 
-Scoring rubric (0-100):
-- 90-100: Exact, explicit match. The author is clearly looking for THIS exact type of solution OR clearly facing the exact core problem this product solves right now. Reserve for strongest opportunities only.
-- 70-89: Strong match. The post is clearly in the same solution/problem space and likely actionable, but less explicit or less immediate than 90+.
-- 40-69: Partial/adjacent match, mixed intent, generic advice-seeking, or insufficient evidence of concrete solution-seeking.
-- 0-39: Wrong fit, unrelated problem, negative signals dominate, or non-buyer context (hiring/pitch/scam-check/etc).
+Examples (Calibration):
 
-Hard rule for high scores:
-- Do NOT give 90+ unless the post text shows an explicit exact problem/solution match.
-- If key context is missing or inferred, keep the score at or below 89.
+Example A — The "Unaware but Bleeding" Lead (Target band: 80-89):
+Title: "How do I grow my SaaS faster? Spreadsheets for outreach aren't scaling."
+Body: "Been at it 6 months. Tried content and ads. Feeling stuck with manual cold email tracking. What's the playbook people actually use?"
+Why this scores ~85: Explicit statement of the exact pain point a Cold Email/CRM SaaS solves. Highly actionable.
 
-Examples (calibration—same rubric as above):
-
-Example A — False positive (target band ~40–50):
-Title: "How do I grow my SaaS faster?"
-Body: "Been at it 6 months. Tried content and ads. Feeling stuck. What's the playbook people actually use?"
-Why this scores ~45: Broad growth/strategy venting without asking for a specific tool, vendor, or alternative. Adjacent to many B2B products but no concrete solution-seeking—keep in the partial/medium-lower band, not high intent.
-
-Example B — True positive (target band ~80–90):
-Title: "Need a lightweight CRM for a 3-person agency — spreadsheets are killing us"
-Body: "We outgrew Google Sheets for follow-ups. Looking for something under $50/mo with simple pipelines. What do you actually use?"
-Why this scores ~85: Explicit buyer intent, clear problem, asking for real tools in the CRM/workspace—strong match if the product is that category; reserve 90+ only if the text is an even tighter fit to THIS product's exact wedge.
+Example B — The "Active Shopper" Lead (Target band: 90-100):
+Title: "Need a lightweight CRM for a 3-person agency — Hubspot is too heavy"
+Body: "Looking for something under $50/mo with simple pipelines. What do you actually use?"
+Why this scores ~95: Explicit buyer intent, naming a competitor they dislike. Perfect match.
 
 Output requirements (STRICT):
 - Return JSON only (no markdown, no prose).
-- Return exactly one object per input post id.
-- Include all and only the provided ids.
+- Return exactly one object per input post id in the exact order provided.
 - Preserve id values exactly.
-- Array order must match input order.
 
 Output schema:
 [
   {
     "id": "post_id",
     "score": 0-100,
-    "explanation": "one short sentence explaining the score",
-    "suggested_reply": "one short, highly organic Reddit reply for scores >= 70. MUST NOT sound like a sales pitch or AI bot. Start by directly answering their question or validating their problem, then softly mention the product as a relevant resource. If score < 70, return null. Choose the score from the post and product fit alone—do not raise a score just to justify a reply."
+    "explanation": "One short sentence explaining why they have the problem this product solves.",
+    "suggested_reply": "For scores >= 70, write a highly organic, conversational Reddit reply. Format: 1) Validate their specific pain/question like a peer. 2) Share a brief piece of actual advice. 3) Softly mention the product as a relevant resource. If score < 70, return null."
   }
 ]`;
 
@@ -116,6 +137,158 @@ export interface BatchPostInput {
   matchedKeywords: string[];
 }
 
+function parseMiniScreenResponse(content: string, postIds: string[]): Map<string, number> {
+  const trimmed = content.trim();
+  let jsonStr = trimmed;
+  const codeBlock = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/);
+  if (codeBlock) jsonStr = codeBlock[1].trim();
+  const parsed = JSON.parse(jsonStr) as Array<{ id?: string; score?: unknown }>;
+
+  if (!Array.isArray(parsed)) throw new Error("Expected JSON array from mini screen response");
+  const inputSet = new Set(postIds);
+  const byId = new Map<string, number>();
+  let skippedUnknownIds = 0;
+  for (const item of parsed) {
+    const id = String(item?.id ?? "");
+    if (!id || !inputSet.has(id)) {
+      if (id && !inputSet.has(id)) skippedUnknownIds += 1;
+      continue;
+    }
+    let s = Number(item?.score);
+    if (Number.isNaN(s) || s < 0) s = 0;
+    if (s > 100) s = 100;
+    const rounded = Math.round(s);
+    const prev = byId.get(id);
+    // Mini model sometimes repeats an id; keep worst-case cover with max score, then backfill missing ids below.
+    byId.set(id, prev === undefined ? rounded : Math.max(prev, rounded));
+  }
+  let backfilledIds = 0;
+  for (const id of postIds) {
+    if (!byId.has(id)) {
+      byId.set(id, 0);
+      backfilledIds += 1;
+    }
+  }
+  if (parsed.length !== postIds.length || backfilledIds > 0 || skippedUnknownIds > 0) {
+    console.warn(
+      JSON.stringify({
+        event: "mini_screen_parse_adjusted",
+        expectedIds: postIds.length,
+        responseArrayLength: parsed.length,
+        backfilledIds,
+        skippedUnknownIds,
+      })
+    );
+  }
+  return byId;
+}
+
+async function classifyLightningMiniBatch(context: string, posts: BatchPostInput[]): Promise<Map<string, number>> {
+  const key = requireOpenAIKey();
+  const postsBlock = buildPostsBlock(posts);
+  const userContent = `Product context (what the product does and problem it solves):
+
+${context.trim()}
+
+${postsBlock}
+
+Return JSON only: exactly ${posts.length} objects, one per post, keys only "id" and "score".`;
+
+  async function fire(extra?: string): Promise<Map<string, number>> {
+    const res = await fetchOpenAIChat(OPENAI_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: MODEL_MINI_SCREEN,
+        messages: [
+          { role: "system", content: LIGHTNING_MINI_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: extra ? `${userContent}\n\n${extra}` : userContent,
+          },
+        ],
+        temperature: 0.15,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`OpenAI API error ${res.status}: ${errBody || res.statusText}`);
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      error?: { message?: string };
+    };
+    if (data.error?.message) throw new Error(`OpenAI: ${data.error.message}`);
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("OpenAI returned no lightning mini content");
+    return parseMiniScreenResponse(content, posts.map((p) => p.id));
+  }
+
+  try {
+    return await fire();
+  } catch (firstErr) {
+    return fire(
+      "CRITICAL: Valid JSON array only. Each item: { \"id\": \"...\", \"score\": number }. All ids exactly as given, no extras."
+    ).catch(() => {
+      throw firstErr;
+    });
+  }
+}
+
+/** Chunk size for parallel lightning-mini API calls. */
+export const LIGHTNING_MINI_CHUNK = 10;
+/** Concurrent lightning-mini requests per wave (lower if OpenAI returns 429). */
+export const LIGHTNING_MINI_PARALLEL = 8;
+
+/** Fast mini triage (id+score only), chunked and parallelized for homepage. */
+export async function scorePostsLightningMini(context: string, posts: BatchPostInput[]): Promise<Map<string, number>> {
+  const merged = new Map<string, number>();
+  const chunks: BatchPostInput[][] = [];
+  for (let i = 0; i < posts.length; i += LIGHTNING_MINI_CHUNK) {
+    chunks.push(posts.slice(i, i + LIGHTNING_MINI_CHUNK));
+  }
+  for (let w = 0; w < chunks.length; w += LIGHTNING_MINI_PARALLEL) {
+    const wave = chunks.slice(w, w + LIGHTNING_MINI_PARALLEL);
+    const parts = await Promise.all(wave.map((chunk) => classifyLightningMiniBatch(context, chunk)));
+    for (const part of parts) {
+      part.forEach((v, k) => merged.set(k, v));
+    }
+  }
+  return merged;
+}
+
+function postIntentFromBatchItem(item: {
+  id?: string;
+  score?: number;
+  explanation?: string;
+  suggested_reply?: string;
+}): PostIntentResult {
+  let score = Number(item.score);
+  if (Number.isNaN(score) || score < 0) score = 0;
+  if (score > 100) score = 100;
+  const rounded = Math.round(score);
+  const explanation =
+    typeof item.explanation === "string" && item.explanation.trim()
+      ? item.explanation.trim().slice(0, 700)
+      : null;
+  const suggested_reply =
+    typeof item.suggested_reply === "string" && item.suggested_reply.trim()
+      ? item.suggested_reply.trim().slice(0, 2000)
+      : null;
+  return {
+    score: rounded,
+    label: scoreToLabel(rounded),
+    is_high_intent: isHighIntent(rounded),
+    explanation,
+    suggested_reply,
+  };
+}
+
 function parseBatchResponse(content: string, postIds: string[]): (PostIntentResult | null)[] {
   const trimmed = content.trim();
   let jsonStr = trimmed;
@@ -130,42 +303,36 @@ function parseBatchResponse(content: string, postIds: string[]): (PostIntentResu
   }>;
 
   if (!Array.isArray(parsed)) throw new Error("Expected JSON array from batch response");
-  if (parsed.length !== postIds.length) {
-    throw new Error(`Expected ${postIds.length} results, got ${parsed.length}`);
-  }
 
   const byId = new Map<string, PostIntentResult>();
   const inputSet = new Set(postIds);
+  let skippedUnknownIds = 0;
   for (const item of parsed) {
     const id = String(item.id ?? "");
-    if (!inputSet.has(id)) {
-      throw new Error(`Unexpected id in response: ${id}`);
+    if (!id || !inputSet.has(id)) {
+      if (id && !inputSet.has(id)) skippedUnknownIds += 1;
+      continue;
     }
-    if (byId.has(id)) {
-      throw new Error(`Duplicate id in response: ${id}`);
+    const next = postIntentFromBatchItem(item);
+    const prev = byId.get(id);
+    if (prev === undefined) {
+      byId.set(id, next);
+    } else {
+      byId.set(id, prev.score >= next.score ? prev : next);
     }
-    let score = Number(item.score);
-    if (Number.isNaN(score) || score < 0) score = 0;
-    if (score > 100) score = 100;
-    const explanation =
-      typeof item.explanation === "string" && item.explanation.trim()
-        ? item.explanation.trim().slice(0, 700)
-        : null;
-    const suggested_reply =
-      typeof item.suggested_reply === "string" && item.suggested_reply.trim()
-        ? item.suggested_reply.trim().slice(0, 2000)
-        : null;
-    byId.set(id, {
-      score,
-      label: scoreToLabel(score),
-      is_high_intent: isHighIntent(score),
-      explanation,
-      suggested_reply,
-    });
   }
 
-  for (const id of postIds) {
-    if (!byId.has(id)) throw new Error(`Missing id in response: ${id}`);
+  const missingIds = postIds.filter((pid) => !byId.has(pid)).length;
+  if (parsed.length !== postIds.length || missingIds > 0 || skippedUnknownIds > 0) {
+    console.warn(
+      JSON.stringify({
+        event: "intent_batch_parse_adjusted",
+        expectedIds: postIds.length,
+        responseArrayLength: parsed.length,
+        missingIds,
+        skippedUnknownIds,
+      })
+    );
   }
   return postIds.map((id) => byId.get(id) ?? null);
 }

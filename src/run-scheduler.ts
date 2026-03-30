@@ -4,6 +4,7 @@
  */
 
 import { loadConfig } from "./config.js";
+import { DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD } from "./constants.js";
 import { runSavedSearchSchedulerTick } from "./scheduler.js";
 
 loadConfig();
@@ -13,7 +14,11 @@ const limit = Number.isFinite(limitArg) && limitArg > 0 ? Math.floor(limitArg) :
 const force = process.argv.includes("--force");
 
 const startedAt = Date.now();
-const result = await runSavedSearchSchedulerTick({ limit, maxPagesPerKeyword: 1, force });
+const result = await runSavedSearchSchedulerTick({
+  limit,
+  maxPagesPerKeyword: DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD,
+  force,
+});
 const elapsedMs = Date.now() - startedAt;
 
 console.log(

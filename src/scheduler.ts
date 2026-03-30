@@ -1,3 +1,4 @@
+import { DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD } from "./constants.js";
 import { runPipeline } from "./pipeline.js";
 import {
   attachRunToUser,
@@ -36,7 +37,7 @@ export async function runSavedSearchSchedulerTick(
   const maxPagesPerKeyword =
     Number.isFinite(options.maxPagesPerKeyword) && Number(options.maxPagesPerKeyword) > 0
       ? Math.floor(Number(options.maxPagesPerKeyword))
-      : 1;
+      : DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD;
   const force = options.force === true;
 
   const claimed: SavedSearchRow[] = claimDueSavedSearches(limit, 20, force);
@@ -61,6 +62,7 @@ export async function runSavedSearchSchedulerTick(
         userInput,
         context: toContext(saved.context),
         maxPagesPerKeyword,
+        searchMode: "cron",
       });
       attachRunToUser(pipelineResult.runId, saved.user_id);
       const profile = ensureCurrentSearchProfileForInput(saved.user_id, userInput, saved.context);
