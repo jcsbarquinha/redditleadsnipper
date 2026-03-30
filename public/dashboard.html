@@ -999,7 +999,8 @@
   var dashManualSearchQuota = { used: 0, limit: 3, resetsAt: "" };
   var baselineQuery = "";
   var baselineContext = "";
-  var baselineContextEnabled = false;
+  /** When true, the context textarea is visible; context text is still sent on run whenever non-empty. */
+  var contextPanelExpanded = false;
   var leads = [];
   /** True when Stripe (or promo) has set entitled_until — user can see leads and run dashboard search. */
   var dashUserEntitled = false;
@@ -1026,6 +1027,18 @@
   var contextInputEl = document.getElementById("searchContextInput");
   var toggleContextBtn = document.getElementById("toggleContextBtn");
 
+  function updateContextToggleLabel() {
+    if (!toggleContextBtn) return;
+    var c = contextInputEl ? (contextInputEl.value || "").trim() : "";
+    if (contextPanelExpanded) {
+      toggleContextBtn.textContent = "Minimize context";
+    } else if (c) {
+      toggleContextBtn.textContent = "Show context";
+    } else {
+      toggleContextBtn.textContent = "Add context";
+    }
+  }
+
   function restoreRunInputs(currentRun, fallbackContext) {
     var input = document.getElementById("searchQueryInput");
     if (input) input.value = currentRun && currentRun.user_input ? String(currentRun.user_input) : "";
@@ -1036,16 +1049,15 @@
     if (!ctx && fallback) ctx = fallback;
 
     if (ctx) {
-      isContextEnabled = true;
-      if (contextEditor) contextEditor.classList.remove("hidden");
       if (contextInputEl) contextInputEl.value = ctx;
-      if (toggleContextBtn) toggleContextBtn.textContent = "Remove context";
-    } else {
-      isContextEnabled = false;
+      contextPanelExpanded = false;
       if (contextEditor) contextEditor.classList.add("hidden");
+    } else {
       if (contextInputEl) contextInputEl.value = "";
-      if (toggleContextBtn) toggleContextBtn.textContent = "Add context";
+      contextPanelExpanded = false;
+      if (contextEditor) contextEditor.classList.add("hidden");
     }
+    updateContextToggleLabel();
   }
 
   function commitBaselineFromInputs() {
@@ -1053,7 +1065,6 @@
     var ctx = document.getElementById("searchContextInput");
     baselineQuery = input ? input.value.trim() : "";
     baselineContext = ctx ? (ctx.value || "").trim() : "";
-    baselineContextEnabled = !!isContextEnabled;
   }
 
   function computeInputDirtyFlags() {
@@ -1062,7 +1073,7 @@
     var q = input ? input.value.trim() : "";
     var c = ctx ? (ctx.value || "").trim() : "";
     var dirtyQuery = q !== baselineQuery;
-    var dirtyContext = c !== baselineContext || !!isContextEnabled !== baselineContextEnabled;
+    var dirtyContext = c !== baselineContext;
     return { dirtyQuery: dirtyQuery, dirtyContext: dirtyContext, anyDirty: dirtyQuery || dirtyContext };
   }
 
@@ -1193,7 +1204,6 @@
   var activeOnly = true;
   var activeLeadsCount = 0;
   var sortMode = "score"; // "score" | "newest"
-  var isContextEnabled = false;
   var showWhyForAll = false;
   var postKeywordSearch = "";
 
@@ -1811,11 +1821,8 @@
       return;
     }
 
-    var context = "";
-    if (isContextEnabled) {
-      var ctx = document.getElementById("searchContextInput");
-      if (ctx) context = (ctx.value || "").trim();
-    }
+    var ctxEl = document.getElementById("searchContextInput");
+    var context = ctxEl ? (ctxEl.value || "").trim() : "";
     var contextSnapshot = context;
 
     if (btn) btn.disabled = true;
@@ -1832,6 +1839,15 @@
     // Show landing-page style loading stage inside the posts panel.
     var list = document.getElementById("leadsList");
     var dashStepInterval = null;
+    var dashPollInterval = null;
+    function dashboardPhaseToStep(phase) {
+      if (phase === "mapping") return 0;
+      if (phase === "collecting") return 1;
+      if (phase === "quality") return 2;
+      if (phase === "intent") return 3;
+      return 0;
+    }
+    var applyDashboardPhaseStep = function () {};
     var dashActiveStepIndex = 0;
     var dashThreadsAnalyzed = null;
     var dashAlmostTimer = null;
@@ -1876,6 +1892,8 @@
         text = dashIntentAlmost ? "Almost there..." : "Ranking who's most likely to buy…";
       }
       el.classList.remove("loading-subline--done");
+      var breathe = list ? list.querySelector("#dashboardLoadingBreatheGroup") : null;
+      if (breathe) breathe.classList.remove("loading-breathe-group--done");
       el.innerHTML =
         '<span class="loading-subline-wrap"><span class="loading-subline-text"></span></span>';
       var inner = el.querySelector(".loading-subline-text");
@@ -1885,11 +1903,14 @@
     function completeDashboardLoading(totalPosts) {
       if (dashStepInterval) clearInterval(dashStepInterval);
       dashStepInterval = null;
+      if (dashPollInterval) clearInterval(dashPollInterval);
+      dashPollInterval = null;
       clearDashAlmostTimer();
 
       var stepEls = list ? list.querySelectorAll("#dashboardLoadingSteps .step") : [];
       var loadingBarFill = list ? list.querySelector("#dashboardLoadingBarFill") : null;
       var subline = list ? list.querySelector("#dashboardLoadingSubline") : null;
+      var breathe = list ? list.querySelector("#dashboardLoadingBreatheGroup") : null;
       var skeletonCards = list ? list.querySelector("#dashboardSkeletonCards") : null;
 
       if (stepEls && stepEls.length) {
@@ -1904,6 +1925,7 @@
       if (skeletonCards) skeletonCards.classList.add("hidden");
       var n = totalPosts != null ? totalPosts : dashThreadsAnalyzed;
       var count = n != null ? n : 0;
+      if (breathe) breathe.classList.add("loading-breathe-group--done");
       if (subline) {
         subline.classList.add("loading-subline--done");
         subline.innerHTML = count.toLocaleString() + " threads scanned &#x2705;";
@@ -1920,7 +1942,9 @@
             <div class="step" data-step="4"><span class="step-label">Intent scoring</span></div>
           </div>
           <div class="loading-bar" aria-hidden="true"><div class="loading-bar-fill" id="dashboardLoadingBarFill"></div></div>
-          <p class="loading-subline" id="dashboardLoadingSubline"></p>
+          <div class="loading-breathe-group" id="dashboardLoadingBreatheGroup">
+            <p class="loading-subline" id="dashboardLoadingSubline" aria-live="polite"></p>
+          </div>
           <div class="skeleton-cards" id="dashboardSkeletonCards">
             <div class="skeleton-card">
               <div class="skeleton-line skeleton-line-short"></div>
@@ -1971,20 +1995,14 @@
         renderDashboardSubline();
       }
 
+      applyDashboardPhaseStep = function (phase) {
+        setStep(dashboardPhaseToStep(phase));
+      };
+
       dashThreadsAnalyzed = null;
       clearDashAlmostTimer();
       dashIntentAlmost = false;
       setStep(0);
-
-      var step = 0;
-      dashStepInterval = setInterval(function () {
-        step = Math.min(step + 1, stepEls.length - 1);
-        setStep(step);
-        if (step >= stepEls.length - 1) {
-          clearInterval(dashStepInterval);
-          dashStepInterval = null;
-        }
-      }, 5000);
     }
     var empty = document.getElementById("emptyState");
     if (empty) empty.classList.add("hidden");
@@ -2021,6 +2039,138 @@
             resetsAt: typeof data.manualSearch.resetsAt === "string" ? data.manualSearch.resetsAt : dashManualSearchQuota.resetsAt,
           };
         }
+        if (data && data.accepted && data.runId) {
+          var pollRunId = data.runId;
+          function pollOnce() {
+            fetch("/api/dashboard/run-progress?runId=" + encodeURIComponent(pollRunId), { credentials: "same-origin" })
+              .then(function (r) {
+                return r.json().then(function (body) {
+                  if (!r.ok) {
+                    var msg = body && body.error ? String(body.error) : r.statusText || "Progress failed";
+                    throw new Error(msg);
+                  }
+                  return body;
+                });
+              })
+              .then(function (prog) {
+                if (prog.phase) applyDashboardPhaseStep(prog.phase);
+                if (prog.status === "completed") {
+                  if (dashPollInterval) {
+                    clearInterval(dashPollInterval);
+                    dashPollInterval = null;
+                  }
+                  if (prog.manualSearch && typeof prog.manualSearch === "object") {
+                    dashManualSearchQuota = {
+                      used: prog.manualSearch.used != null ? Number(prog.manualSearch.used) : dashManualSearchQuota.used,
+                      limit: prog.manualSearch.limit != null ? Number(prog.manualSearch.limit) : dashManualSearchQuota.limit,
+                      resetsAt: typeof prog.manualSearch.resetsAt === "string" ? prog.manualSearch.resetsAt : dashManualSearchQuota.resetsAt,
+                    };
+                  }
+                  dashThreadsAnalyzed =
+                    prog && typeof prog.totalPosts === "number" ? prog.totalPosts : null;
+                  try {
+                    renderDashboardSubline();
+                  } catch (e) {}
+                  try {
+                    completeDashboardLoading(prog && typeof prog.totalPosts === "number" ? prog.totalPosts : null);
+                  } catch (e) {}
+                  if (btn) btn.classList.remove("is-running");
+                  return fetch("/api/dashboard/runs", { credentials: "same-origin" })
+                    .then(function (r) {
+                      if (!r.ok) return { runs: [] };
+                      return r.json();
+                    })
+                    .then(function (data2) {
+                      runs = data2.runs || [];
+                      var currentRun = null;
+                      if (unlockedRunId) currentRun = runs.find(function (r) { return r.id === unlockedRunId; }) || null;
+                      if (!currentRun) currentRun = runs[0] || null;
+                      restoreRunInputs(currentRun, contextSnapshot);
+                      if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
+                      commitBaselineFromInputs();
+                      return fetchLeads();
+                    });
+                }
+                if (prog.status === "failed") {
+                  if (dashPollInterval) {
+                    clearInterval(dashPollInterval);
+                    dashPollInterval = null;
+                  }
+                  clearDashAlmostTimer();
+                  if (btn) btn.classList.remove("is-running");
+                  syncRunButtonUI();
+                  updateContextToggleLabel();
+                  try {
+                    renderLeads();
+                  } catch (e) {}
+                  var errMsg = prog.error || "Search failed";
+                  Promise.all([
+                    fetchLeads(),
+                    fetch("/api/dashboard/runs", { credentials: "same-origin" }).then(function (r) {
+                      if (!r.ok) return { runs: [] };
+                      return r.json();
+                    }),
+                  ])
+                    .then(function (results) {
+                      var runData = results[1];
+                      if (runData && runData.runs && runData.runs.length) {
+                        runs = runData.runs;
+                        var cr = runData.runs[0];
+                        if (cr && cr.created_at) setRunSearchMetaIdle(cr.created_at);
+                      } else {
+                        setRunSearchMetaError();
+                      }
+                    })
+                    .catch(function () {
+                      setRunSearchMetaError();
+                    })
+                    .finally(function () {
+                      alert(errMsg);
+                    });
+                }
+              })
+              .catch(function (err) {
+                if (dashPollInterval) {
+                  clearInterval(dashPollInterval);
+                  dashPollInterval = null;
+                }
+                clearDashAlmostTimer();
+                if (btn) btn.classList.remove("is-running");
+                syncRunButtonUI();
+                updateContextToggleLabel();
+                try {
+                  renderLeads();
+                } catch (e) {}
+                var errMsg = err instanceof Error ? err.message : String(err);
+                Promise.all([
+                  fetchLeads(),
+                  fetch("/api/dashboard/runs", { credentials: "same-origin" }).then(function (r) {
+                    if (!r.ok) return { runs: [] };
+                    return r.json();
+                  }),
+                ])
+                  .then(function (results) {
+                    var runData = results[1];
+                    if (runData && runData.runs && runData.runs.length) {
+                      runs = runData.runs;
+                      var cr = runData.runs[0];
+                      if (cr && cr.created_at) setRunSearchMetaIdle(cr.created_at);
+                    } else {
+                      setRunSearchMetaError();
+                    }
+                  })
+                  .catch(function () {
+                    setRunSearchMetaError();
+                  })
+                  .finally(function () {
+                    alert(errMsg);
+                  });
+              });
+          }
+          pollOnce();
+          dashPollInterval = setInterval(pollOnce, 1500);
+          return;
+        }
         dashThreadsAnalyzed =
           data && typeof data.totalPosts === "number" ? data.totalPosts : null;
         try {
@@ -2051,9 +2201,10 @@
       .catch(function (err) {
         if (dashStepInterval) clearInterval(dashStepInterval);
         dashStepInterval = null;
+        if (dashPollInterval) clearInterval(dashPollInterval);
+        dashPollInterval = null;
         clearDashAlmostTimer();
         if (btn) btn.classList.remove("is-running");
-        setRunSearchMetaError();
         if (err && err.manualSearch && typeof err.manualSearch === "object") {
           dashManualSearchQuota = {
             used: err.manualSearch.used != null ? Number(err.manualSearch.used) : dashManualSearchQuota.used,
@@ -2062,7 +2213,34 @@
           };
         }
         syncRunButtonUI();
-        alert(err instanceof Error ? err.message : String(err));
+        updateContextToggleLabel();
+        try {
+          renderLeads();
+        } catch (e) {}
+        var errMsg = err instanceof Error ? err.message : String(err);
+        Promise.all([
+          fetchLeads(),
+          fetch("/api/dashboard/runs", { credentials: "same-origin" }).then(function (r) {
+            if (!r.ok) return { runs: [] };
+            return r.json();
+          }),
+        ])
+          .then(function (results) {
+            var runData = results[1];
+            if (runData && runData.runs && runData.runs.length) {
+              runs = runData.runs;
+              var cr = runData.runs[0];
+              if (cr && cr.created_at) setRunSearchMetaIdle(cr.created_at);
+            } else {
+              setRunSearchMetaError();
+            }
+          })
+          .catch(function () {
+            setRunSearchMetaError();
+          })
+          .finally(function () {
+            alert(errMsg);
+          });
       });
   }
 
@@ -2206,23 +2384,26 @@
     });
   }
 
-  // Search context toggle
-  var toggleContextBtn = document.getElementById("toggleContextBtn");
-  var contextEditor = document.getElementById("contextEditor");
+  // Search context: expand/minimize panel; non-empty textarea is always sent on run and persisted server-side.
   if (toggleContextBtn && contextEditor) {
-    // Default: hidden
-    isContextEnabled = !contextEditor.classList.contains("hidden");
-
     toggleContextBtn.addEventListener("click", function () {
-      isContextEnabled = !isContextEnabled;
-      contextEditor.classList.toggle("hidden", !isContextEnabled);
-      toggleContextBtn.textContent = isContextEnabled ? "Remove context" : "Add context";
+      contextPanelExpanded = !contextPanelExpanded;
+      contextEditor.classList.toggle("hidden", !contextPanelExpanded);
+      if (contextPanelExpanded && contextInputEl) {
+        try {
+          contextInputEl.focus();
+        } catch (e) {}
+      }
+      updateContextToggleLabel();
       syncRunButtonUI();
     });
   }
 
   if (contextInputEl) {
     contextInputEl.addEventListener("input", function () {
+      if (!contextPanelExpanded) {
+        updateContextToggleLabel();
+      }
       syncRunButtonUI();
     });
   }

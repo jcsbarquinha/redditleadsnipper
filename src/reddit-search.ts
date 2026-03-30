@@ -26,7 +26,7 @@ function headers(): HeadersInit {
 
 export const DEFAULT_DELAY_MS = 1500;
 
-/** Shown to users when Reddit keeps returning 429 after retries. */
+/** Shown to users when Reddit keeps returning 429 after a short retry. */
 export const REDDIT_RATE_LIMIT_MESSAGE =
   "Too many searches at the moment, please retry in a few minutes.";
 
@@ -37,9 +37,13 @@ export class RedditRateLimitedError extends Error {
   }
 }
 
-const MAX_RETRIES = 10;
-const RETRY_BACKOFF_MS = 4000;
-const MAX_RETRY_AFTER_MS = 120_000;
+/** Max waits for transient network failures (not 429 — those fail fast). */
+const MAX_NETWORK_RETRIES = 3;
+const NETWORK_RETRY_DELAY_MS = 2000;
+
+/** 429: one retry with capped wait, then fail so users are not blocked ~10+ minutes. */
+const RATE_LIMIT_RETRY_WAIT_MIN_MS = 2000;
+const RATE_LIMIT_RETRY_WAIT_MAX_MS = 8000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -49,26 +53,50 @@ function parseRetryAfterMs(res: Response): number | null {
   const raw = res.headers.get("Retry-After");
   if (!raw) return null;
   const sec = Number(raw);
-  if (!Number.isNaN(sec) && sec >= 0) return Math.min(sec * 1000, MAX_RETRY_AFTER_MS);
+  if (!Number.isNaN(sec) && sec >= 0) return Math.min(sec * 1000, RATE_LIMIT_RETRY_WAIT_MAX_MS);
   const when = Date.parse(raw);
-  if (!Number.isNaN(when)) return Math.min(Math.max(0, when - Date.now()), MAX_RETRY_AFTER_MS);
+  if (!Number.isNaN(when)) {
+    return Math.min(Math.max(0, when - Date.now()), RATE_LIMIT_RETRY_WAIT_MAX_MS);
+  }
   return null;
 }
 
 async function request<T>(url: string): Promise<T> {
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+  let lastNetworkErr: unknown;
+
+  for (let netAttempt = 0; netAttempt < MAX_NETWORK_RETRIES; netAttempt++) {
     try {
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         headers: headers(),
         signal: AbortSignal.timeout(30_000),
       });
-      const isRateOrBlock = res.status === 429 || res.status === 503 || res.status === 403;
-      if (isRateOrBlock && attempt < MAX_RETRIES - 1) {
-        const retryAfter = res.status === 429 ? parseRetryAfterMs(res) : null;
-        const backoff = retryAfter ?? RETRY_BACKOFF_MS * (attempt + 1);
-        await delay(backoff);
-        continue;
+
+      if (res.status === 429) {
+        const wait = Math.min(
+          parseRetryAfterMs(res) ?? RATE_LIMIT_RETRY_WAIT_MIN_MS,
+          RATE_LIMIT_RETRY_WAIT_MAX_MS
+        );
+        await delay(wait);
+        res = await fetch(url, {
+          headers: headers(),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (res.status === 429) {
+          throw new RedditRateLimitedError();
+        }
+      } else if (res.status === 503 || res.status === 403) {
+        await delay(2500);
+        res = await fetch(url, {
+          headers: headers(),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (res.status === 503 || res.status === 403) {
+          throw new Error(
+            `Reddit returned ${res.status}. Try again in a few minutes.`
+          );
+        }
       }
+
       if (res.status === 429) {
         throw new RedditRateLimitedError();
       }
@@ -80,11 +108,14 @@ async function request<T>(url: string): Promise<T> {
       return (await res.json()) as T;
     } catch (err) {
       if (err instanceof RedditRateLimitedError) throw err;
-      if (attempt === MAX_RETRIES - 1) throw err;
-      await delay(RETRY_BACKOFF_MS * (attempt + 1));
+      lastNetworkErr = err;
+      if (netAttempt < MAX_NETWORK_RETRIES - 1) {
+        await delay(NETWORK_RETRY_DELAY_MS);
+      }
     }
   }
-  throw new Error("Unexpected retry exit");
+
+  throw lastNetworkErr instanceof Error ? lastNetworkErr : new Error(String(lastNetworkErr));
 }
 
 interface ListingChild {

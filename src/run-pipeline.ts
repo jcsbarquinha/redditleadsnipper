@@ -20,13 +20,13 @@ function parseArgs(): {
   searchMode: (typeof SEARCH_MODES)[number];
 } {
   const argv = process.argv.slice(2);
-  let maxPages = 4;
+  let maxPages = 1;
   let delayMs = 500;
   let searchMode: (typeof SEARCH_MODES)[number] = "dashboard";
   const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--max-pages" && argv[i + 1] != null) maxPages = parseInt(argv[++i], 10) || 4;
+    if (a === "--max-pages" && argv[i + 1] != null) maxPages = parseInt(argv[++i], 10) || 1;
     else if (a === "--delay" && argv[i + 1] != null) delayMs = Math.max(500, parseFloat(argv[++i]) * 1000) || 500;
     else if (a === "--mode" && argv[i + 1] != null) {
       const m = String(argv[++i]).toLowerCase();

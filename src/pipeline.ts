@@ -16,6 +16,10 @@ import {
   updateRunStatus,
   insertPost,
   insertPostIntent,
+  attachRunToUser,
+  updateRunKeywords,
+  updateRunPipelinePhase,
+  setRunPipelineError,
 } from "./db/index.js";
 import { search, type RedditTimeFilter } from "./reddit-search.js";
 
@@ -216,10 +220,12 @@ export interface PipelineOptions {
   maxPagesPerKeyword?: number;
   /** Overrides mode default (e.g. dashboard uses 2000 ms; cron uses 5000 ms). */
   delayMs?: number;
-  /** Overrides mode default keyword count (homepage 3, dashboard/cron 15). */
+  /** Overrides mode default keyword count (homepage 3, dashboard 6, cron 10). */
   keywordCount?: number;
   /** Defaults to `dashboard` when omitted (CLI / scripts). */
   searchMode?: SearchMode;
+  /** When set, run row is linked to this user immediately (dashboard async + progress polling). */
+  attachUserId?: string;
 }
 
 /** Homepage-only: funnel for local debugging (also in API `timings.homepageFunnel`). */
@@ -489,6 +495,7 @@ async function executeHomepageFastPipeline(params: {
   }
   const redditMs = Math.round(performance.now() - redditT0);
 
+  updateRunPipelinePhase(runId, "quality");
   const recentCandidates = postsToRecentCandidatesPerKeyword(
     postById,
     idToKeywords,
@@ -535,7 +542,7 @@ async function executeHomepageFastPipeline(params: {
     };
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
     logHomepageRunDebug(runId, homepageFunnel);
-    updateRunStatus(runId, "completed");
+    markRunCompleted(runId);
     return {
       runId,
       keywords: searchQueries,
@@ -545,6 +552,7 @@ async function executeHomepageFastPipeline(params: {
     };
   }
 
+  updateRunPipelinePhase(runId, "intent");
   const miniInputs: BatchPostInput[] = scorableCandidates.map((c) => ({
     id: c.post.id ?? "",
     title: (c.post.title ?? "").trim(),
@@ -613,7 +621,7 @@ async function executeHomepageFastPipeline(params: {
     );
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
     logHomepageRunDebug(runId, homepageFunnel);
-    updateRunStatus(runId, "completed");
+    markRunCompleted(runId);
     return {
       runId,
       keywords: searchQueries,
@@ -673,7 +681,7 @@ async function executeHomepageFastPipeline(params: {
     };
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
     logHomepageRunDebug(runId, homepageFunnel);
-    updateRunStatus(runId, "completed");
+    markRunCompleted(runId);
     return {
       runId,
       keywords: searchQueries,
@@ -720,7 +728,7 @@ async function executeHomepageFastPipeline(params: {
     };
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
     logHomepageRunDebug(runId, homepageFunnel);
-    updateRunStatus(runId, "completed");
+    markRunCompleted(runId);
     return {
       runId,
       keywords: searchQueries,
@@ -765,7 +773,7 @@ async function executeHomepageFastPipeline(params: {
     };
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
     logHomepageRunDebug(runId, homepageFunnel);
-    updateRunStatus(runId, "completed");
+    markRunCompleted(runId);
     return {
       runId,
       keywords: searchQueries,
@@ -821,7 +829,7 @@ async function executeHomepageFastPipeline(params: {
   };
   console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
   logHomepageRunDebug(runId, homepageFunnel);
-  updateRunStatus(runId, "completed");
+  markRunCompleted(runId);
   return {
     runId,
     keywords: searchQueries,
@@ -831,7 +839,36 @@ async function executeHomepageFastPipeline(params: {
   };
 }
 
-export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
+function markRunCompleted(runId: string): void {
+  setRunPipelineError(runId, null);
+  updateRunPipelinePhase(runId, null);
+  updateRunStatus(runId, "completed");
+}
+
+function markRunFailed(runId: string, err: unknown): void {
+  setRunPipelineError(runId, err instanceof Error ? err.message : String(err));
+  updateRunPipelinePhase(runId, null);
+  updateRunStatus(runId, "failed");
+}
+
+/** Creates run row + optional user link + phase `mapping`. Caller then runs {@link runPipelineFromRunId}. */
+export async function prepareRunRow(options: PipelineOptions): Promise<string> {
+  await validateUserInput(options.userInput);
+  const runId = randomUUID();
+  const ctx = typeof options.context === "string" ? options.context.trim() : "";
+  insertRun(runId, options.userInput, [], ctx || undefined, "running");
+  if (options.attachUserId) {
+    attachRunToUser(runId, options.attachUserId);
+  }
+  updateRunPipelinePhase(runId, "mapping");
+  return runId;
+}
+
+export async function runPipelineFromRunId(
+  runId: string,
+  options: PipelineOptions,
+  pipelineT0: number
+): Promise<PipelineResult> {
   const { userInput, context, searchMode = "dashboard" } = options;
   const modeParams = getSearchModeRedditParams(searchMode);
   const keywordCount = options.keywordCount ?? modeParams.keywordCount;
@@ -840,19 +877,16 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const redditSorts = modeParams.redditSorts;
   const redditTimeFilter = modeParams.redditTimeFilter;
 
-  await validateUserInput(userInput);
-
   const trimmedContext = typeof context === "string" ? context.trim() : "";
   const llmUserInput = trimmedContext
     ? `${userInput}\n\nAdditional context:\n${trimmedContext}`
     : userInput;
 
-  const runId = randomUUID();
-  const pipelineT0 = performance.now();
-
   const { keywords: searchQueries, whatProductDoes, whatProblemItSolves } =
     await getKeywordsForInput(llmUserInput, keywordCount);
   const keywordsMs = Math.round(performance.now() - pipelineT0);
+
+  updateRunKeywords(runId, searchQueries);
 
   if (searchMode === "homepage") {
     console.log(
@@ -880,7 +914,6 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   if (trimmedContext) {
     intentContext += `\n\nAdditional user context (preferences, exclusions, constraints):\n${trimmedContext}`;
   }
-  insertRun(runId, userInput, searchQueries, context, "running");
 
   try {
     const queries = searchQueries.map((k) => k.trim()).filter(Boolean);
@@ -889,6 +922,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     }
 
     if (searchMode === "homepage") {
+      updateRunPipelinePhase(runId, "collecting");
       return await executeHomepageFastPipeline({
         runId,
         userInput,
@@ -904,6 +938,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       });
     }
 
+    updateRunPipelinePhase(runId, "collecting");
     const redditT0 = performance.now();
     let redditSearchCalls = 0;
     const postById = new Map<string, RedditPost>();
@@ -934,6 +969,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     }
 
     const redditMs = Math.round(performance.now() - redditT0);
+    updateRunPipelinePhase(runId, "quality");
     const recentCandidates = postsToRecentCandidatesPerKeyword(
       postById,
       idToKeywords,
@@ -965,6 +1001,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
     const rankedCandidates: RankedCandidate[] = [];
 
+    updateRunPipelinePhase(runId, "intent");
     const intentT0 = performance.now();
     await mapWithConcurrency(batches, INTENT_CONCURRENCY, async (batch) => {
       const posts = batch.map((c) => ({
@@ -1050,7 +1087,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
 
-    updateRunStatus(runId, "completed");
+    markRunCompleted(runId);
     return {
       runId,
       keywords: searchQueries,
@@ -1059,8 +1096,15 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       timings,
     };
   } catch (err) {
-    updateRunStatus(runId, "failed");
+    markRunFailed(runId, err);
     if (err instanceof InvalidSearchInputError) throw err;
     throw err;
   }
+}
+
+/** Full pipeline (homepage, cron, CLI): creates run row then runs keyword → Reddit → filters → intent. */
+export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
+  const pipelineT0 = performance.now();
+  const runId = await prepareRunRow(options);
+  return runPipelineFromRunId(runId, options, pipelineT0);
 }

@@ -24,7 +24,8 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import nodemailer from "nodemailer";
-import { runPipeline } from "./pipeline.js";
+import { performance } from "node:perf_hooks";
+import { prepareRunRow, runPipeline, runPipelineFromRunId } from "./pipeline.js";
 import { RedditRateLimitedError } from "./reddit-search.js";
 import {
   getLeadsForRun,
@@ -55,6 +56,7 @@ import {
   getRecentServiceStatusChecks,
   getManualSearchQuota,
   consumeManualDashboardSearch,
+  getRunProgressForUser,
   type LeadRow,
   type ServiceStatusState,
 } from "./db/index.js";
@@ -573,9 +575,9 @@ app.get("/api/dashboard/saved-search", requireAuth, (req, res) => {
  * POST /api/dashboard/search
  * Authenticated "run search again" flow.
  * Body: { query: string, context?: string }
- * Runs the full pipeline, attaches the run to the current user, and returns { runId }.
+ * Returns 202 with { runId, accepted: true }; poll GET /api/dashboard/run-progress until status is completed or failed.
  */
-app.post("/api/dashboard/search", requireAuth, (req, res) => {
+app.post("/api/dashboard/search", requireAuth, async (req, res) => {
   const user = (req as express.Request & { user: { id: string; entitled_until: string | null } }).user;
   if (!isEntitled(user.entitled_until)) {
     res.status(403).json({
@@ -601,31 +603,91 @@ app.post("/api/dashboard/search", requireAuth, (req, res) => {
     return;
   }
 
-  (async () => {
-    try {
-      const result = await runPipeline({
+  try {
+    const pipelineT0 = performance.now();
+    const runId = await prepareRunRow({
+      userInput: query,
+      context: context ? context : undefined,
+      maxPagesPerKeyword: DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD,
+      searchMode: "dashboard",
+      attachUserId: user.id,
+    });
+    res.status(202).json({
+      runId,
+      accepted: true,
+      manualSearch: getManualSearchQuota(user.id),
+    });
+    void runPipelineFromRunId(
+      runId,
+      {
         userInput: query,
         context: context ? context : undefined,
         maxPagesPerKeyword: DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD,
         searchMode: "dashboard",
+        attachUserId: user.id,
+      },
+      pipelineT0
+    )
+      .then((result) => {
+        try {
+          const profile = ensureCurrentSearchProfileForInput(user.id, query, context || null);
+          if (profile) setRunSearchProfile(result.runId, profile.id);
+          if (profile) upsertSavedSearchForUser(user.id, query, context || null, profile.id, 60);
+          consumeManualDashboardSearch(user.id);
+        } catch (e) {
+          console.error("Dashboard post-pipeline:", e);
+        }
+      })
+      .catch((err) => {
+        console.error("Dashboard pipeline error:", err);
       });
-      attachRunToUser(result.runId, user.id);
-      const profile = ensureCurrentSearchProfileForInput(user.id, query, context || null);
-      if (profile) setRunSearchProfile(result.runId, profile.id);
-      if (profile) upsertSavedSearchForUser(user.id, query, context || null, profile.id, 60);
-      const manualSearch = consumeManualDashboardSearch(user.id);
-      res.json({ runId: result.runId, totalPosts: result.totalPosts, manualSearch });
-    } catch (err) {
-      if (err instanceof RedditRateLimitedError) {
-        res.status(429).json({ error: err.message });
-        return;
-      }
-      console.error("Dashboard search error:", err);
-      res.status(500).json({
-        error: err instanceof Error ? err.message : "Search failed",
-      });
+  } catch (err) {
+    if (err instanceof InvalidSearchInputError) {
+      res.status(400).json({ error: err.message });
+      return;
     }
-  })();
+    if (err instanceof RedditRateLimitedError) {
+      res.status(429).json({ error: err.message });
+      return;
+    }
+    console.error("Dashboard search error:", err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Search failed",
+    });
+  }
+});
+
+/** Poll pipeline phase for a dashboard run owned by the current user. */
+app.get("/api/dashboard/run-progress", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : "";
+  if (!runId) {
+    res.status(400).json({ error: "Missing runId." });
+    return;
+  }
+  const row = getRunProgressForUser(runId, user.id);
+  if (!row) {
+    res.status(404).json({ error: "Run not found." });
+    return;
+  }
+  const body: {
+    runId: string;
+    status: string;
+    phase: string | null;
+    error: string | null;
+    totalPosts: number | null;
+    manualSearch?: ReturnType<typeof getManualSearchQuota>;
+  } = {
+    runId,
+    status: row.status,
+    phase: row.pipeline_phase,
+    error: row.pipeline_error,
+    totalPosts: row.totalPosts,
+  };
+  if (row.status === "completed") {
+    body.manualSearch = getManualSearchQuota(user.id);
+  }
+  res.json(body);
 });
 
 /** Archive a lead. Body: { post_id: string }. */

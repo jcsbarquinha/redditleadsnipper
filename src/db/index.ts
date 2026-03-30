@@ -116,7 +116,18 @@ function runSchema(database: Database.Database): void {
   migrateSavedSearchProfileLink(database);
   migrateServiceStatus(database);
   migrateManualSearchQuota(database);
+  migrateRunPipelineProgress(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
+}
+
+function migrateRunPipelineProgress(database: Database.Database): void {
+  const cols = (database.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((r) => r.name);
+  if (!cols.includes("pipeline_phase")) {
+    database.exec("ALTER TABLE runs ADD COLUMN pipeline_phase TEXT");
+  }
+  if (!cols.includes("pipeline_error")) {
+    database.exec("ALTER TABLE runs ADD COLUMN pipeline_error TEXT");
+  }
 }
 
 function migrateLeadActions(database: Database.Database): void {
@@ -320,6 +331,53 @@ export function updateRunStatus(
   getDb()
     .prepare(`UPDATE runs SET status = ?, updated_at = datetime('now') WHERE id = ?`)
     .run(status, runId);
+}
+
+export function updateRunKeywords(runId: string, keywords: string[]): void {
+  getDb()
+    .prepare(`UPDATE runs SET keywords = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(JSON.stringify(keywords), runId);
+}
+
+/** Dashboard/cron UI: mapping → collecting → quality → intent. Cleared when run finishes. */
+export function updateRunPipelinePhase(runId: string, phase: string | null): void {
+  getDb()
+    .prepare(`UPDATE runs SET pipeline_phase = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(phase, runId);
+}
+
+export function setRunPipelineError(runId: string, message: string | null): void {
+  getDb()
+    .prepare(`UPDATE runs SET pipeline_error = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(message, runId);
+}
+
+export function getPostCountForRun(runId: string): number {
+  const row = getDb()
+    .prepare(`SELECT COUNT(*) as c FROM posts WHERE run_id = ?`)
+    .get(runId) as { c: number } | undefined;
+  return row?.c ?? 0;
+}
+
+export function getRunProgressForUser(
+  runId: string,
+  userId: string
+): {
+  status: string;
+  pipeline_phase: string | null;
+  pipeline_error: string | null;
+  totalPosts: number | null;
+} | null {
+  const row = getDb()
+    .prepare(
+      `SELECT status, pipeline_phase, pipeline_error FROM runs WHERE id = ? AND user_id = ?`
+    )
+    .get(runId, userId) as
+    | { status: string; pipeline_phase: string | null; pipeline_error: string | null }
+    | undefined;
+  if (!row) return null;
+  const totalPosts = row.status === "completed" ? getPostCountForRun(runId) : null;
+  return { ...row, totalPosts };
 }
 
 /** Post row id = runId_redditId for uniqueness and FK from comments */

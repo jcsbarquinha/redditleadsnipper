@@ -663,8 +663,12 @@ body {
 #dashboardLoadingSection .loading-bar {
   margin-bottom: 2rem;
 }
-#dashboardLoadingSection .loading-subline {
+#dashboardLoadingSection .loading-breathe-group {
+  margin-top: 0;
   margin-bottom: 0.25rem;
+}
+#dashboardLoadingSection .loading-subline {
+  margin-bottom: 0;
 }
 #dashboardLoadingSection .skeleton-cards {
   margin-top: 4rem;

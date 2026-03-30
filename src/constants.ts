@@ -5,7 +5,7 @@
 export const POST_DISCOVERY_MAX_AGE_DAYS = 3;
 
 /**
- * Reddit result pages per (keyword × sort) for dashboard and saved-search cron.
- * Homepage `/api/search` stays at 1 page for speed.
+ * Reddit result pages per (keyword × sort) for dashboard, saved-search cron, and scheduler CLI.
+ * Homepage `/api/search` also uses 1 page (see server).
  */
-export const DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD = 3;
+export const DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD = 1;
