@@ -153,10 +153,33 @@ async function fetchReddit(url: string, mode: RedditTrafficMode): Promise<Respon
     headers: headers(),
     signal: AbortSignal.timeout(30_000),
   };
-  if (shouldUseProxy(mode) && proxyAgent) {
+  const useProxy = shouldUseProxy(mode) && proxyAgent;
+  if (useProxy && proxyAgent) {
     opts.dispatcher = proxyAgent;
   }
-  return fetch(url, opts);
+  try {
+    return await fetch(url, opts);
+  } catch (err) {
+    // If proxy transport/auth fails (e.g. tunnel 407), fall back to direct fetch
+    // so search can continue instead of hard-failing for all users.
+    if (useProxy) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/proxy|tunnel|407|und_err_aborted|fetch failed|request was cancelled/i.test(msg)) {
+        console.warn(
+          JSON.stringify({
+            event: "reddit_proxy_fallback_direct",
+            mode,
+            reason: msg.slice(0, 220),
+          })
+        );
+        return fetch(url, {
+          headers: headers(),
+          signal: AbortSignal.timeout(30_000),
+        });
+      }
+    }
+    throw err;
+  }
 }
 
 async function request<T>(url: string, mode: RedditTrafficMode): Promise<T> {
