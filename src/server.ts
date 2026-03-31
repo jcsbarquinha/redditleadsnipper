@@ -1085,6 +1085,20 @@ app.get("/api/auth/google/callback", async (req, res) => {
   }
 });
 
+const HOMEPAGE_SEARCH_BUSY_MESSAGE =
+  "Too many requests at the moment. Please try again in a few minutes.";
+
+const HOMEPAGE_SEARCH_MAX_CONCURRENT = (() => {
+  const raw = process.env.HOMEPAGE_SEARCH_MAX_CONCURRENT;
+  if (raw !== undefined && String(raw).trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1) return Math.min(50, Math.floor(n));
+  }
+  return process.env.NODE_ENV === "production" ? 1 : 2;
+})();
+
+let homepageSearchInFlight = 0;
+
 /**
  * POST /api/search
  * Body: { "query": "SEO content automation", "maxPages"?: number }
@@ -1097,10 +1111,26 @@ app.post("/api/search", async (req, res) => {
     return;
   }
 
+  if (homepageSearchInFlight >= HOMEPAGE_SEARCH_MAX_CONCURRENT) {
+    console.warn(
+      JSON.stringify({
+        event: "homepage_search_overloaded",
+        inFlight: homepageSearchInFlight,
+        max: HOMEPAGE_SEARCH_MAX_CONCURRENT,
+      })
+    );
+    res.status(429).json({
+      error: HOMEPAGE_SEARCH_BUSY_MESSAGE,
+      code: "homepage_overloaded",
+    });
+    return;
+  }
+
   // Per the search flow: for each keyword we only fetch the first page results.
   // (Future deep mode can widen this.)
   const maxPages = 1;
 
+  homepageSearchInFlight++;
   try {
     const result = await runPipeline({
       userInput: query,
@@ -1148,6 +1178,8 @@ app.post("/api/search", async (req, res) => {
     res.status(500).json({
       error: err instanceof Error ? err.message : "Pipeline failed",
     });
+  } finally {
+    homepageSearchInFlight--;
   }
 });
 

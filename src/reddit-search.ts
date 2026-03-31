@@ -28,8 +28,24 @@ function headers(): HeadersInit {
 export const DEFAULT_DELAY_MS = 1500;
 const REDDIT_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const REDDIT_CACHE_MAX_ENTRIES = 2000;
-const REDDIT_THROTTLE_MIN_GAP_MS = 300;
-const REDDIT_LIMITER_MAX_CONCURRENCY = 3;
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || String(raw).trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+const _isProdNode = process.env.NODE_ENV === "production";
+const REDDIT_THROTTLE_MIN_GAP_MS = envInt(
+  "REDDIT_THROTTLE_MIN_GAP_MS",
+  _isProdNode ? 800 : 300
+);
+const REDDIT_LIMITER_MAX_CONCURRENCY = envInt(
+  "REDDIT_LIMITER_MAX_CONCURRENCY",
+  _isProdNode ? 2 : 3
+);
+const REDDIT_FETCH_TIMEOUT_MS = envInt("REDDIT_FETCH_TIMEOUT_MS", _isProdNode ? 45_000 : 30_000);
 const REDDIT_ROTATING_PROXY_URL = (process.env.REDDIT_ROTATING_PROXY_URL || "").trim();
 const REDDIT_PROXY_MODES = new Set<RedditTrafficMode>(["homepage", "dashboard"]);
 
@@ -113,7 +129,7 @@ function writeCached(url: string, value: unknown): void {
 }
 
 async function withLimiter<T>(mode: RedditTrafficMode, fn: () => Promise<T>): Promise<T> {
-  if (mode !== "dashboard" && mode !== "cron") {
+  if (mode === "cli") {
     return fn();
   }
   await new Promise<void>((resolve) => {
@@ -151,7 +167,7 @@ function shouldUseCache(mode: RedditTrafficMode): boolean {
 async function fetchReddit(url: string, mode: RedditTrafficMode): Promise<Response> {
   const opts: RequestInit & { dispatcher?: ProxyAgent } = {
     headers: headers(),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(REDDIT_FETCH_TIMEOUT_MS),
   };
   const useProxy = shouldUseProxy(mode) && proxyAgent;
   if (useProxy && proxyAgent) {
@@ -174,7 +190,7 @@ async function fetchReddit(url: string, mode: RedditTrafficMode): Promise<Respon
         );
         return fetch(url, {
           headers: headers(),
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(REDDIT_FETCH_TIMEOUT_MS),
         });
       }
     }
