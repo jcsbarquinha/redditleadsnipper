@@ -1,6 +1,6 @@
 (function () {
   /** Must match server `POST_DISCOVERY_MAX_AGE_DAYS` in src/constants.ts */
-  const POST_DISCOVERY_MAX_AGE_DAYS = 3;
+  const POST_DISCOVERY_MAX_AGE_DAYS = 4;
   /** Landing UX only: shown thread counts = real `totalPosts` × this (API totals unchanged). */
   const HOMEPAGE_THREADS_SCANNED_DISPLAY_MULTIPLIER = 7;
 
@@ -534,7 +534,7 @@
       const cta = document.createElement("div");
       cta.className = "paywall-cta";
       cta.innerHTML = `
-        <p class="paywall-cta-text">Subscribe to <strong style="color:#ff4500;font-weight:700;">unlock the other ${remainingHotCount} Hot lead${remainingHotCount !== 1 ? "s" : ""}</strong> and activate <strong style="color:#ff4500;font-weight:700;">24/7 automated alerts</strong>.</p>
+        <p class="paywall-cta-text">Subscribe to <strong style="color:#ff4500;font-weight:700;">unlock the other ${remainingHotCount} Hot lead${remainingHotCount !== 1 ? "s" : ""}</strong> and activate <strong style="color:#ff4500;font-weight:700;">Daily alerts</strong>.</p>
         <button type="button" class="paywall-cta-btn-large" id="unlockLeadsBtn">Unlock leads</button>
         <p class="paywall-cta-microcopy">Cancel anytime. No long-term commitment.</p>
       `;
@@ -543,7 +543,7 @@
       const cta = document.createElement("div");
       cta.className = "paywall-cta";
       cta.innerHTML = `
-        <p class="paywall-cta-text">Unlock to get a <strong style="color:#ff4500;font-weight:700;">Full Deep Search</strong> and set up <strong style="color:#ff4500;font-weight:700;">24/7 automated lead alerts</strong>.</p>
+        <p class="paywall-cta-text">Unlock to get a <strong style="color:#ff4500;font-weight:700;">Full Deep Search</strong> and set up <strong style="color:#ff4500;font-weight:700;">Daily alerts</strong>.</p>
         <button type="button" class="paywall-cta-btn-large" id="unlockLeadsBtn">Unlock leads</button>
         <p class="paywall-cta-microcopy">Cancel anytime. No long-term commitment.</p>
       `;

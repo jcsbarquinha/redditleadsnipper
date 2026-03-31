@@ -4,6 +4,7 @@
  */
 
 import type { RedditPost } from "./types.js";
+import { ProxyAgent } from "undici";
 
 const BASE_URL = "https://www.reddit.com";
 export { BASE_URL };
@@ -25,10 +26,16 @@ function headers(): HeadersInit {
 }
 
 export const DEFAULT_DELAY_MS = 1500;
+const REDDIT_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const REDDIT_CACHE_MAX_ENTRIES = 2000;
+const REDDIT_THROTTLE_MIN_GAP_MS = 300;
+const REDDIT_LIMITER_MAX_CONCURRENCY = 3;
+const REDDIT_ROTATING_PROXY_URL = (process.env.REDDIT_ROTATING_PROXY_URL || "").trim();
+const REDDIT_PROXY_MODES = new Set<RedditTrafficMode>(["homepage", "dashboard"]);
 
 /** Shown to users when Reddit keeps returning 429 after a short retry. */
 export const REDDIT_RATE_LIMIT_MESSAGE =
-  "Too many searches at the moment, please retry in a few minutes.";
+  "Too many ongoing searches right now. Please try again in a few minutes.";
 
 export class RedditRateLimitedError extends Error {
   constructor(message: string = REDDIT_RATE_LIMIT_MESSAGE) {
@@ -44,6 +51,23 @@ const NETWORK_RETRY_DELAY_MS = 2000;
 /** 429: one retry with capped wait, then fail so users are not blocked ~10+ minutes. */
 const RATE_LIMIT_RETRY_WAIT_MIN_MS = 2000;
 const RATE_LIMIT_RETRY_WAIT_MAX_MS = 8000;
+
+export type RedditTrafficMode = "homepage" | "dashboard" | "cron" | "cli";
+
+type CachedRedditResponse = {
+  value: unknown;
+  expiresAt: number;
+};
+
+const responseCache = new Map<string, CachedRedditResponse>();
+let cacheHits = 0;
+let cacheMisses = 0;
+
+let limiterInFlight = 0;
+let limiterLastStartAt = 0;
+const limiterQueue: Array<() => void> = [];
+
+const proxyAgent = REDDIT_ROTATING_PROXY_URL ? new ProxyAgent(REDDIT_ROTATING_PROXY_URL) : null;
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -61,15 +85,90 @@ function parseRetryAfterMs(res: Response): number | null {
   return null;
 }
 
-async function request<T>(url: string): Promise<T> {
+function readCached<T>(url: string): T | null {
+  const now = Date.now();
+  const row = responseCache.get(url);
+  if (!row) {
+    cacheMisses++;
+    return null;
+  }
+  if (row.expiresAt <= now) {
+    responseCache.delete(url);
+    cacheMisses++;
+    return null;
+  }
+  cacheHits++;
+  return row.value as T;
+}
+
+function writeCached(url: string, value: unknown): void {
+  if (responseCache.size >= REDDIT_CACHE_MAX_ENTRIES) {
+    const first = responseCache.keys().next();
+    if (!first.done) responseCache.delete(first.value);
+  }
+  responseCache.set(url, {
+    value,
+    expiresAt: Date.now() + REDDIT_CACHE_TTL_MS,
+  });
+}
+
+async function withLimiter<T>(mode: RedditTrafficMode, fn: () => Promise<T>): Promise<T> {
+  if (mode !== "dashboard" && mode !== "cron") {
+    return fn();
+  }
+  await new Promise<void>((resolve) => {
+    const take = () => {
+      if (limiterInFlight >= REDDIT_LIMITER_MAX_CONCURRENCY) {
+        limiterQueue.push(take);
+        return;
+      }
+      limiterInFlight++;
+      resolve();
+    };
+    take();
+  });
+  try {
+    const now = Date.now();
+    const wait = Math.max(0, REDDIT_THROTTLE_MIN_GAP_MS - (now - limiterLastStartAt));
+    if (wait > 0) await delay(wait);
+    limiterLastStartAt = Date.now();
+    return await fn();
+  } finally {
+    limiterInFlight = Math.max(0, limiterInFlight - 1);
+    const next = limiterQueue.shift();
+    if (next) next();
+  }
+}
+
+function shouldUseProxy(mode: RedditTrafficMode): boolean {
+  return Boolean(proxyAgent) && REDDIT_PROXY_MODES.has(mode);
+}
+
+function shouldUseCache(mode: RedditTrafficMode): boolean {
+  return mode === "homepage";
+}
+
+async function fetchReddit(url: string, mode: RedditTrafficMode): Promise<Response> {
+  const opts: RequestInit & { dispatcher?: ProxyAgent } = {
+    headers: headers(),
+    signal: AbortSignal.timeout(30_000),
+  };
+  if (shouldUseProxy(mode) && proxyAgent) {
+    opts.dispatcher = proxyAgent;
+  }
+  return fetch(url, opts);
+}
+
+async function request<T>(url: string, mode: RedditTrafficMode): Promise<T> {
+  if (shouldUseCache(mode)) {
+    const cached = readCached<T>(url);
+    if (cached) return cached;
+  }
   let lastNetworkErr: unknown;
 
   for (let netAttempt = 0; netAttempt < MAX_NETWORK_RETRIES; netAttempt++) {
     try {
-      let res = await fetch(url, {
-        headers: headers(),
-        signal: AbortSignal.timeout(30_000),
-      });
+      let res = await withLimiter(mode, () => fetchReddit(url, mode));
 
       if (res.status === 429) {
         const wait = Math.min(
@@ -77,19 +176,13 @@ async function request<T>(url: string): Promise<T> {
           RATE_LIMIT_RETRY_WAIT_MAX_MS
         );
         await delay(wait);
-        res = await fetch(url, {
-          headers: headers(),
-          signal: AbortSignal.timeout(30_000),
-        });
+        res = await withLimiter(mode, () => fetchReddit(url, mode));
         if (res.status === 429) {
           throw new RedditRateLimitedError();
         }
       } else if (res.status === 503 || res.status === 403) {
         await delay(2500);
-        res = await fetch(url, {
-          headers: headers(),
-          signal: AbortSignal.timeout(30_000),
-        });
+        res = await withLimiter(mode, () => fetchReddit(url, mode));
         if (res.status === 503 || res.status === 403) {
           throw new Error(
             `Reddit returned ${res.status}. Try again in a few minutes.`
@@ -105,7 +198,21 @@ async function request<T>(url: string): Promise<T> {
         const msg = body ? `${res.statusText}: ${body.slice(0, 200)}` : res.statusText;
         throw new Error(`HTTP ${res.status}: ${msg}`);
       }
-      return (await res.json()) as T;
+      const json = (await res.json()) as T;
+      if (shouldUseCache(mode)) {
+        writeCached(url, json);
+      }
+      if ((cacheHits + cacheMisses) % 100 === 0) {
+        console.log(
+          JSON.stringify({
+            event: "reddit_cache_stats",
+            hits: cacheHits,
+            misses: cacheMisses,
+            size: responseCache.size,
+          })
+        );
+      }
+      return json;
     } catch (err) {
       if (err instanceof RedditRateLimitedError) throw err;
       lastNetworkErr = err;
@@ -194,6 +301,7 @@ export interface SearchOptions {
   sort?: "relevance" | "new" | "hot";
   /** When set, restricts results by recency (e.g. `week` for last ~7 days). */
   timeFilter?: RedditTimeFilter;
+  trafficMode?: RedditTrafficMode;
 }
 
 /**
@@ -211,6 +319,7 @@ export async function search(
     exactPhrase = false,
     sort = "new",
     timeFilter,
+    trafficMode = "cli",
   } = options;
 
   let q = query.trim();
@@ -230,7 +339,7 @@ export async function search(
     }
     if (after) url += `&after=${encodeURIComponent(after)}`;
     await delay(delayMs);
-    const data = await request<RedditListing>(url);
+    const data = await request<RedditListing>(url, trafficMode);
     const listing = data?.data ?? {};
     const children = (listing.children ?? []) as ListingChild[];
     for (const child of children) {

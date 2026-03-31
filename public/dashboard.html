@@ -501,6 +501,18 @@
 
     /* Card actions (archive + delete) */
     .lead-card .card-inner { padding-right: 9rem; }
+    .lead-card.dashboard-welcome-card .card-inner {
+      padding-right: 1.25rem;
+      padding-left: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .lead-card.dashboard-welcome-card .card-title,
+    .lead-card.dashboard-welcome-card .card-body {
+      width: 100%;
+      text-align: center;
+    }
     .lead-card .top-actions {
       position: absolute;
       top: 0.9rem;
@@ -799,7 +811,7 @@
           <p id="runSearchInputWarning" class="run-search-input-warning hidden" aria-live="polite"></p>
           <p id="runSearchMeta" class="run-search-meta hidden" aria-live="polite"></p>
           <p class="schedule-hint schedule-hint--alerts-cta" id="scheduleAlertsCta">
-            New search every hour. Click
+            Daily automated searches. Click
             <button type="button" class="schedule-hint-link" id="scrollToAlertsBtn" aria-label="Scroll to alerts and turn on email alerts">here</button>
             to set up alerts.
           </p>
@@ -997,6 +1009,7 @@
 
   var runs = [];
   var dashManualSearchQuota = { used: 0, limit: 3, resetsAt: "" };
+  var dashUnlimitedAccess = false;
   var baselineQuery = "";
   var baselineContext = "";
   /** When true, the context textarea is visible; context text is still sent on run whenever non-empty. */
@@ -1007,6 +1020,13 @@
   /** True when /api/me failed — show preview UI without redirecting to login. */
   var dashboardLoggedOut = false;
   var unlockedRunId = new URLSearchParams(window.location.search).get("runId") || "";
+  var initialScopedRunId = "";
+  try {
+    var pendingScoped = sessionStorage.getItem("leadsnipePendingRunId") || "";
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pendingScoped.trim())) {
+      initialScopedRunId = pendingScoped.trim();
+    }
+  } catch (e0) {}
   if (unlockedRunId) {
     try {
       sessionStorage.removeItem("leadsnipePendingRunId");
@@ -1077,6 +1097,18 @@
     return { dirtyQuery: dirtyQuery, dirtyContext: dirtyContext, anyDirty: dirtyQuery || dirtyContext };
   }
 
+  function hasCompletedDashboardRunForBaseline() {
+    var q = (baselineQuery || "").trim();
+    var c = (baselineContext || "").trim();
+    return runs.some(function (r) {
+      var rq = r && r.user_input ? String(r.user_input).trim() : "";
+      var rc = r && typeof r.context === "string" ? String(r.context).trim() : "";
+      var src = r && r.source ? String(r.source).trim().toLowerCase() : "";
+      var st = r && r.status ? String(r.status).trim().toLowerCase() : "";
+      return src === "dashboard" && st === "completed" && rq === q && rc === c;
+    });
+  }
+
   function formatResetsInHours(iso) {
     if (!iso) return "?";
     var t = new Date(iso).getTime() - Date.now();
@@ -1111,7 +1143,7 @@
     var flags = computeInputDirtyFlags();
     var limit = dashManualSearchQuota.limit != null ? Number(dashManualSearchQuota.limit) : 3;
     var used = dashManualSearchQuota.used != null ? Number(dashManualSearchQuota.used) : 0;
-    var atLimit = used >= limit;
+    var atLimit = !dashUnlimitedAccess && used >= limit;
 
     if (atLimit) {
       runBtn.disabled = true;
@@ -1138,8 +1170,7 @@
       return;
     }
 
-    // Orange idle: homepage-style (≤1 run) and no successful manual dashboard search yet today.
-    if (runs.length <= 1 && used === 0) {
+    if (!hasCompletedDashboardRunForBaseline()) {
       runBtn.disabled = false;
       runBtn.classList.add("primary-btn--cta");
       runBtn.textContent = "Run complete search";
@@ -1187,7 +1218,7 @@
 
   function setRunSearchMetaRunning() {
     if (!runSearchMetaEl) return;
-    runSearchMetaEl.innerHTML = '<span class="run-search-meta-hint">(takes ~5 min to run)</span>';
+    runSearchMetaEl.innerHTML = '<span class="run-search-meta-hint">(Complete search takes ~5 min to run)</span>';
     runSearchMetaEl.classList.remove("hidden");
   }
 
@@ -1269,6 +1300,7 @@
     var scoreMin = 71;
     if (days) params.set("days", days);
     if (scoreMin) params.set("minScore", scoreMin);
+    if (initialScopedRunId) params.set("runId", initialScopedRunId);
     // We always fetch archived so we can show counts and archived filter without another roundtrip.
     params.set("includeArchived", "true");
     // Also fetch deleted leads so the "Deleted" filter can work instantly.
@@ -1518,7 +1550,35 @@
 
     var working = computeWorkingLeads();
 
+    function buildWelcomeRunCard() {
+      var card = document.createElement("article");
+      card.className = "lead-card dashboard-welcome-card";
+      card.innerHTML =
+        '<div class="card-inner">' +
+        '<h2 class="card-title">Welcome to your Leadsnipe dashboard!</h2>' +
+        '<p class="card-body">Run a complete search to discover more high-intent leads for your offer.</p>' +
+        '<button type="button" class="primary-btn primary-btn--cta" data-dashboard-welcome-run>Run complete search</button>' +
+        "</div>";
+      var btn = card.querySelector("[data-dashboard-welcome-run]");
+      if (btn) {
+        btn.addEventListener("click", function () {
+          runSearchAgain();
+        });
+      }
+      return card;
+    }
+
+    function shouldShowWelcomeCard() {
+      if (dashboardLoggedOut || !dashUserEntitled) return false;
+      return !hasCompletedDashboardRunForBaseline();
+    }
+
     if (working.length === 0) {
+      if (shouldShowWelcomeCard()) {
+        empty.classList.add("hidden");
+        list.appendChild(buildWelcomeRunCard());
+        return;
+      }
       if (empty) {
         if (dashboardLoggedOut) {
           empty.textContent = "Sign in to load your leads and saved searches.";
@@ -1536,6 +1596,9 @@
     working.forEach(function (lead) {
       list.appendChild(buildCard(lead));
     });
+    if (shouldShowWelcomeCard()) {
+      list.appendChild(buildWelcomeRunCard());
+    }
   }
 
   function csvEscapeCell(value) {
@@ -1809,6 +1872,28 @@
     window.location.href = "/";
   }
 
+  function isDashboardSearchRunning() {
+    var runBtn = document.getElementById("runSearchBtn");
+    return !!(runBtn && runBtn.classList.contains("is-running"));
+  }
+
+  function setDashboardFiltersLocked(locked) {
+    var selectors = [
+      "#activeOnlyBtn",
+      "#filterSort",
+      "#filterDays",
+      "#postKeywordSearchInput",
+      ".intent-pill[data-intent]",
+    ];
+    selectors.forEach(function (sel) {
+      var els = document.querySelectorAll(sel);
+      if (!els || !els.length) return;
+      els.forEach(function (el) {
+        if ("disabled" in el) el.disabled = !!locked;
+      });
+    });
+  }
+
   function runSearchAgain() {
     var btn = document.getElementById("runSearchBtn");
     var input = document.getElementById("searchQueryInput");
@@ -1824,10 +1909,12 @@
     var ctxEl = document.getElementById("searchContextInput");
     var context = ctxEl ? (ctxEl.value || "").trim() : "";
     var contextSnapshot = context;
+    initialScopedRunId = "";
 
     if (btn) btn.disabled = true;
     if (btn) btn.textContent = "Running...";
     if (btn) btn.classList.add("is-running");
+    setDashboardFiltersLocked(true);
     var inputWarnOnRun = document.getElementById("runSearchInputWarning");
     if (inputWarnOnRun) {
       inputWarnOnRun.textContent = "";
@@ -1852,6 +1939,8 @@
     var dashThreadsAnalyzed = null;
     var dashAlmostTimer = null;
     var dashIntentAlmost = false;
+    var dashPollFailureCount = 0;
+    var DASH_POLL_MAX_CONSECUTIVE_FAILURES = 5;
 
     function clearDashAlmostTimer() {
       if (dashAlmostTimer) {
@@ -2053,6 +2142,7 @@
                 });
               })
               .then(function (prog) {
+                dashPollFailureCount = 0;
                 if (prog.phase) applyDashboardPhaseStep(prog.phase);
                 if (prog.status === "completed") {
                   if (dashPollInterval) {
@@ -2075,6 +2165,7 @@
                     completeDashboardLoading(prog && typeof prog.totalPosts === "number" ? prog.totalPosts : null);
                   } catch (e) {}
                   if (btn) btn.classList.remove("is-running");
+                  setDashboardFiltersLocked(false);
                   return fetch("/api/dashboard/runs", { credentials: "same-origin" })
                     .then(function (r) {
                       if (!r.ok) return { runs: [] };
@@ -2082,9 +2173,7 @@
                     })
                     .then(function (data2) {
                       runs = data2.runs || [];
-                      var currentRun = null;
-                      if (unlockedRunId) currentRun = runs.find(function (r) { return r.id === unlockedRunId; }) || null;
-                      if (!currentRun) currentRun = runs[0] || null;
+                      var currentRun = runs[0] || null;
                       restoreRunInputs(currentRun, contextSnapshot);
                       if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
                       commitBaselineFromInputs();
@@ -2098,6 +2187,7 @@
                   }
                   clearDashAlmostTimer();
                   if (btn) btn.classList.remove("is-running");
+                  setDashboardFiltersLocked(false);
                   syncRunButtonUI();
                   updateContextToggleLabel();
                   try {
@@ -2130,12 +2220,17 @@
                 }
               })
               .catch(function (err) {
+                dashPollFailureCount += 1;
+                if (dashPollFailureCount < DASH_POLL_MAX_CONSECUTIVE_FAILURES) {
+                  return;
+                }
                 if (dashPollInterval) {
                   clearInterval(dashPollInterval);
                   dashPollInterval = null;
                 }
                 clearDashAlmostTimer();
                 if (btn) btn.classList.remove("is-running");
+                setDashboardFiltersLocked(false);
                 syncRunButtonUI();
                 updateContextToggleLabel();
                 try {
@@ -2181,6 +2276,7 @@
           completeDashboardLoading(data && typeof data.totalPosts === "number" ? data.totalPosts : null);
         } catch (e) {}
         if (btn) btn.classList.remove("is-running");
+        setDashboardFiltersLocked(false);
         // Refresh runs list so we show the correct last run datetime.
         return fetch("/api/dashboard/runs", { credentials: "same-origin" })
           .then(function (r) {
@@ -2189,9 +2285,7 @@
           })
           .then(function (data2) {
             runs = data2.runs || [];
-            var currentRun = null;
-            if (unlockedRunId) currentRun = runs.find(function (r) { return r.id === unlockedRunId; }) || null;
-            if (!currentRun) currentRun = runs[0] || null;
+            var currentRun = runs[0] || null;
             restoreRunInputs(currentRun, contextSnapshot);
             if (currentRun && currentRun.created_at) setRunSearchMetaIdle(currentRun.created_at);
             commitBaselineFromInputs();
@@ -2205,6 +2299,7 @@
         dashPollInterval = null;
         clearDashAlmostTimer();
         if (btn) btn.classList.remove("is-running");
+        setDashboardFiltersLocked(false);
         if (err && err.manualSearch && typeof err.manualSearch === "object") {
           dashManualSearchQuota = {
             used: err.manualSearch.used != null ? Number(err.manualSearch.used) : dashManualSearchQuota.used,
@@ -2273,6 +2368,7 @@
           limit: me.manualSearch.limit != null ? Number(me.manualSearch.limit) : 3,
           resetsAt: typeof me.manualSearch.resetsAt === "string" ? me.manualSearch.resetsAt : "",
         };
+        dashUnlimitedAccess = dashManualSearchQuota.limit >= 999999;
         syncRunButtonUI();
       }
       return attachPendingRunIfAny();
@@ -2287,11 +2383,7 @@
     .then(function (data) {
       runs = data.runs || [];
 
-      var currentRun = null;
-      if (unlockedRunId) {
-        currentRun = runs.find(function (r) { return r.id === unlockedRunId; }) || null;
-      }
-      if (!currentRun) currentRun = runs[0] || null;
+      var currentRun = runs[0] || null;
 
       var input = document.getElementById("searchQueryInput");
       if (input) input.value = (currentRun && currentRun.user_input) ? String(currentRun.user_input) : "";
@@ -2313,7 +2405,7 @@
   var getStartedUnlockBtn = document.getElementById("dashboardGetStartedUnlockBtn");
   if (dashboardUnlockBtn) {
     dashboardUnlockBtn.addEventListener("click", function () {
-      var runId = unlockedRunId || (runs[0] && runs[0].id) || "";
+      var runId = (runs[0] && runs[0].id) || "";
       var billing = "monthly";
       try {
         if (localStorage.getItem("leadsnipePricingBilling") === "yearly") billing = "yearly";
@@ -2355,11 +2447,15 @@
   }
   
   var daysEl = document.getElementById("filterDays");
-  if (daysEl) daysEl.addEventListener("change", fetchLeads);
+  if (daysEl) daysEl.addEventListener("change", function () {
+    if (isDashboardSearchRunning()) return;
+    fetchLeads();
+  });
 
   var sortEl = document.getElementById("filterSort");
   if (sortEl) {
     sortEl.addEventListener("change", function () {
+      if (isDashboardSearchRunning()) return;
       sortMode = this.value;
       renderLeads();
     });
@@ -2371,6 +2467,7 @@
     activeOnlyEl.classList.toggle("active", activeOnly);
     activeOnlyEl.setAttribute("aria-pressed", String(activeOnly));
     activeOnlyEl.addEventListener("click", function () {
+      if (isDashboardSearchRunning()) return;
       leadFilter = "all";
       activeOnly = true;
       // Clear any intent pill selection.
@@ -2461,6 +2558,7 @@
   var pillEls = document.querySelectorAll(".intent-pill[data-intent]");
   pillEls.forEach(function (el) {
     el.addEventListener("click", function () {
+      if (isDashboardSearchRunning()) return;
       setLeadFilter(el.getAttribute("data-intent") || "all");
     });
   });
@@ -2470,6 +2568,7 @@
   if (postKeywordSearchInput) {
     postKeywordSearch = (postKeywordSearchInput.value || "").trim();
     postKeywordSearchInput.addEventListener("input", function () {
+      if (isDashboardSearchRunning()) return;
       postKeywordSearch = (this.value || "").trim();
       renderLeads();
     });

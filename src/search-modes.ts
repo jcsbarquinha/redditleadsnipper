@@ -15,20 +15,20 @@ export interface SearchModeRedditParams {
   redditTimeFilter: RedditTimeFilter;
 }
 
-/** Fixed defaults per mode. Callers may override `keywordCount` / `delayMs` / `maxPages` via {@link import("./pipeline.js").PipelineOptions}. Dashboard uses 6 keywords; cron uses 10 for broader saved-search coverage. */
+/** Fixed defaults per mode. Callers may override `keywordCount` / `delayMs` / `maxPages` via {@link import("./pipeline.js").PipelineOptions}. Dashboard/cron use 10 keywords for broader coverage. */
 export function getSearchModeRedditParams(mode: SearchMode): SearchModeRedditParams {
   switch (mode) {
     case "homepage":
       return {
-        keywordCount: 3,
+        keywordCount: 5,
         delayMs: 2500,
         redditSorts: ["relevance", "new"],
         redditTimeFilter: "week",
       };
     case "dashboard":
       return {
-        keywordCount: 6,
-        delayMs: 2500,
+        keywordCount: 10,
+        delayMs: 3500,
         redditSorts: ["new", "relevance"],
         redditTimeFilter: "week",
       };

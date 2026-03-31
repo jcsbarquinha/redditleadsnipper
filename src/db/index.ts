@@ -117,6 +117,7 @@ function runSchema(database: Database.Database): void {
   migrateServiceStatus(database);
   migrateManualSearchQuota(database);
   migrateRunPipelineProgress(database);
+  migrateRunSource(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
 
@@ -128,6 +129,14 @@ function migrateRunPipelineProgress(database: Database.Database): void {
   if (!cols.includes("pipeline_error")) {
     database.exec("ALTER TABLE runs ADD COLUMN pipeline_error TEXT");
   }
+}
+
+function migrateRunSource(database: Database.Database): void {
+  const cols = (database.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((r) => r.name);
+  if (!cols.includes("source")) {
+    database.exec("ALTER TABLE runs ADD COLUMN source TEXT");
+  }
+  database.exec("UPDATE runs SET source = 'dashboard' WHERE source IS NULL");
 }
 
 function migrateLeadActions(database: Database.Database): void {
@@ -313,15 +322,16 @@ export function insertRun(
   userInput: string,
   keywords: string[],
   context?: string,
-  status: "pending" | "running" | "completed" | "failed" = "running"
+  status: "pending" | "running" | "completed" | "failed" = "running",
+  source: "homepage" | "dashboard" | "cron" | "cli" = "dashboard"
 ): void {
   const database = getDb();
   const ctx = typeof context === "string" ? context.trim() : "";
   database
     .prepare(
-      `INSERT INTO runs (id, user_input, context, keywords, status, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))`
+      `INSERT INTO runs (id, user_input, context, keywords, status, source, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
     )
-    .run(runId, userInput, ctx || null, JSON.stringify(keywords), status);
+    .run(runId, userInput, ctx || null, JSON.stringify(keywords), status, source);
 }
 
 export function updateRunStatus(
@@ -654,13 +664,27 @@ export function getRunsForUser(
   userId: string,
   limit: number = 50,
   searchProfileId?: string
-): { id: string; user_input: string; context: string | null; created_at: string }[] {
+): {
+  id: string;
+  user_input: string;
+  context: string | null;
+  created_at: string;
+  status: string;
+  source: string | null;
+}[] {
   const database = getDb();
-  type RunListRow = { id: string; user_input: string; context: string | null; created_at: string };
+  type RunListRow = {
+    id: string;
+    user_input: string;
+    context: string | null;
+    created_at: string;
+    status: string;
+    source: string | null;
+  };
   if (!searchProfileId?.trim()) return [];
   return database
     .prepare(
-      "SELECT id, user_input, context, created_at FROM runs WHERE user_id = ? AND search_profile_id = ? ORDER BY created_at DESC LIMIT ?"
+      "SELECT id, user_input, context, created_at, status, source FROM runs WHERE user_id = ? AND search_profile_id = ? ORDER BY created_at DESC LIMIT ?"
     )
     .all(userId, searchProfileId.trim(), limit) as RunListRow[];
 }

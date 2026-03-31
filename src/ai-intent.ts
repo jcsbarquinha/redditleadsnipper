@@ -8,6 +8,8 @@ import { fetchOpenAIChat } from "./openai-fetch.js";
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL_INTENT = "gpt-4o";
 const MODEL_MINI_SCREEN = "gpt-4o-mini";
+const OPENAI_INTENT_TIMEOUT_MS = Number(process.env.OPENAI_INTENT_TIMEOUT_MS || 180_000);
+const OPENAI_INTENT_TIMEOUT_RETRIES = 2;
 
 /** Homepage lightning triage: id + score only; full intent runs on 4o for finalists. */
 const LIGHTNING_MINI_SYSTEM_PROMPT = `You are a lightning-fast sales prospector. Your only job is to rapidly triage Reddit posts to find potential leads for a SaaS product.
@@ -20,15 +22,19 @@ You will be given:
 Core task:
 Assign a 0-100 score to each post based on its potential as a lead.
 
-CRITICAL PRINCIPLES (BE OPTIMISTIC BUT AVOID ADS):
+CRITICAL PRINCIPLES (BE OPTIMISTIC BUT AVOID SELLERS):
 - Score on PROBLEM MATCH. If they are complaining about the exact pain point this product solves, score them 70+.
+- THE "AUTHOR IDENTITY" CHECK: Is the author looking for a solution, or selling one? If the author is explicitly pitching, launching, or selling a tool they built that solves the problem, hard-cap their score at 50. We want buyers, not sellers.
+- SELLER SIGNALS (strong clues): "for hire", "I built", "we built", "my service", "our service", "launching", "available for work", "$/hr", "DM me", "portfolio", "book a call".
+- CAP RULE (STRICT): If seller signals are present, score must be <= 50 even if problem-match is strong.
 - THE "NATIVE AD" CHECK: If the post is a glowing, overly positive success story about how one specific tool "changed their life" or "solved everything" (often with a link), score it 0-39. This is a disguised ad.
 - BRAND MENTIONS ARE GOOD: Do NOT penalize a post just because it names a software tool. If they are asking *if* a tool is good, complaining about a tool, or asking for alternatives, that is a HOT LEAD (80+).
 
 Scoring Rubric:
 - 80-100: Active buyer, explicitly stating the core problem, or asking for an alternative to a competitor.
 - 70-79: Venting about related workflows or adjacent pain points.
-- 40-69: Adjacent interest, general industry talk, no personal pain point.
+- 40-50: The Competitor Pitch. The author is launching or selling their own competing product (Warm, but not a direct buyer).
+- 51-69: Adjacent interest, general industry talk, no clear personal pain point.
 - 0-39: Wrong fit, unrelated, pure spam, or a glowing disguised ad for another product.
 
 Output requirements (STRICT):
@@ -67,13 +73,17 @@ For EACH post independently, score how strong a lead they are for THIS product.
 
 CRITICAL PRINCIPLES:
 - PROBLEM MATCH IS KING: A user does NOT need to be asking for a software tool to be a high-intent lead. If they are complaining about the exact pain point this product solves, they are a HOT lead (70+).
-- THE "NATIVE AD" FILTER: Disregard (0-39) disguised native ads. These read like glowing success stories heavily promoting a single named vendor ("I struggled until a friend told me about X, it's amazing!").
+- THE "AUTHOR IDENTITY" RULE (BUYER VS SELLER): Check who is writing the post. If the author built, sells, or is launching a product that does exactly what our product does, they are NOT a hot lead.
+- SELLER SIGNALS (strong clues): "for hire", "I built", "we built", "my service", "our service", "launching", "available for work", "$/hr", "DM me", "portfolio", "book a call".
+- CAP RULE (STRICT): If seller signals are present, score must be <= 50 even when problem-match is strong.
 - THE "WATERING HOLE" RULE: If a user mentions a competitor but is complaining about it, comparing it, or asking for neutral opinions on it, SCORE IT HIGH (80+). Do not confuse a genuine question about a brand with a disguised ad.
+- THE "NATIVE AD" FILTER: Disregard (0-39) disguised native ads. These read like glowing success stories heavily promoting a single named vendor ("I struggled until a friend told me about X, it's amazing!").
 
 Scoring Rubric (0-100):
 - 90-100 (Screaming Pain / Active Buyer): The author is explicitly asking for a tool recommendation, begging for an alternative to a competitor, or experiencing a critical bottleneck that this product perfectly solves.
 - 70-89 (Strong Problem Match): The author is venting about a workflow or asking for strategy advice related to the problem this product addresses. They might not know a software solution exists yet, but they NEED it.
-- 40-69 (Adjacent / Weak): General industry talk, no clear personal pain point.
+- 40-50 (The Competitor Pitch): The author is launching, pitching, or selling a tool that solves the problem. They are a seller, not a buyer.
+- 51-69 (Adjacent / Weak): General industry talk, no clear personal pain point.
 - 0-39 (Trash): Wrong fit, unrelated, spam, or a glowing disguised advertisement for another tool.
 
 Examples (Calibration):
@@ -195,38 +205,49 @@ ${postsBlock}
 Return JSON only: exactly ${posts.length} objects, one per post, keys only "id" and "score".`;
 
   async function fire(extra?: string): Promise<Map<string, number>> {
-    const res = await fetchOpenAIChat(OPENAI_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model: MODEL_MINI_SCREEN,
-        messages: [
-          { role: "system", content: LIGHTNING_MINI_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: extra ? `${userContent}\n\n${extra}` : userContent,
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < OPENAI_INTENT_TIMEOUT_RETRIES; attempt++) {
+      try {
+        const res = await fetchOpenAIChat(OPENAI_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
           },
-        ],
-        temperature: 0.15,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
+          body: JSON.stringify({
+            model: MODEL_MINI_SCREEN,
+            messages: [
+              { role: "system", content: LIGHTNING_MINI_SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: extra ? `${userContent}\n\n${extra}` : userContent,
+              },
+            ],
+            temperature: 0.15,
+          }),
+          signal: AbortSignal.timeout(OPENAI_INTENT_TIMEOUT_MS),
+        });
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`OpenAI API error ${res.status}: ${errBody || res.statusText}`);
+        if (!res.ok) {
+          const errBody = await res.text();
+          throw new Error(`OpenAI API error ${res.status}: ${errBody || res.statusText}`);
+        }
+        const data = (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+          error?: { message?: string };
+        };
+        if (data.error?.message) throw new Error(`OpenAI: ${data.error.message}`);
+        const content = data.choices?.[0]?.message?.content;
+        if (!content) throw new Error("OpenAI returned no lightning mini content");
+        return parseMiniScreenResponse(content, posts.map((p) => p.id));
+      } catch (err) {
+        lastErr = err;
+        const text = err instanceof Error ? err.message : String(err);
+        const timeoutLike = /aborted|timeout/i.test(text);
+        if (!timeoutLike || attempt >= OPENAI_INTENT_TIMEOUT_RETRIES - 1) break;
+      }
     }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      error?: { message?: string };
-    };
-    if (data.error?.message) throw new Error(`OpenAI: ${data.error.message}`);
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error("OpenAI returned no lightning mini content");
-    return parseMiniScreenResponse(content, posts.map((p) => p.id));
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
   try {
@@ -254,9 +275,16 @@ export async function scorePostsLightningMini(context: string, posts: BatchPostI
   }
   for (let w = 0; w < chunks.length; w += LIGHTNING_MINI_PARALLEL) {
     const wave = chunks.slice(w, w + LIGHTNING_MINI_PARALLEL);
-    const parts = await Promise.all(wave.map((chunk) => classifyLightningMiniBatch(context, chunk)));
-    for (const part of parts) {
-      part.forEach((v, k) => merged.set(k, v));
+    const parts = await Promise.allSettled(wave.map((chunk) => classifyLightningMiniBatch(context, chunk)));
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (part.status === "fulfilled") {
+        part.value.forEach((v, k) => merged.set(k, v));
+      } else {
+        const chunk = wave[i];
+        console.warn("Mini gate chunk failed:", part.reason instanceof Error ? part.reason.message : part.reason);
+        for (const post of chunk) merged.set(post.id, 0);
+      }
     }
   }
   return merged;
@@ -374,42 +402,53 @@ ${postsBlock}
 Return JSON only, exactly ${posts.length} objects, matching ids and order.`;
 
   async function requestBatch(extraStrictLine?: string): Promise<(PostIntentResult | null)[]> {
-    const res = await fetchOpenAIChat(OPENAI_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: BATCH_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: extraStrictLine
-              ? `${userContent}\n\n${extraStrictLine}`
-              : userContent,
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < OPENAI_INTENT_TIMEOUT_RETRIES; attempt++) {
+      try {
+        const res = await fetchOpenAIChat(OPENAI_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
           },
-        ],
-        temperature: 0.2,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: BATCH_SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: extraStrictLine
+                  ? `${userContent}\n\n${extraStrictLine}`
+                  : userContent,
+              },
+            ],
+            temperature: 0.2,
+          }),
+          signal: AbortSignal.timeout(OPENAI_INTENT_TIMEOUT_MS),
+        });
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`OpenAI API error ${res.status}: ${errBody || res.statusText}`);
+        if (!res.ok) {
+          const errBody = await res.text();
+          throw new Error(`OpenAI API error ${res.status}: ${errBody || res.statusText}`);
+        }
+
+        const data = (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+          error?: { message?: string };
+        };
+        if (data.error?.message) throw new Error(`OpenAI: ${data.error.message}`);
+        const content = data.choices?.[0]?.message?.content;
+        if (!content) throw new Error("OpenAI returned no content");
+
+        return parseBatchResponse(content, posts.map((p) => p.id));
+      } catch (err) {
+        lastErr = err;
+        const text = err instanceof Error ? err.message : String(err);
+        const timeoutLike = /aborted|timeout/i.test(text);
+        if (!timeoutLike || attempt >= OPENAI_INTENT_TIMEOUT_RETRIES - 1) break;
+      }
     }
-
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      error?: { message?: string };
-    };
-    if (data.error?.message) throw new Error(`OpenAI: ${data.error.message}`);
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error("OpenAI returned no content");
-
-    return parseBatchResponse(content, posts.map((p) => p.id));
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
   try {
@@ -423,9 +462,46 @@ Return JSON only, exactly ${posts.length} objects, matching ids and order.`;
   }
 }
 
+async function classifyPostIntentBatchResilient(
+  context: string,
+  posts: BatchPostInput[],
+  model: string,
+  depth = 0
+): Promise<(PostIntentResult | null)[]> {
+  if (!posts.length) return [];
+  try {
+    return await classifyPostIntentBatchSingleModel(context, posts, model);
+  } catch (err) {
+    const maxDepth = 3;
+    if (posts.length <= 1 || depth >= maxDepth) {
+      console.warn(
+        "Intent batch failed (returning nulls):",
+        err instanceof Error ? err.message : err
+      );
+      return posts.map(() => null);
+    }
+    const mid = Math.ceil(posts.length / 2);
+    const left = posts.slice(0, mid);
+    const right = posts.slice(mid);
+    const [leftRes, rightRes] = await Promise.all([
+      classifyPostIntentBatchResilient(context, left, model, depth + 1),
+      classifyPostIntentBatchResilient(context, right, model, depth + 1),
+    ]);
+    return [...leftRes, ...rightRes];
+  }
+}
+
 export async function classifyPostIntentBatch(
   context: string,
   posts: BatchPostInput[]
 ): Promise<(PostIntentResult | null)[]> {
-  return classifyPostIntentBatchSingleModel(context, posts, MODEL_INTENT);
+  return classifyPostIntentBatchResilient(context, posts, MODEL_INTENT);
+}
+
+/** Full intent prompt on mini model (used as a cheaper scorer). */
+export async function classifyPostIntentBatchMini(
+  context: string,
+  posts: BatchPostInput[]
+): Promise<(PostIntentResult | null)[]> {
+  return classifyPostIntentBatchResilient(context, posts, MODEL_MINI_SCREEN);
 }

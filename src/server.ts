@@ -66,6 +66,20 @@ import { runSavedSearchSchedulerTick } from "./scheduler.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, "..", "public");
+const UNLIMITED_ACCESS_EMAILS = new Set<string>(["jcsbarquinha@gmail.com"]);
+
+function hasUnlimitedAccessByEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return UNLIMITED_ACCESS_EMAILS.has(String(email).trim().toLowerCase());
+}
+
+function getUnlimitedManualSearchQuota() {
+  return {
+    used: 0,
+    limit: 999999,
+    resetsAt: "",
+  };
+}
 
 const app = express();
 app.use(cookieParser());
@@ -502,19 +516,20 @@ app.get("/welcome", async (req, res) => {
 /** Current user (requires auth). */
 app.get("/api/me", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string; email: string; entitled_until: string | null } }).user;
+  const hasUnlimitedAccess = hasUnlimitedAccessByEmail(user.email);
   res.json({
     id: user.id,
     email: user.email,
     entitled_until: user.entitled_until,
-    entitled: isEntitled(user.entitled_until),
-    manualSearch: getManualSearchQuota(user.id),
+    entitled: hasUnlimitedAccess || isEntitled(user.entitled_until),
+    manualSearch: hasUnlimitedAccess ? getUnlimitedManualSearchQuota() : getManualSearchQuota(user.id),
   });
 });
 
 /** All leads for the current user (requires auth). Query params: subreddit, days, minScore, query, includeArchived, includeDeleted, runId. */
 app.get("/api/dashboard/leads", requireAuth, (req, res) => {
-  const user = (req as express.Request & { user: { id: string; entitled_until: string | null } }).user;
-  if (!isEntitled(user.entitled_until)) {
+  const user = (req as express.Request & { user: { id: string; email: string; entitled_until: string | null } }).user;
+  if (!hasUnlimitedAccessByEmail(user.email) && !isEntitled(user.entitled_until)) {
     res.json({ leads: [], entitled: false });
     return;
   }
@@ -578,8 +593,9 @@ app.get("/api/dashboard/saved-search", requireAuth, (req, res) => {
  * Returns 202 with { runId, accepted: true }; poll GET /api/dashboard/run-progress until status is completed or failed.
  */
 app.post("/api/dashboard/search", requireAuth, async (req, res) => {
-  const user = (req as express.Request & { user: { id: string; entitled_until: string | null } }).user;
-  if (!isEntitled(user.entitled_until)) {
+  const user = (req as express.Request & { user: { id: string; email: string; entitled_until: string | null } }).user;
+  const hasUnlimitedAccess = hasUnlimitedAccessByEmail(user.email);
+  if (!hasUnlimitedAccess && !isEntitled(user.entitled_until)) {
     res.status(403).json({
       error: "An active plan is required to run searches from the dashboard. Unlock below or search from the home page first.",
     });
@@ -593,8 +609,8 @@ app.post("/api/dashboard/search", requireAuth, async (req, res) => {
     return;
   }
 
-  const quotaBefore = getManualSearchQuota(user.id);
-  if (quotaBefore.used >= quotaBefore.limit) {
+  const quotaBefore = hasUnlimitedAccess ? getUnlimitedManualSearchQuota() : getManualSearchQuota(user.id);
+  if (!hasUnlimitedAccess && quotaBefore.used >= quotaBefore.limit) {
     res.status(403).json({
       error: "Manual search limit reached for today.",
       code: "manual_search_quota",
@@ -608,21 +624,21 @@ app.post("/api/dashboard/search", requireAuth, async (req, res) => {
     const runId = await prepareRunRow({
       userInput: query,
       context: context ? context : undefined,
-      maxPagesPerKeyword: DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD,
+      maxPagesPerKeyword: 1,
       searchMode: "dashboard",
       attachUserId: user.id,
     });
     res.status(202).json({
       runId,
       accepted: true,
-      manualSearch: getManualSearchQuota(user.id),
+      manualSearch: hasUnlimitedAccess ? getUnlimitedManualSearchQuota() : getManualSearchQuota(user.id),
     });
     void runPipelineFromRunId(
       runId,
       {
         userInput: query,
         context: context ? context : undefined,
-        maxPagesPerKeyword: DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD,
+        maxPagesPerKeyword: 1,
         searchMode: "dashboard",
         attachUserId: user.id,
       },
@@ -633,7 +649,9 @@ app.post("/api/dashboard/search", requireAuth, async (req, res) => {
           const profile = ensureCurrentSearchProfileForInput(user.id, query, context || null);
           if (profile) setRunSearchProfile(result.runId, profile.id);
           if (profile) upsertSavedSearchForUser(user.id, query, context || null, profile.id, 60);
-          consumeManualDashboardSearch(user.id);
+          if (!hasUnlimitedAccess) {
+            consumeManualDashboardSearch(user.id);
+          }
         } catch (e) {
           console.error("Dashboard post-pipeline:", e);
         }
@@ -659,7 +677,7 @@ app.post("/api/dashboard/search", requireAuth, async (req, res) => {
 
 /** Poll pipeline phase for a dashboard run owned by the current user. */
 app.get("/api/dashboard/run-progress", requireAuth, (req, res) => {
-  const user = (req as express.Request & { user: { id: string } }).user;
+  const user = (req as express.Request & { user: { id: string; email: string } }).user;
   const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : "";
   if (!runId) {
     res.status(400).json({ error: "Missing runId." });
@@ -685,7 +703,9 @@ app.get("/api/dashboard/run-progress", requireAuth, (req, res) => {
     totalPosts: row.totalPosts,
   };
   if (row.status === "completed") {
-    body.manualSearch = getManualSearchQuota(user.id);
+    body.manualSearch = hasUnlimitedAccessByEmail(user.email)
+      ? getUnlimitedManualSearchQuota()
+      : getManualSearchQuota(user.id);
   }
   res.json(body);
 });

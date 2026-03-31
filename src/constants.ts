@@ -2,7 +2,7 @@
  * Max age (days) for Reddit posts entering the pipeline.
  * Keep landing copy in `public/app.js` (POST_DISCOVERY_MAX_AGE_DAYS) in sync.
  */
-export const POST_DISCOVERY_MAX_AGE_DAYS = 3;
+export const POST_DISCOVERY_MAX_AGE_DAYS = 4;
 
 /**
  * Reddit result pages per (keyword × sort) for dashboard, saved-search cron, and scheduler CLI.

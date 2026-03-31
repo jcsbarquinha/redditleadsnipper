@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { getKeywordsForInput } from "./ai-keywords.js";
 import {
   classifyPostIntentBatch,
+  classifyPostIntentBatchMini,
   LIGHTNING_MINI_CHUNK,
   scorePostsLightningMini,
   type BatchPostInput,
@@ -21,7 +22,7 @@ import {
   updateRunPipelinePhase,
   setRunPipelineError,
 } from "./db/index.js";
-import { search, type RedditTimeFilter } from "./reddit-search.js";
+import { RedditRateLimitedError, search, type RedditTimeFilter } from "./reddit-search.js";
 
 /** Reddit listing `sort=` values used in this app for discovery. */
 export type RedditListingSort = "new" | "relevance";
@@ -33,16 +34,16 @@ import { POST_DISCOVERY_MAX_AGE_DAYS } from "./constants.js";
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 /** Drop posts older than this many days (independent of Reddit `t=` window). */
 const MAX_POST_AGE_DAYS = POST_DISCOVERY_MAX_AGE_DAYS;
+/** Dashboard-only max post age override (keeps homepage/cron stricter). */
+const DASHBOARD_MAX_POST_AGE_DAYS = 5;
 const MIN_CONTENT_LENGTH = 20;
 const INTENT_CONCURRENCY = 15;
 const INTENT_BATCH_SIZE = 5;
 
-/** Homepage: funnel stats still report count above this mini threshold. */
+/** Homepage/debug: funnel stats still report count above this threshold. */
 const HOMEPAGE_MINI_SCORE_GT = 70;
-/** Only lightning-mini scores above this can enter the gpt-4o shortlist. */
-const HOMEPAGE_MINI_TO_4O_MIN = 50;
-/** Max posts sent to gpt-4o (top scores among those &gt; `HOMEPAGE_MINI_TO_4O_MIN`). */
-const HOMEPAGE_4O_MAX_POSTS = 5;
+/** Dashboard/cron mini gate before expensive gpt-4o full scoring. */
+const DASHBOARD_MINI_GATE_MIN = 50;
 
 
 const PROMO_CALL_TO_ACTION_PATTERN =
@@ -111,14 +112,62 @@ function getPostAgeDays(post: RedditPost): number {
   return Math.max(0, Math.floor(Date.now() / 1000 - post.created_utc) / 86400);
 }
 
-function isPostWithinMaxAge(post: RedditPost): boolean {
-  return getPostAgeDays(post) <= MAX_POST_AGE_DAYS;
+function isPostWithinMaxAge(post: RedditPost, maxAgeDays: number = MAX_POST_AGE_DAYS): boolean {
+  return getPostAgeDays(post) <= maxAgeDays;
 }
 
 function hasEnoughContentForIntent(post: RedditPost): boolean {
   const title = (post.title ?? "").trim();
   const body = (post.selftext ?? "").trim();
   return title.length >= 1 || body.length >= MIN_CONTENT_LENGTH;
+}
+
+async function searchWithDashboardCronRetry(
+  term: string,
+  opts: {
+    maxPages: number;
+    delayMs: number;
+    sort: RedditListingSort;
+    timeFilter: RedditTimeFilter;
+    trafficMode: "dashboard" | "cron";
+  }
+): Promise<RedditPost[]> {
+  try {
+    return await search(term, {
+      maxPages: opts.maxPages,
+      delayMs: opts.delayMs,
+      exactPhrase: false,
+      sort: opts.sort,
+      timeFilter: opts.timeFilter,
+      trafficMode: opts.trafficMode,
+    });
+  } catch (err) {
+    const retryWaitMs = Math.max(1500, Math.min(6000, Math.round(opts.delayMs * 0.8)));
+    console.warn(
+      JSON.stringify({
+        event: "dashboard_cron_reddit_retry",
+        mode: opts.trafficMode,
+        term,
+        sort: opts.sort,
+        waitMs: retryWaitMs,
+        reason: err instanceof Error ? err.message : String(err),
+      })
+    );
+    await new Promise((r) => setTimeout(r, retryWaitMs));
+    try {
+      return await search(term, {
+        maxPages: opts.maxPages,
+        delayMs: opts.delayMs,
+        exactPhrase: false,
+        sort: opts.sort,
+        timeFilter: opts.timeFilter,
+        trafficMode: opts.trafficMode,
+      });
+    } catch (err2) {
+      if (err2 instanceof RedditRateLimitedError) throw err2;
+      throw err2;
+    }
+  }
 }
 
 function normalizeDomain(input: string): string | null {
@@ -315,14 +364,15 @@ function postsToRecentCandidatesPerKeyword(
   idToSorts: Map<string, Set<RedditListingSort>>,
   searchQueries: string[],
   userInput: string,
-  sortsUsedInRun: RedditListingSort[]
+  sortsUsedInRun: RedditListingSort[],
+  maxAgeDays: number = MAX_POST_AGE_DAYS
 ): CandidatePost[] {
   const kwList = searchQueries.map((k) => k.trim()).filter(Boolean);
   const sortFallback = [...sortsUsedInRun].sort();
   const out: CandidatePost[] = [];
   for (const [id, post] of postById) {
     if (!id) continue;
-    if (!isPostWithinMaxAge(post)) continue;
+    if (!isPostWithinMaxAge(post, maxAgeDays)) continue;
     if (isLikelySelfPromotionalPost(post, userInput)) continue;
     const set = idToKeywords.get(id);
     const matchedKeywords = set && set.size > 0 ? Array.from(set) : kwList.slice();
@@ -396,7 +446,7 @@ function buildHomepageFunnelStats(
   if (extras?.miniRanked && extras.miniRanked.length > 0) {
     out.topMiniScore = extras.miniRanked[0]?.mini ?? 0;
     out.miniAbove70Count = extras.miniRanked.filter((x) => x.mini > HOMEPAGE_MINI_SCORE_GT).length;
-    out.miniAbove50Count = extras.miniRanked.filter((x) => x.mini > HOMEPAGE_MINI_TO_4O_MIN).length;
+    out.miniAbove50Count = extras.miniRanked.filter((x) => x.mini > DASHBOARD_MINI_GATE_MIN).length;
   }
   if (extras?.finalistsFor4o != null) out.finalistsFor4o = extras.finalistsFor4o;
   if (extras?.finalLeadsPersisted != null) out.finalLeadsPersisted = extras.finalLeadsPersisted;
@@ -432,7 +482,7 @@ function logHomepageRunDebug(runId: string, funnel: HomepageFunnelStats): void {
   console.log(JSON.stringify({ event: "homepage_run_debug", runId, ...funnel }));
 }
 
-/** Landing-only: Reddit per keyword × sorts, t=week → lightning mini (id+score, parallel) → top 10 → gpt-4o full intent → persist winner. */
+/** Landing-only: Reddit per keyword × sorts, t=week → full intent prompt on mini model → persist top 1. */
 async function executeHomepageFastPipeline(params: {
   runId: string;
   userInput: string;
@@ -480,6 +530,7 @@ async function executeHomepageFastPipeline(params: {
         exactPhrase: false,
         sort,
         timeFilter: redditTimeFilter,
+        trafficMode: "homepage",
       });
       redditSearchCalls++;
       for (const p of batch) {
@@ -502,7 +553,8 @@ async function executeHomepageFastPipeline(params: {
     idToSorts,
     searchQueries,
     userInput,
-    redditSorts
+    redditSorts,
+    MAX_POST_AGE_DAYS
   );
   const uniqueAfterDedupe = postById.size;
 
@@ -510,8 +562,6 @@ async function executeHomepageFastPipeline(params: {
   scorableCandidates = dedupeCandidatePostsById(scorableCandidates);
 
   const intentT0 = performance.now();
-  let miniBatches = 0;
-  let fourOBatches = 0;
 
   if (scorableCandidates.length === 0) {
     const intentMs = Math.round(performance.now() - intentT0);
@@ -563,23 +613,51 @@ async function executeHomepageFastPipeline(params: {
     matchedKeywords: c.matchedKeywords,
   }));
 
-  const miniScores = await scorePostsLightningMini(intentContext, miniInputs);
-  miniBatches = Math.ceil(miniInputs.length / LIGHTNING_MINI_CHUNK);
+  const batches: CandidatePost[][] = [];
+  for (let i = 0; i < scorableCandidates.length; i += INTENT_BATCH_SIZE) {
+    batches.push(scorableCandidates.slice(i, i + INTENT_BATCH_SIZE));
+  }
+  const miniRanked: Array<{
+    candidate: CandidatePost;
+    mini: number;
+    explanation: string | null;
+    suggestedReply: string | null;
+  }> = [];
+  await mapWithConcurrency(batches, INTENT_CONCURRENCY, async (batch) => {
+    const posts = batch.map((c) => ({
+      id: c.post.id ?? "",
+      title: (c.post.title ?? "").trim(),
+      body: (c.post.selftext ?? "").trim(),
+      score: c.post.score,
+      num_comments: c.post.num_comments,
+      created_utc: c.post.created_utc,
+      matchedKeywords: c.matchedKeywords,
+    }));
+    try {
+      const results = await classifyPostIntentBatchMini(intentContext, posts);
+      for (let i = 0; i < batch.length; i++) {
+        const candidate = batch[i];
+        const intent = results[i];
+        miniRanked.push({
+          candidate,
+          mini: clampScore(intent?.score ?? 0),
+          explanation: intent?.explanation ?? null,
+          suggestedReply: intent?.suggested_reply ?? null,
+        });
+      }
+    } catch (err) {
+      console.warn("Homepage mini-full batch failed:", err instanceof Error ? err.message : err);
+      for (const candidate of batch) {
+        miniRanked.push({ candidate, mini: 0, explanation: null, suggestedReply: null });
+      }
+    }
+  });
+  miniRanked.sort((a, b) => b.mini - a.mini);
+  const winnerPair = miniRanked[0] ?? null;
+  const intentMs = Math.round(performance.now() - intentT0);
+  const totalMs = Math.round(performance.now() - pipelineT0);
 
-  const miniRanked = scorableCandidates
-    .map((c) => {
-      const id = (c.post.id ?? "").trim();
-      const m = miniScores.get(id) ?? 0;
-      return { candidate: c, mini: m };
-    })
-    .sort((a, b) => b.mini - a.mini);
-
-  const miniOver50 = miniRanked.filter((x) => x.mini > HOMEPAGE_MINI_TO_4O_MIN);
-  const forFourO = miniOver50.slice(0, HOMEPAGE_4O_MAX_POSTS).map((x) => x.candidate);
-
-  if (forFourO.length === 0) {
-    const intentMs = Math.round(performance.now() - intentT0);
-    const totalMs = Math.round(performance.now() - pipelineT0);
+  if (!winnerPair) {
     const homepageFunnel = buildHomepageFunnelStats(
       searchQueries,
       redditSearchCalls,
@@ -606,77 +684,7 @@ async function executeHomepageFastPipeline(params: {
       uniqueAfterDedupe,
       postsAfterFilters: recentCandidates.length,
       scorableForLlm: scorableCandidates.length,
-      intentBatches: miniBatches,
-      homepageFunnel,
-    };
-    console.warn(
-      JSON.stringify({
-        event: "homepage_no_4o_finalists",
-        runId,
-        reason: "no_posts_with_lightning_mini_gt_50",
-        minTo4o: HOMEPAGE_MINI_TO_4O_MIN,
-        scorableCount: miniRanked.length,
-        topMiniScore: miniRanked[0]?.mini ?? 0,
-      })
-    );
-    console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
-    logHomepageRunDebug(runId, homepageFunnel);
-    markRunCompleted(runId);
-    return {
-      runId,
-      keywords: searchQueries,
-      totalPosts: recentCandidates.length,
-      totalPostIntents: 0,
-      timings,
-    };
-  }
-
-  const fourPosts = forFourO.map((c) => ({
-    id: c.post.id ?? "",
-    title: (c.post.title ?? "").trim(),
-    body: (c.post.selftext ?? "").trim(),
-    score: c.post.score,
-    num_comments: c.post.num_comments,
-    created_utc: c.post.created_utc,
-    matchedKeywords: c.matchedKeywords,
-  }));
-
-  let fourResults: Awaited<ReturnType<typeof classifyPostIntentBatch>>;
-  try {
-    fourResults = await classifyPostIntentBatch(intentContext, fourPosts);
-    fourOBatches = 1;
-  } catch (err) {
-    console.warn("Homepage 4o batch failed:", err instanceof Error ? err.message : err);
-    const intentMs = Math.round(performance.now() - intentT0);
-    const totalMs = Math.round(performance.now() - pipelineT0);
-    const homepageFunnel = buildHomepageFunnelStats(
-      searchQueries,
-      redditSearchCalls,
-      postById,
-      userInput,
-      recentCandidates.length,
-      scorableCandidates.length,
-      {
-        miniRanked,
-        finalistsFor4o: forFourO.length,
-        finalistCandidates: forFourO,
-        finalLeadsPersisted: 0,
-        winner4oScore: null,
-      }
-    );
-    const timings: PipelineTimings = {
-      searchMode,
-      redditTimeFilter,
-      redditSorts: [...redditSorts],
-      keywordsMs,
-      redditMs,
-      intentMs,
-      totalMs,
-      searchTaskCount: redditSearchCalls,
-      uniqueAfterDedupe,
-      postsAfterFilters: recentCandidates.length,
-      scorableForLlm: scorableCandidates.length,
-      intentBatches: miniBatches,
+      intentBatches: batches.length,
       homepageFunnel,
     };
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
@@ -691,100 +699,13 @@ async function executeHomepageFastPipeline(params: {
     };
   }
 
-  const winIdx = pickHomepageFourOWinner(forFourO, fourResults);
-  const intentMs = Math.round(performance.now() - intentT0);
-  const totalMs = Math.round(performance.now() - pipelineT0);
-
-  if (winIdx < 0) {
-    const homepageFunnel = buildHomepageFunnelStats(
-      searchQueries,
-      redditSearchCalls,
-      postById,
-      userInput,
-      recentCandidates.length,
-      scorableCandidates.length,
-      {
-        miniRanked,
-        finalistsFor4o: forFourO.length,
-        finalistCandidates: forFourO,
-        finalLeadsPersisted: 0,
-        winner4oScore: null,
-      }
-    );
-    const timings: PipelineTimings = {
-      searchMode,
-      redditTimeFilter,
-      redditSorts: [...redditSorts],
-      keywordsMs,
-      redditMs,
-      intentMs,
-      totalMs,
-      searchTaskCount: redditSearchCalls,
-      uniqueAfterDedupe,
-      postsAfterFilters: recentCandidates.length,
-      scorableForLlm: scorableCandidates.length,
-      intentBatches: miniBatches + fourOBatches,
-      homepageFunnel,
-    };
-    console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
-    logHomepageRunDebug(runId, homepageFunnel);
-    markRunCompleted(runId);
-    return {
-      runId,
-      keywords: searchQueries,
-      totalPosts: recentCandidates.length,
-      totalPostIntents: 0,
-      timings,
-    };
-  }
-
-  const winner = forFourO[winIdx];
-  const intent = fourResults[winIdx];
-  if (!intent) {
-    const homepageFunnel = buildHomepageFunnelStats(
-      searchQueries,
-      redditSearchCalls,
-      postById,
-      userInput,
-      recentCandidates.length,
-      scorableCandidates.length,
-      {
-        miniRanked,
-        finalistsFor4o: forFourO.length,
-        finalistCandidates: forFourO,
-        finalLeadsPersisted: 0,
-        winner4oScore: null,
-      }
-    );
-    const timings: PipelineTimings = {
-      searchMode,
-      redditTimeFilter,
-      redditSorts: [...redditSorts],
-      keywordsMs,
-      redditMs,
-      intentMs,
-      totalMs,
-      searchTaskCount: redditSearchCalls,
-      uniqueAfterDedupe,
-      postsAfterFilters: recentCandidates.length,
-      scorableForLlm: scorableCandidates.length,
-      intentBatches: miniBatches + fourOBatches,
-      homepageFunnel,
-    };
-    console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
-    logHomepageRunDebug(runId, homepageFunnel);
-    markRunCompleted(runId);
-    return {
-      runId,
-      keywords: searchQueries,
-      totalPosts: recentCandidates.length,
-      totalPostIntents: 0,
-      timings,
-    };
-  }
-
-  const finalScore = clampScore(intent.score);
-  const finalized = finalizeIntent(finalScore, intent.explanation, intent.suggested_reply);
+  const winner = winnerPair.candidate;
+  const finalScore = clampScore(winnerPair.mini);
+  const finalized = finalizeIntent(
+    finalScore,
+    winnerPair.explanation ?? "Ranked highest by full-intent mini scoring for this query.",
+    winnerPair.suggestedReply ?? null
+  );
   const rowId = postRowId(runId, winner.post.id);
 
   insertPost(runId, { ...winner.post, comments: [] }, winner.matchedKeywords);
@@ -806,8 +727,8 @@ async function executeHomepageFastPipeline(params: {
     scorableCandidates.length,
     {
       miniRanked,
-      finalistsFor4o: forFourO.length,
-      finalistCandidates: forFourO,
+      finalistsFor4o: 1,
+      finalistCandidates: [winner],
       finalLeadsPersisted: 1,
       winner4oScore: finalScore,
     }
@@ -824,7 +745,7 @@ async function executeHomepageFastPipeline(params: {
     uniqueAfterDedupe,
     postsAfterFilters: recentCandidates.length,
     scorableForLlm: scorableCandidates.length,
-    intentBatches: miniBatches + fourOBatches,
+    intentBatches: batches.length,
     homepageFunnel,
   };
   console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
@@ -856,7 +777,13 @@ export async function prepareRunRow(options: PipelineOptions): Promise<string> {
   await validateUserInput(options.userInput);
   const runId = randomUUID();
   const ctx = typeof options.context === "string" ? options.context.trim() : "";
-  insertRun(runId, options.userInput, [], ctx || undefined, "running");
+  const source =
+    options.searchMode === "homepage"
+      ? "homepage"
+      : options.searchMode === "cron"
+        ? "cron"
+        : "dashboard";
+  insertRun(runId, options.userInput, [], ctx || undefined, "running", source);
   if (options.attachUserId) {
     attachRunToUser(runId, options.attachUserId);
   }
@@ -948,12 +875,13 @@ export async function runPipelineFromRunId(
 
     for (const term of queries) {
       for (const sort of redditSorts) {
-        const batch = await search(term, {
+        const trafficMode = searchMode === "cron" ? "cron" : "dashboard";
+        const batch = await searchWithDashboardCronRetry(term, {
           maxPages: perKwPages,
           delayMs,
-          exactPhrase: false,
           sort,
           timeFilter: redditTimeFilter,
+          trafficMode,
         });
         redditSearchCalls++;
         for (const p of batch) {
@@ -976,7 +904,8 @@ export async function runPipelineFromRunId(
       idToSorts,
       searchQueries,
       userInput,
-      redditSorts
+      redditSorts,
+      searchMode === "dashboard" ? DASHBOARD_MAX_POST_AGE_DAYS : MAX_POST_AGE_DAYS
     );
     const uniqueAfterDedupe = postById.size;
 
@@ -986,17 +915,25 @@ export async function runPipelineFromRunId(
 
     let scorableCandidates = recentCandidates.filter((c) => hasEnoughContentForIntent(c.post));
     scorableCandidates = dedupeCandidatePostsById(scorableCandidates);
-    const thinCandidates = recentCandidates.filter((c) => !hasEnoughContentForIntent(c.post));
 
-    for (const candidate of thinCandidates) {
-      const rowId = postRowId(runId, candidate.post.id);
-      const fallback = finalizeIntent(0, "Post is too thin to show a clear buying signal.", null);
-      insertPostIntent(rowId, fallback.label, fallback.score, fallback.explanation, fallback.suggested_reply, fallback.is_high_intent);
-    }
+    const miniInputs: BatchPostInput[] = scorableCandidates.map((c) => ({
+      id: c.post.id ?? "",
+      title: (c.post.title ?? "").trim(),
+      body: (c.post.selftext ?? "").trim(),
+      score: c.post.score,
+      num_comments: c.post.num_comments,
+      created_utc: c.post.created_utc,
+      matchedKeywords: c.matchedKeywords,
+    }));
+    const miniScores = await scorePostsLightningMini(intentContext, miniInputs);
+    const passers = scorableCandidates.filter((c) => {
+      const id = (c.post.id ?? "").trim();
+      return (miniScores.get(id) ?? 0) > DASHBOARD_MINI_GATE_MIN;
+    });
 
     const batches: CandidatePost[][] = [];
-    for (let i = 0; i < scorableCandidates.length; i += INTENT_BATCH_SIZE) {
-      batches.push(scorableCandidates.slice(i, i + INTENT_BATCH_SIZE));
+    for (let i = 0; i < passers.length; i += INTENT_BATCH_SIZE) {
+      batches.push(passers.slice(i, i + INTENT_BATCH_SIZE));
     }
 
     const rankedCandidates: RankedCandidate[] = [];
@@ -1020,51 +957,23 @@ export async function runPipelineFromRunId(
         for (let i = 0; i < batch.length; i++) {
           const candidate = batch[i];
           const intent = results[i];
+          if (!intent) continue;
           const rowId = postRowId(runId, candidate.post.id);
-
-          if (intent) {
-            const finalScore = clampScore(intent.score);
-            const finalized = finalizeIntent(finalScore, intent.explanation, intent.suggested_reply);
-            insertPostIntent(rowId, finalized.label, finalized.score, finalized.explanation, finalized.suggested_reply, finalized.is_high_intent);
-            rankedCandidates.push({
-              ...candidate,
-              baseIntentScore: intent.score,
-              finalScore: finalized.score,
-              label: finalized.label,
-              isHighIntent: finalized.is_high_intent,
-              explanation: finalized.explanation,
-              suggestedReply: finalized.suggested_reply,
-            });
-          } else {
-            const fallback = finalizeIntent(clampScore(40), "Relevant recent post; batch scoring unavailable.", null);
-            insertPostIntent(rowId, fallback.label, fallback.score, fallback.explanation, fallback.suggested_reply, fallback.is_high_intent);
-            rankedCandidates.push({
-              ...candidate,
-              baseIntentScore: 40,
-              finalScore: 40,
-              label: fallback.label,
-              isHighIntent: fallback.is_high_intent,
-              explanation: fallback.explanation,
-              suggestedReply: null,
-            });
-          }
-        }
-      } catch (err) {
-        console.warn("Batch intent fallback:", err instanceof Error ? err.message : err);
-        for (const candidate of batch) {
-          const rowId = postRowId(runId, candidate.post.id);
-          const fallback = finalizeIntent(clampScore(40), "Relevant recent post; batch scoring unavailable.", null);
-          insertPostIntent(rowId, fallback.label, fallback.score, fallback.explanation, fallback.suggested_reply, fallback.is_high_intent);
+          const finalScore = clampScore(intent.score);
+          const finalized = finalizeIntent(finalScore, intent.explanation, intent.suggested_reply);
+          insertPostIntent(rowId, finalized.label, finalized.score, finalized.explanation, finalized.suggested_reply, finalized.is_high_intent);
           rankedCandidates.push({
             ...candidate,
-            baseIntentScore: 40,
-            finalScore: 40,
-            label: fallback.label,
-            isHighIntent: fallback.is_high_intent,
-            explanation: fallback.explanation,
-            suggestedReply: null,
+            baseIntentScore: intent.score,
+            finalScore: finalized.score,
+            label: finalized.label,
+            isHighIntent: finalized.is_high_intent,
+            explanation: finalized.explanation,
+            suggestedReply: finalized.suggested_reply,
           });
         }
+      } catch (err) {
+        console.warn("Batch intent skipped:", err instanceof Error ? err.message : err);
       }
     });
     const intentMs = Math.round(performance.now() - intentT0);
@@ -1081,8 +990,8 @@ export async function runPipelineFromRunId(
       searchTaskCount: redditSearchCalls,
       uniqueAfterDedupe,
       postsAfterFilters: recentCandidates.length,
-      scorableForLlm: scorableCandidates.length,
-      intentBatches: batches.length,
+      scorableForLlm: passers.length,
+      intentBatches: Math.ceil(miniInputs.length / LIGHTNING_MINI_CHUNK) + batches.length,
     };
 
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
