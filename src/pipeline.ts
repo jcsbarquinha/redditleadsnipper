@@ -21,6 +21,7 @@ import {
   updateRunKeywords,
   updateRunPipelinePhase,
   setRunPipelineError,
+  setRunHomepageCandidateCount,
 } from "./db/index.js";
 import { RedditRateLimitedError, search, type RedditTimeFilter } from "./reddit-search.js";
 
@@ -592,6 +593,7 @@ async function executeHomepageFastPipeline(params: {
     };
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
     logHomepageRunDebug(runId, homepageFunnel);
+    setRunHomepageCandidateCount(runId, recentCandidates.length);
     markRunCompleted(runId);
     return {
       runId,
@@ -689,6 +691,7 @@ async function executeHomepageFastPipeline(params: {
     };
     console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
     logHomepageRunDebug(runId, homepageFunnel);
+    setRunHomepageCandidateCount(runId, recentCandidates.length);
     markRunCompleted(runId);
     return {
       runId,
@@ -750,6 +753,7 @@ async function executeHomepageFastPipeline(params: {
   };
   console.log(JSON.stringify({ event: "pipeline_timings", runId, ...timings }));
   logHomepageRunDebug(runId, homepageFunnel);
+  setRunHomepageCandidateCount(runId, recentCandidates.length);
   markRunCompleted(runId);
   return {
     runId,

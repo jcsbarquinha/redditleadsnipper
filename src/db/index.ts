@@ -118,6 +118,7 @@ function runSchema(database: Database.Database): void {
   migrateManualSearchQuota(database);
   migrateRunPipelineProgress(database);
   migrateRunSource(database);
+  migrateRunHomepageCandidateCount(database);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_post_intent_is_high_intent ON post_intent(is_high_intent)`);
 }
 
@@ -137,6 +138,20 @@ function migrateRunSource(database: Database.Database): void {
     database.exec("ALTER TABLE runs ADD COLUMN source TEXT");
   }
   database.exec("UPDATE runs SET source = 'dashboard' WHERE source IS NULL");
+}
+
+function migrateRunHomepageCandidateCount(database: Database.Database): void {
+  const cols = (database.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((r) => r.name);
+  if (!cols.includes("homepage_candidate_count")) {
+    database.exec("ALTER TABLE runs ADD COLUMN homepage_candidate_count INTEGER");
+  }
+}
+
+/** Landing pipeline: `recentCandidates.length` for UI “threads scanned”. */
+export function setRunHomepageCandidateCount(runId: string, count: number): void {
+  getDb()
+    .prepare(`UPDATE runs SET homepage_candidate_count = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(Math.max(0, Math.floor(count)), runId);
 }
 
 function migrateLeadActions(database: Database.Database): void {
@@ -388,6 +403,50 @@ export function getRunProgressForUser(
   if (!row) return null;
   const totalPosts = row.status === "completed" ? getPostCountForRun(runId) : null;
   return { ...row, totalPosts };
+}
+
+/** Public landing poll: only `source = homepage` (runId is unguessable UUID). */
+export function getRunProgressForHomepage(runId: string): {
+  status: string;
+  pipeline_phase: string | null;
+  pipeline_error: string | null;
+  totalPosts: number | null;
+} | null {
+  const row = getDb()
+    .prepare(
+      `SELECT status, pipeline_phase, pipeline_error FROM runs WHERE id = ? AND source = 'homepage'`
+    )
+    .get(runId) as
+    | { status: string; pipeline_phase: string | null; pipeline_error: string | null }
+    | undefined;
+  if (!row) return null;
+  const totalPosts = row.status === "completed" ? getPostCountForRun(runId) : null;
+  return { ...row, totalPosts };
+}
+
+export function getHomepageRunRow(
+  runId: string
+): {
+  status: string;
+  user_input: string;
+  keywords: string;
+  pipeline_error: string | null;
+  homepage_candidate_count: number | null;
+} | null {
+  const row = getDb()
+    .prepare(
+      `SELECT status, user_input, keywords, pipeline_error, homepage_candidate_count FROM runs WHERE id = ? AND source = 'homepage'`
+    )
+    .get(runId) as
+    | {
+        status: string;
+        user_input: string;
+        keywords: string;
+        pipeline_error: string | null;
+        homepage_candidate_count: number | null;
+      }
+    | undefined;
+  return row ?? null;
 }
 
 /** Post row id = runId_redditId for uniqueness and FK from comments */

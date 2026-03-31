@@ -171,7 +171,9 @@
   ];
 
   let placeholderIndex = 0;
-  let stepInterval = null;
+  let homepagePollInterval = null;
+  let homepagePollFailCount = 0;
+  const HOMEPAGE_POLL_MAX_FAILURES = 5;
   let activeStepIndex = 0;
   let threadsAnalyzed = null;
   let almostThereTimer = null;
@@ -297,6 +299,69 @@
     if (inner) inner.textContent = text;
   }
 
+  function homepagePhaseToStep(phase) {
+    if (phase === "mapping") return 0;
+    if (phase === "collecting") return 1;
+    if (phase === "quality") return 2;
+    if (phase === "intent") return 3;
+    return 0;
+  }
+
+  function stopHomepagePoll() {
+    if (homepagePollInterval) {
+      clearInterval(homepagePollInterval);
+      homepagePollInterval = null;
+    }
+    homepagePollFailCount = 0;
+  }
+
+  function startHomepageProgressPoll(runId) {
+    stopHomepagePoll();
+    function pollOnce() {
+      fetch("/api/search/run-progress?runId=" + encodeURIComponent(runId))
+        .then(function (r) {
+          return r.json().then(function (body) {
+            if (!r.ok) {
+              var msg = body && body.error ? String(body.error) : r.statusText || "Progress failed";
+              throw new Error(msg);
+            }
+            return body;
+          });
+        })
+        .then(function (body) {
+          homepagePollFailCount = 0;
+          if (body.status === "completed") {
+            stopHomepagePoll();
+            return fetch("/api/search/result?runId=" + encodeURIComponent(runId)).then(function (r2) {
+              return r2.json().then(function (data2) {
+                if (!r2.ok) {
+                  throw new Error((data2 && data2.error) || r2.statusText || "Could not load results.");
+                }
+                showResults(data2);
+              });
+            });
+          }
+          if (body.status === "failed") {
+            stopHomepagePoll();
+            showError(body.error || "Search failed.");
+            return;
+          }
+          if (body.phase) {
+            setStep(homepagePhaseToStep(body.phase));
+          }
+        })
+        .catch(function (err) {
+          homepagePollFailCount += 1;
+          if (homepagePollFailCount >= HOMEPAGE_POLL_MAX_FAILURES) {
+            stopHomepagePoll();
+            showError(err instanceof Error ? err.message : "Network error.");
+          }
+        });
+    }
+    pollOnce();
+    homepagePollInterval = setInterval(pollOnce, 1500);
+  }
+
   function setStep(activeIndex) {
     const prev = activeStepIndex;
     activeStepIndex = activeIndex;
@@ -320,6 +385,7 @@
 
   function showLoading() {
     hideSearchError();
+    stopHomepagePoll();
     if (teaserSection) teaserSection.classList.add("hidden");
     errorSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
@@ -333,20 +399,11 @@
     threadsAnalyzed = null;
     clearAlmostThereTimer();
     intentShowingAlmost = false;
-    if (stepInterval) clearInterval(stepInterval);
-    stepInterval = null;
     setStep(0);
-    let step = 0;
-    stepInterval = setInterval(() => {
-      step = Math.min(step + 1, STEPS.length - 1);
-      setStep(step);
-      if (step >= STEPS.length - 1) clearInterval(stepInterval);
-    }, 5000);
   }
 
   function completeLoading(totalPosts) {
-    clearInterval(stepInterval);
-    stepInterval = null;
+    stopHomepagePoll();
     clearAlmostThereTimer();
     setStep(STEPS.length);
     if (skeletonCards) skeletonCards.classList.add("hidden");
@@ -361,8 +418,7 @@
   }
 
   function showError(msg) {
-    clearInterval(stepInterval);
-    stepInterval = null;
+    stopHomepagePoll();
     clearAlmostThereTimer();
     loadingSection.classList.add("hidden");
     resultsSection.classList.add("hidden");
@@ -649,7 +705,17 @@
         return;
       }
 
-      showResults(data);
+      if (res.status === 202 && data.accepted && data.runId) {
+        startHomepageProgressPoll(data.runId);
+        return;
+      }
+
+      if (data.runId && Array.isArray(data.leads)) {
+        showResults(data);
+        return;
+      }
+
+      showError("Unexpected response from server.");
     } catch (err) {
       showError("Network error. Is the API running?");
     } finally {

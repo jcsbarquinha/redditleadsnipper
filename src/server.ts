@@ -57,6 +57,9 @@ import {
   getManualSearchQuota,
   consumeManualDashboardSearch,
   getRunProgressForUser,
+  getRunProgressForHomepage,
+  getHomepageRunRow,
+  getPostCountForRun,
   type LeadRow,
   type ServiceStatusState,
 } from "./db/index.js";
@@ -1101,8 +1104,8 @@ let homepageSearchInFlight = 0;
 
 /**
  * POST /api/search
- * Body: { "query": "SEO content automation", "maxPages"?: number }
- * Runs the full pipeline (validation → keywords → search → shortlist → rank), then returns leads ranked by intent.
+ * Body: { "query": "SEO content automation" }
+ * Returns 202 { runId, accepted }; poll GET /api/search/run-progress then GET /api/search/result when completed.
  */
 app.post("/api/search", async (req, res) => {
   const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
@@ -1126,45 +1129,32 @@ app.post("/api/search", async (req, res) => {
     return;
   }
 
-  // Per the search flow: for each keyword we only fetch the first page results.
-  // (Future deep mode can widen this.)
   const maxPages = 1;
 
-  homepageSearchInFlight++;
   try {
-    const result = await runPipeline({
+    const pipelineT0 = performance.now();
+    const runId = await prepareRunRow({
       userInput: query,
       maxPagesPerKeyword: maxPages,
       searchMode: "homepage",
     });
-
-    const leads = getLeadsForRun(result.runId, 100);
-
-    res.json({
-      runId: result.runId,
-      query,
-      keywords: result.keywords,
-      totalPosts: result.totalPosts,
-      totalComments: 0,
-      timings: result.timings,
-      leads: leads.map((row) => ({
-        post_id: row.post_id,
-        run_id: row.run_id,
-        title: row.title,
-        full_link: row.full_link,
-        subreddit: row.subreddit,
-        author: row.author,
-        created_utc: row.created_utc,
-        score: row.score != null ? Math.round(row.score) : null,
-        label: row.label,
-        is_high_intent: row.is_high_intent === 1,
-        explanation: row.reasoning ?? null,
-        suggested_reply: row.suggested_reply ?? null,
-        selftext: row.selftext ?? null,
-        votes: row.post_score ?? 0,
-        num_comments: row.num_comments ?? 0,
-      })),
-    });
+    homepageSearchInFlight++;
+    res.status(202).json({ runId, accepted: true, query });
+    void runPipelineFromRunId(
+      runId,
+      {
+        userInput: query,
+        maxPagesPerKeyword: maxPages,
+        searchMode: "homepage",
+      },
+      pipelineT0
+    )
+      .catch((err) => {
+        console.error("Homepage pipeline error:", err);
+      })
+      .finally(() => {
+        homepageSearchInFlight--;
+      });
   } catch (err) {
     if (err instanceof InvalidSearchInputError) {
       res.status(400).json({ error: err.message });
@@ -1174,13 +1164,98 @@ app.post("/api/search", async (req, res) => {
       res.status(429).json({ error: err.message });
       return;
     }
-    console.error("Pipeline error:", err);
+    console.error("Homepage search error:", err);
     res.status(500).json({
-      error: err instanceof Error ? err.message : "Pipeline failed",
+      error: err instanceof Error ? err.message : "Search failed",
     });
-  } finally {
-    homepageSearchInFlight--;
   }
+});
+
+/** Public poll for landing-page pipeline phases (mapping → collecting → quality → intent). */
+app.get("/api/search/run-progress", (req, res) => {
+  const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : "";
+  if (!runId) {
+    res.status(400).json({ error: "Missing runId." });
+    return;
+  }
+  const row = getRunProgressForHomepage(runId);
+  if (!row) {
+    res.status(404).json({ error: "Run not found." });
+    return;
+  }
+  res.json({
+    runId,
+    status: row.status,
+    phase: row.pipeline_phase,
+    error: row.pipeline_error,
+    totalPosts: row.totalPosts,
+  });
+});
+
+/** Fetch homepage search results after run completes (same shape as legacy POST /api/search JSON). */
+app.get("/api/search/result", (req, res) => {
+  const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : "";
+  if (!runId) {
+    res.status(400).json({ error: "Missing runId." });
+    return;
+  }
+  const row = getHomepageRunRow(runId);
+  if (!row) {
+    res.status(404).json({ error: "Run not found." });
+    return;
+  }
+  if (row.status === "failed") {
+    res.status(500).json({
+      error: row.pipeline_error || "Search failed. Try again.",
+      runId,
+    });
+    return;
+  }
+  if (row.status !== "completed") {
+    res.status(409).json({ error: "Search not finished yet.", runId, status: row.status });
+    return;
+  }
+
+  let keywords: string[] = [];
+  try {
+    keywords = JSON.parse(row.keywords) as string[];
+    if (!Array.isArray(keywords)) keywords = [];
+  } catch {
+    keywords = [];
+  }
+
+  const query = row.user_input;
+  const leads = getLeadsForRun(runId, 100);
+  const totalPosts =
+    row.homepage_candidate_count != null && Number.isFinite(Number(row.homepage_candidate_count))
+      ? Number(row.homepage_candidate_count)
+      : getPostCountForRun(runId);
+
+  res.json({
+    runId,
+    query,
+    keywords,
+    totalPosts,
+    totalComments: 0,
+    timings: { searchMode: "homepage" as const },
+    leads: leads.map((lr) => ({
+      post_id: lr.post_id,
+      run_id: lr.run_id,
+      title: lr.title,
+      full_link: lr.full_link,
+      subreddit: lr.subreddit,
+      author: lr.author,
+      created_utc: lr.created_utc,
+      score: lr.score != null ? Math.round(lr.score) : null,
+      label: lr.label,
+      is_high_intent: lr.is_high_intent === 1,
+      explanation: lr.reasoning ?? null,
+      suggested_reply: lr.suggested_reply ?? null,
+      selftext: lr.selftext ?? null,
+      votes: lr.post_score ?? 0,
+      num_comments: lr.num_comments ?? 0,
+    })),
+  });
 });
 
 // Dashboard page (must be before static so /dashboard serves the page)
@@ -1222,7 +1297,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`  Stripe: ${stripeEnabled ? "enabled" : "not configured (set STRIPE_SECRET_KEY in .env)"}`);
   console.log("  Search API: no IP rate limit (add middleware in production if needed)");
   console.log("  Landing: GET /");
-  console.log("  API:     POST /api/search with { \"query\": \"...\" }");
+  console.log("  API:     POST /api/search → 202 + poll GET /api/search/run-progress → GET /api/search/result");
   if (stripeEnabled) console.log("  Unlock:   POST /api/create-checkout → Stripe → GET /welcome → /dashboard");
   const wh = getStripeWebhookSecret();
   if (stripeEnabled) {
