@@ -30,7 +30,7 @@ export type RedditListingSort = "new" | "relevance";
 import { type SearchMode, getSearchModeRedditParams } from "./search-modes.js";
 import { InvalidSearchInputError, validateUserInput } from "./input-validation.js";
 import type { RedditPost } from "./types.js";
-import { POST_DISCOVERY_MAX_AGE_DAYS } from "./constants.js";
+import { CRON_MAX_POST_AGE_DAYS, POST_DISCOVERY_MAX_AGE_DAYS } from "./constants.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 /** Drop posts older than this many days (independent of Reddit `t=` window). */
@@ -902,6 +902,7 @@ export async function runPipelineFromRunId(
 
     const redditMs = Math.round(performance.now() - redditT0);
     updateRunPipelinePhase(runId, "quality");
+    const maxPostAgeDays = searchMode === "cron" ? CRON_MAX_POST_AGE_DAYS : DASHBOARD_MAX_POST_AGE_DAYS;
     const recentCandidates = postsToRecentCandidatesPerKeyword(
       postById,
       idToKeywords,
@@ -909,7 +910,7 @@ export async function runPipelineFromRunId(
       searchQueries,
       userInput,
       redditSorts,
-      searchMode === "dashboard" ? DASHBOARD_MAX_POST_AGE_DAYS : MAX_POST_AGE_DAYS
+      maxPostAgeDays
     );
     const uniqueAfterDedupe = postById.size;
 

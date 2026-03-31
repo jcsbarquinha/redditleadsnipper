@@ -4,6 +4,9 @@
  */
 export const POST_DISCOVERY_MAX_AGE_DAYS = 4;
 
+/** Saved-search cron: cap post age to match Reddit `t=day` in {@link import("./search-modes.js").getSearchModeRedditParams}. */
+export const CRON_MAX_POST_AGE_DAYS = 1;
+
 /**
  * Reddit result pages per (keyword × sort) for dashboard, saved-search cron, and scheduler CLI.
  * Homepage `/api/search` also uses 1 page (see server).
