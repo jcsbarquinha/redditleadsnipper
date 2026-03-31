@@ -47,7 +47,8 @@ const REDDIT_LIMITER_MAX_CONCURRENCY = envInt(
 );
 const REDDIT_FETCH_TIMEOUT_MS = envInt("REDDIT_FETCH_TIMEOUT_MS", _isProdNode ? 45_000 : 30_000);
 const REDDIT_ROTATING_PROXY_URL = (process.env.REDDIT_ROTATING_PROXY_URL || "").trim();
-const REDDIT_PROXY_MODES = new Set<RedditTrafficMode>(["homepage", "dashboard"]);
+/** Use rotating proxy for all server-side Reddit traffic that hits the public .json search (not CLI). */
+const REDDIT_PROXY_MODES = new Set<RedditTrafficMode>(["homepage", "dashboard", "cron"]);
 
 /** Shown to users when Reddit keeps returning 429 after a short retry. */
 export const REDDIT_RATE_LIMIT_MESSAGE =
