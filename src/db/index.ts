@@ -114,6 +114,7 @@ function runSchema(database: Database.Database): void {
   migrateLandingLeadFeedback(database);
   migrateSavedSearches(database);
   migrateSavedSearchProfileLink(database);
+  migrateSavedSearchEmailAlerts(database);
   migrateServiceStatus(database);
   migrateManualSearchQuota(database);
   migrateRunPipelineProgress(database);
@@ -236,6 +237,24 @@ function migrateSavedSearchProfileLink(database: Database.Database): void {
     WHERE search_profile_id IS NULL
       AND EXISTS (SELECT 1 FROM search_profiles sp2 WHERE sp2.user_id = saved_searches.user_id AND sp2.is_current = 1)
   `);
+}
+
+/** Default alert types: all categories on (any intent score &gt; 70). */
+export const DEFAULT_EMAIL_ALERT_TYPES_JSON = '{"hot":true,"warm":true,"recent":true}';
+
+function migrateSavedSearchEmailAlerts(database: Database.Database): void {
+  const cols = (database.prepare("PRAGMA table_info(saved_searches)").all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("email_alerts_enabled")) {
+    database.exec("ALTER TABLE saved_searches ADD COLUMN email_alerts_enabled INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!cols.includes("email_alert_types_json")) {
+    database.exec(
+      `ALTER TABLE saved_searches ADD COLUMN email_alert_types_json TEXT NOT NULL DEFAULT '${DEFAULT_EMAIL_ALERT_TYPES_JSON}'`
+    );
+  }
+  if (!cols.includes("last_digest_sent_at")) {
+    database.exec("ALTER TABLE saved_searches ADD COLUMN last_digest_sent_at TEXT");
+  }
 }
 
 function migrateSearchProfiles(database: Database.Database): void {
@@ -631,6 +650,11 @@ export function findUserByEmail(email: string): UserRow | undefined {
   return row;
 }
 
+export function findUserById(userId: string): UserRow | undefined {
+  const row = getDb().prepare("SELECT * FROM users WHERE id = ?").get(userId.trim()) as UserRow | undefined;
+  return row;
+}
+
 export function createUser(id: string, email: string, stripeCustomerId?: string | null): void {
   getDb()
     .prepare(
@@ -657,16 +681,32 @@ export function attachRunToUser(runId: string, userId: string): void {
 
 export function getRunById(
   runId: string
-): { id: string; user_id: string | null; user_input: string; context: string | null; search_profile_id: string | null } | undefined {
+):
+  | {
+      id: string;
+      user_id: string | null;
+      user_input: string;
+      context: string | null;
+      search_profile_id: string | null;
+      source: string | null;
+      created_at: string;
+    }
+  | undefined {
   const row = getDb()
-    .prepare("SELECT id, user_id, user_input, context, search_profile_id FROM runs WHERE id = ?")
-    .get(runId) as {
-    id: string;
-    user_id: string | null;
-    user_input: string;
-    context: string | null;
-    search_profile_id: string | null;
-  } | undefined;
+    .prepare(
+      "SELECT id, user_id, user_input, context, search_profile_id, source, created_at FROM runs WHERE id = ?"
+    )
+    .get(runId) as
+    | {
+        id: string;
+        user_id: string | null;
+        user_input: string;
+        context: string | null;
+        search_profile_id: string | null;
+        source: string | null;
+        created_at: string;
+      }
+    | undefined;
   return row;
 }
 
@@ -826,6 +866,45 @@ export function getLeadsForUser(
   return rows;
 }
 
+/**
+ * Leads from a cron run that are new to the user's dashboard: intent &gt; 70, not user-deleted,
+ * and no older run (same profile) already had the same reddit_id above the same bar.
+ */
+export function getCronDigestNewLeads(runId: string, userId: string): LeadRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT p.id AS post_id, p.run_id, r.user_input, pi.score, pi.label, p.title, p.full_link, p.subreddit, p.author, p.created_utc,
+              pi.reasoning, pi.suggested_reply, pi.is_high_intent,
+              0 AS is_archived, 0 AS is_deleted, p.selftext, p.score AS post_score,
+              COALESCE(p.num_comments, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)) AS num_comments,
+              NULL AS feedback_vote
+       FROM posts p
+       JOIN runs r ON p.run_id = r.id
+       JOIN post_intent pi ON p.id = pi.post_id
+       LEFT JOIN lead_actions la ON la.user_id = ? AND la.post_id = p.id
+       WHERE p.run_id = ?
+         AND r.user_id = ?
+         AND r.source = 'cron'
+         AND pi.score IS NOT NULL
+         AND pi.score > 70
+         AND r.search_profile_id IS NOT NULL
+         AND (la.action IS NULL OR la.action != 'deleted')
+         AND NOT EXISTS (
+           SELECT 1 FROM posts p2
+           JOIN runs r2 ON p2.run_id = r2.id
+           JOIN post_intent pi2 ON p2.id = pi2.post_id
+           WHERE r2.user_id = ?
+             AND r2.search_profile_id = r.search_profile_id
+             AND datetime(r2.created_at) < datetime(r.created_at)
+             AND p2.reddit_id = p.reddit_id
+             AND pi2.score IS NOT NULL AND pi2.score > 70
+         )
+       ORDER BY pi.score DESC, p.created_utc DESC NULLS LAST, p.score DESC NULLS LAST`
+    )
+    .all(userId, runId, userId, userId) as LeadRow[];
+  return rows;
+}
+
 /** Archive or delete a lead for a user. */
 export function setLeadAction(
   userId: string,
@@ -903,8 +982,32 @@ export interface SavedSearchRow {
   last_run_status: string | null;
   last_error: string | null;
   locked_until: string | null;
+  email_alerts_enabled: number;
+  email_alert_types_json: string;
+  last_digest_sent_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface EmailAlertTypes {
+  hot: boolean;
+  warm: boolean;
+  recent: boolean;
+}
+
+export function parseEmailAlertTypesJson(raw: string | null | undefined): EmailAlertTypes {
+  const all: EmailAlertTypes = { hot: true, warm: true, recent: true };
+  if (typeof raw !== "string" || !raw.trim()) return all;
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      hot: typeof o.hot === "boolean" ? o.hot : true,
+      warm: typeof o.warm === "boolean" ? o.warm : true,
+      recent: typeof o.recent === "boolean" ? o.recent : true,
+    };
+  } catch {
+    return all;
+  }
 }
 
 export interface SearchProfileRow {
@@ -1146,6 +1249,26 @@ export function markSavedSearchRunFailure(savedSearchId: string, errorMessage: s
        WHERE id = ?`
     )
     .run(nowIso, nextRunIso, err, savedSearchId);
+}
+
+export function updateSavedSearchEmailPreferences(
+  userId: string,
+  enabled: boolean,
+  types: EmailAlertTypes
+): boolean {
+  const json = JSON.stringify({ hot: types.hot, warm: types.warm, recent: types.recent });
+  const info = getDb()
+    .prepare(
+      `UPDATE saved_searches SET email_alerts_enabled = ?, email_alert_types_json = ?, updated_at = datetime('now') WHERE user_id = ?`
+    )
+    .run(enabled ? 1 : 0, json, userId);
+  return info.changes > 0;
+}
+
+export function markSavedSearchDigestSentAt(savedSearchId: string, sentAtIso: string): void {
+  getDb()
+    .prepare(`UPDATE saved_searches SET last_digest_sent_at = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(sentAtIso, savedSearchId);
 }
 
 // --- Service status checks (shared uptime history) ---

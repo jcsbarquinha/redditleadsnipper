@@ -1,5 +1,6 @@
 import { DASHBOARD_CRON_MAX_PAGES_PER_KEYWORD } from "./constants.js";
 import { runPipeline } from "./pipeline.js";
+import { maybeSendCronLeadDigest } from "./cron-lead-digest.js";
 import {
   attachRunToUser,
   claimDueSavedSearches,
@@ -70,6 +71,7 @@ export async function runSavedSearchSchedulerTick(
       markSavedSearchRunSuccess(saved.id, saved.interval_minutes || 60);
       result.succeeded += 1;
       result.runIds.push(pipelineResult.runId);
+      await maybeSendCronLeadDigest(saved.id, saved.user_id, pipelineResult.runId);
     } catch (err) {
       result.failed += 1;
       const msg = err instanceof Error ? err.message : String(err);

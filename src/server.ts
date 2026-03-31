@@ -23,8 +23,9 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
-import nodemailer from "nodemailer";
 import { performance } from "node:perf_hooks";
+import { hasUnlimitedAccessByEmail, isEntitled } from "./entitlements.js";
+import { isMailConfigured, sendTransactionalMail } from "./mail.js";
 import { prepareRunRow, runPipeline, runPipelineFromRunId } from "./pipeline.js";
 import { RedditRateLimitedError } from "./reddit-search.js";
 import {
@@ -49,6 +50,8 @@ import {
   setLandingLeadFeedback,
   upsertSavedSearchForUser,
   getSavedSearchForUser,
+  updateSavedSearchEmailPreferences,
+  parseEmailAlertTypesJson,
   ensureCurrentSearchProfileForInput,
   getCurrentSearchProfileForUser,
   setRunSearchProfile,
@@ -69,12 +72,6 @@ import { runSavedSearchSchedulerTick } from "./scheduler.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, "..", "public");
-const UNLIMITED_ACCESS_EMAILS = new Set<string>(["jcsbarquinha@gmail.com"]);
-
-function hasUnlimitedAccessByEmail(email: string | null | undefined): boolean {
-  if (!email) return false;
-  return UNLIMITED_ACCESS_EMAILS.has(String(email).trim().toLowerCase());
-}
 
 function getUnlimitedManualSearchQuota() {
   return {
@@ -106,17 +103,10 @@ const SESSION_COOKIE_NAME = getSessionCookieName();
 const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const POST_LOGIN_REDIRECT_COOKIE = "post_login_redirect";
 
-/** Active paid entitlement window (Stripe welcome sets entitled_until). */
-function isEntitled(entitledUntil: string | null | undefined): boolean {
-  if (!entitledUntil) return false;
-  const d = new Date(String(entitledUntil));
-  return Number.isFinite(d.getTime()) && d.getTime() > Date.now();
-}
-
 // Allow frontend (any origin for MVP; restrict later)
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", process.env.CORS_ORIGIN || "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   next();
 });
@@ -584,9 +574,47 @@ app.get("/api/dashboard/saved-search", requireAuth, (req, res) => {
           next_run_at: row.next_run_at,
           last_run_status: row.last_run_status,
           last_error: row.last_error,
+          email_alerts_enabled: row.email_alerts_enabled === 1,
+          email_alert_types: parseEmailAlertTypesJson(row.email_alert_types_json),
         }
       : null,
   });
+});
+
+app.patch("/api/dashboard/email-alerts", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string } }).user;
+  const body = req.body as {
+    email_alerts_enabled?: boolean;
+    email_alert_types?: { hot?: boolean; warm?: boolean; recent?: boolean };
+  };
+  const enabledRaw = body?.email_alerts_enabled;
+  const typesRaw = body?.email_alert_types;
+  const hasEnabled = typeof enabledRaw === "boolean";
+  const hasTypes = typesRaw != null && typeof typesRaw === "object";
+  if (!hasEnabled && !hasTypes) {
+    res.status(400).json({ error: "Provide email_alerts_enabled and/or email_alert_types." });
+    return;
+  }
+  const existing = getSavedSearchForUser(user.id);
+  if (!existing) {
+    res.status(404).json({ error: "No saved search found for this account." });
+    return;
+  }
+  const nextEnabled = hasEnabled ? enabledRaw : existing.email_alerts_enabled === 1;
+  const parsedExisting = parseEmailAlertTypesJson(existing.email_alert_types_json);
+  const nextTypes = hasTypes
+    ? {
+        hot: typeof typesRaw!.hot === "boolean" ? typesRaw!.hot : parsedExisting.hot,
+        warm: typeof typesRaw!.warm === "boolean" ? typesRaw!.warm : parsedExisting.warm,
+        recent: typeof typesRaw!.recent === "boolean" ? typesRaw!.recent : parsedExisting.recent,
+      }
+    : parsedExisting;
+  const updated = updateSavedSearchEmailPreferences(user.id, nextEnabled, nextTypes);
+  if (!updated) {
+    res.status(500).json({ error: "Could not save email alert preferences." });
+    return;
+  }
+  res.json({ ok: true, email_alerts_enabled: nextEnabled, email_alert_types: nextTypes });
 });
 
 /**
@@ -828,13 +856,7 @@ app.post("/api/auth/magic-link/request", async (req, res) => {
     return;
   }
 
-  const SMTP_HOST = process.env.SMTP_HOST?.trim() || "";
-  const SMTP_PORT = Number(process.env.SMTP_PORT || "");
-  const SMTP_USER = process.env.SMTP_USER?.trim() || "";
-  const SMTP_PASS = process.env.SMTP_PASS?.trim() || "";
-  const EMAIL_FROM = process.env.EMAIL_FROM?.trim() || "";
-
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !EMAIL_FROM) {
+  if (!isMailConfigured()) {
     res.status(503).json({ error: "Email is not configured. Set SMTP_* + EMAIL_FROM." });
     return;
   }
@@ -857,16 +879,8 @@ app.post("/api/auth/magic-link/request", async (req, res) => {
   const baseUrl = getBaseUrl();
   const magicLink = `${baseUrl}/magic-link?token=${encodeURIComponent(token)}`;
 
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-
   try {
-    await transporter.sendMail({
-      from: EMAIL_FROM,
+    await sendTransactionalMail({
       to: email,
       subject: "Your Leadsnipe sign-in link",
       text: `Click to sign in: ${magicLink}\n\nThis link expires in 15 minutes.`,
