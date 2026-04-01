@@ -340,7 +340,17 @@
       }
       if (metaLine) {
         if (entitled && data.entitled_until) {
-          metaLine.textContent = "Access through " + formatEntitledUntil(data.entitled_until) + ".";
+          if (data.subscription_cancel_at_period_end && data.has_stripe_subscription) {
+            metaLine.textContent =
+              "Your subscription is canceled and won’t renew. You keep full access until " +
+              formatEntitledUntil(data.entitled_until) +
+              ".";
+          } else if (data.has_stripe_subscription) {
+            metaLine.textContent =
+              "Current period ends " + formatEntitledUntil(data.entitled_until) + " (renews automatically unless canceled).";
+          } else {
+            metaLine.textContent = "Access through " + formatEntitledUntil(data.entitled_until) + ".";
+          }
         } else if (!entitled) {
           metaLine.textContent = "Unlock from the dashboard to see ranked leads and run saved searches.";
         } else {

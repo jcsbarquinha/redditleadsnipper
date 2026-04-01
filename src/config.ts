@@ -77,6 +77,24 @@ export function getStripeTestPromoCode(): string | undefined {
   return s || undefined;
 }
 
+/**
+ * Recurring Price IDs from Stripe Dashboard (Products → monthly/yearly prices).
+ * When **both** are set, Checkout uses `mode: "subscription"`. Otherwise the app keeps one-time `payment` mode (legacy).
+ */
+export function getStripePriceIdMonthly(): string | undefined {
+  const s = process.env.STRIPE_PRICE_ID_MONTHLY?.trim();
+  return s || undefined;
+}
+
+export function getStripePriceIdYearly(): string | undefined {
+  const s = process.env.STRIPE_PRICE_ID_YEARLY?.trim();
+  return s || undefined;
+}
+
+export function useStripeSubscriptionCheckout(): boolean {
+  return !!(getStripePriceIdMonthly() && getStripePriceIdYearly());
+}
+
 /** Name of the session cookie. */
 export function getSessionCookieName(): string {
   return process.env.SESSION_COOKIE_NAME?.trim() || "leadsnipe_session";

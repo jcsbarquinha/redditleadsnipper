@@ -14,6 +14,9 @@ import {
   getStripeCurrency,
   getSessionCookieName,
   getStripeTestPromoCode,
+  getStripePriceIdMonthly,
+  getStripePriceIdYearly,
+  useStripeSubscriptionCheckout,
 } from "./config.js";
 loadConfig();
 
@@ -40,6 +43,10 @@ import {
   consumeMagicLink,
   setEntitledUntil,
   setStripeCustomerId,
+  setSubscriptionFromStripe,
+  clearStripeSubscription,
+  findUserByStripeSubscriptionId,
+  findUserByStripeCustomerId,
   getLeadsForUser,
   getRunsForUser,
   setLeadAction,
@@ -105,6 +112,14 @@ const SESSION_COOKIE_NAME = getSessionCookieName();
 const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const POST_LOGIN_REDIRECT_COOKIE = "post_login_redirect";
 
+/** End of current paid period (Stripe puts `current_period_end` on items in newer API shapes). */
+function subscriptionPeriodEndUnix(sub: Stripe.Subscription): number | null {
+  const first = sub.items?.data?.[0];
+  if (first && typeof first.current_period_end === "number") return first.current_period_end;
+  const legacy = (sub as { current_period_end?: number }).current_period_end;
+  return typeof legacy === "number" ? legacy : null;
+}
+
 // Allow frontend (any origin for MVP; restrict later)
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", process.env.CORS_ORIGIN || "*");
@@ -116,13 +131,21 @@ app.use((_req, res, next) => {
 app.options("*", (_req, res) => res.sendStatus(204));
 
 /**
- * Apply entitlement + optional run attach from a paid Checkout Session (used by GET /welcome and Stripe webhooks).
+ * Apply entitlement + optional run attach from Checkout (subscription or legacy one-time payment).
+ * Used by GET /welcome and Stripe webhooks.
  */
-function applyPaidCheckoutFromSession(session: Stripe.Checkout.Session): { userId: string; runId: string } | null {
-  // $0 / 100% coupon checkouts use `no_payment_required`, not `paid` (Stripe docs: no-cost orders).
-  const ok =
+async function finalizeCheckoutAndEntitlement(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session
+): Promise<{ userId: string; runId: string } | null> {
+  const paidOk =
     session.payment_status === "paid" || session.payment_status === "no_payment_required";
-  if (!ok) return null;
+  if (session.mode === "subscription") {
+    if (session.status !== "complete") return null;
+  } else if (!paidOk) {
+    return null;
+  }
+
   const emailRaw = session.customer_details?.email ?? session.customer_email;
   const email = typeof emailRaw === "string" && emailRaw.length > 0 ? emailRaw.trim().toLowerCase() : null;
   if (!email) return null;
@@ -145,10 +168,27 @@ function applyPaidCheckoutFromSession(session: Stripe.Checkout.Session): { userI
 
   setStripeCustomerId(user.id, stripeCustomerId);
 
-  const entitlementMs =
-    billingInterval === "yearly" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
-  const entitledUntil = new Date(Date.now() + entitlementMs).toISOString();
-  setEntitledUntil(user.id, entitledUntil);
+  if (session.mode === "subscription") {
+    const subRef = session.subscription;
+    const subId = typeof subRef === "string" ? subRef : (subRef as Stripe.Subscription | null)?.id ?? null;
+    if (!subId) return null;
+    const subRaw = await stripe.subscriptions.retrieve(subId, { expand: ["items.data.price"] });
+    const sub = subRaw as Stripe.Subscription;
+    const periodEnd = subscriptionPeriodEndUnix(sub);
+    if (periodEnd == null) return null;
+    const entitledUntil = new Date(periodEnd * 1000).toISOString();
+    setSubscriptionFromStripe(user.id, {
+      entitledUntilIso: entitledUntil,
+      stripeSubscriptionId: sub.id,
+      status: sub.status,
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
+    });
+  } else {
+    const entitlementMs =
+      billingInterval === "yearly" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+    const entitledUntil = new Date(Date.now() + entitlementMs).toISOString();
+    setEntitledUntil(user.id, entitledUntil);
+  }
 
   if (runId) {
     let run = getRunById(runId);
@@ -156,8 +196,6 @@ function applyPaidCheckoutFromSession(session: Stripe.Checkout.Session): { userI
       attachRunToUser(runId, user.id);
       run = getRunById(runId);
     }
-    // Match POST /api/dashboard/attach-pending-run: dashboard lists/filters by search profile; runs
-    // without search_profile_id vanish when the user has any other current profile.
     if (run && run.user_id === user.id && run.user_input.trim()) {
       const profile = ensureCurrentSearchProfileForInput(user.id, run.user_input, run.context ?? null);
       if (profile) {
@@ -168,6 +206,33 @@ function applyPaidCheckoutFromSession(session: Stripe.Checkout.Session): { userI
   }
 
   return { userId: user.id, runId };
+}
+
+async function syncSubscriptionFromStripeObject(sub: Stripe.Subscription): Promise<void> {
+  let user = findUserByStripeSubscriptionId(sub.id);
+  if (!user) {
+    const cid = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
+    if (cid) user = findUserByStripeCustomerId(cid);
+  }
+  if (!user) return;
+  const s = sub as Stripe.Subscription;
+  const pe = subscriptionPeriodEndUnix(s);
+  if (pe == null) return;
+  const entitledUntil = new Date(pe * 1000).toISOString();
+  setSubscriptionFromStripe(user.id, {
+    entitledUntilIso: entitledUntil,
+    stripeSubscriptionId: s.id,
+    status: s.status,
+    cancelAtPeriodEnd: s.cancel_at_period_end,
+  });
+}
+
+function applySubscriptionDeleted(sub: Stripe.Subscription): void {
+  const user = findUserByStripeSubscriptionId(sub.id);
+  if (!user) return;
+  const endIso = sub.ended_at ? new Date(sub.ended_at * 1000).toISOString() : new Date().toISOString();
+  setEntitledUntil(user.id, endIso);
+  clearStripeSubscription(user.id);
 }
 
 /** Stripe webhook — must use raw body (signature verification). */
@@ -196,14 +261,25 @@ app.post(
       return;
     }
 
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object as Stripe.Checkout.Session;
+    void (async () => {
       try {
-        applyPaidCheckoutFromSession(session);
+        if (event.type === "checkout.session.completed") {
+          const sess = event.data.object as Stripe.Checkout.Session;
+          const full = await stripe.checkout.sessions.retrieve(sess.id, {
+            expand: ["subscription", "customer"],
+          });
+          await finalizeCheckoutAndEntitlement(stripe, full);
+        } else if (event.type === "customer.subscription.updated") {
+          const sub = event.data.object as Stripe.Subscription;
+          await syncSubscriptionFromStripeObject(sub);
+        } else if (event.type === "customer.subscription.deleted") {
+          const sub = event.data.object as Stripe.Subscription;
+          applySubscriptionDeleted(sub);
+        }
       } catch (e) {
-        console.error("applyPaidCheckoutFromSession (webhook):", e);
+        console.error("Stripe webhook handler:", e);
       }
-    }
+    })();
 
     res.json({ received: true });
   }
@@ -407,6 +483,26 @@ app.post("/api/create-checkout", (req, res) => {
         }
       }
 
+      if (useStripeSubscriptionCheckout()) {
+        const priceId =
+          billing === "yearly" ? getStripePriceIdYearly()! : getStripePriceIdMonthly()!;
+        const subSession = await stripe.checkout.sessions.create({
+          mode: "subscription",
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: `${baseUrl}/welcome?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${baseUrl}/?canceled=1#pricing`,
+          metadata: {
+            billing_interval: billing,
+            ...(runId
+              ? { run_id: runId, query: run?.user_input ?? "" }
+              : { checkout_kind: "dashboard_only" }),
+          },
+          ...(discounts ? { discounts } : { allow_promotion_codes: true }),
+        });
+        res.json({ url: subSession.url });
+        return;
+      }
+
       const unitAmount =
         billing === "yearly" ? getStripeUnlockYearlyAmountCents() : getStripeUnlockAmountCents();
       const productDescription = run
@@ -482,7 +578,7 @@ app.get("/welcome", async (req, res) => {
   let session: Stripe.Checkout.Session;
   try {
     session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["customer"],
+      expand: ["customer", "subscription"],
     });
   } catch (err) {
     console.error("Stripe retrieve session error:", err);
@@ -490,7 +586,7 @@ app.get("/welcome", async (req, res) => {
     return;
   }
 
-  const applied = applyPaidCheckoutFromSession(session);
+  const applied = await finalizeCheckoutAndEntitlement(stripe, session);
   if (!applied) {
     if (session.payment_status !== "paid") {
       res.redirect(getBaseUrl() + "/?error=payment_not_completed");
@@ -565,6 +661,9 @@ app.get("/api/account/summary", requireAuth, async (req, res) => {
     entitled: hasUnlimitedAccess || isEntitled(user.entitled_until),
     has_unlimited_access: hasUnlimitedAccess,
     has_billing_portal: hasBillingPortal,
+    subscription_status: row?.subscription_status ?? null,
+    subscription_cancel_at_period_end: row?.subscription_cancel_at_period_end === 1,
+    has_stripe_subscription: !!(row?.stripe_subscription_id?.trim()),
   });
 });
 
@@ -1402,6 +1501,11 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`Leadsnipe listening on 0.0.0.0:${PORT} (process.env.PORT=${JSON.stringify(process.env.PORT)})`);
   console.log(`  Base URL (for Stripe redirects): ${baseUrl}`);
   console.log(`  Stripe: ${stripeEnabled ? "enabled" : "not configured (set STRIPE_SECRET_KEY in .env)"}`);
+  if (stripeEnabled) {
+    console.log(
+      `  Checkout: ${useStripeSubscriptionCheckout() ? "subscription (STRIPE_PRICE_ID_MONTHLY + YEARLY)" : "one-time payment (legacy until Price IDs set)"}`
+    );
+  }
   console.log("  Search API: no IP rate limit (add middleware in production if needed)");
   console.log("  Landing: GET /  ·  Account: GET /account");
   console.log("  API:     POST /api/search → 202 + poll GET /api/search/run-progress → GET /api/search/result");

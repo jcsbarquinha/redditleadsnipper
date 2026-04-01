@@ -108,6 +108,7 @@ function runSchema(database: Database.Database): void {
   `);
   migratePostIntent(database);
   migrateUsersAndSessions(database);
+  migrateStripeSubscriptionColumns(database);
   migrateSearchProfiles(database);
   migrateLeadActions(database);
   migrateLeadFeedback(database);
@@ -340,6 +341,20 @@ function migrateUsersAndSessions(database: Database.Database): void {
   database.exec(`CREATE INDEX IF NOT EXISTS idx_runs_user_id ON runs(user_id)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`);
   database.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`);
+}
+
+function migrateStripeSubscriptionColumns(database: Database.Database): void {
+  const userCols = (database.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((r) => r.name);
+  if (!userCols.includes("stripe_subscription_id")) {
+    database.exec("ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT");
+  }
+  if (!userCols.includes("subscription_status")) {
+    database.exec("ALTER TABLE users ADD COLUMN subscription_status TEXT");
+  }
+  if (!userCols.includes("subscription_cancel_at_period_end")) {
+    database.exec("ALTER TABLE users ADD COLUMN subscription_cancel_at_period_end INTEGER NOT NULL DEFAULT 0");
+  }
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_users_stripe_subscription_id ON users(stripe_subscription_id)`);
 }
 
 export function closeDb(): void {
@@ -641,6 +656,9 @@ export interface UserRow {
   password_hash: string | null;
   stripe_customer_id: string | null;
   entitled_until: string | null;
+  stripe_subscription_id: string | null;
+  subscription_status: string | null;
+  subscription_cancel_at_period_end: number;
   created_at: string;
   updated_at: string;
 }
@@ -673,6 +691,62 @@ export function setEntitledUntil(userId: string, isoDatetime: string | null = nu
   getDb()
     .prepare(`UPDATE users SET entitled_until = ? WHERE id = ?`)
     .run(entitled, userId);
+}
+
+/** Sync Stripe Subscription fields + access end (`entitled_until` = end of current paid period). */
+export function setSubscriptionFromStripe(
+  userId: string,
+  opts: {
+    entitledUntilIso: string | null;
+    stripeSubscriptionId: string | null;
+    status: string | null;
+    cancelAtPeriodEnd: boolean;
+  }
+): void {
+  getDb()
+    .prepare(
+      `UPDATE users SET
+        entitled_until = ?,
+        stripe_subscription_id = ?,
+        subscription_status = ?,
+        subscription_cancel_at_period_end = ?,
+        updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(
+      opts.entitledUntilIso,
+      opts.stripeSubscriptionId,
+      opts.status,
+      opts.cancelAtPeriodEnd ? 1 : 0,
+      userId
+    );
+}
+
+export function clearStripeSubscription(userId: string): void {
+  getDb()
+    .prepare(
+      `UPDATE users SET
+        stripe_subscription_id = NULL,
+        subscription_status = 'canceled',
+        subscription_cancel_at_period_end = 0,
+        updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(userId);
+}
+
+export function findUserByStripeSubscriptionId(subscriptionId: string): UserRow | undefined {
+  const row = getDb()
+    .prepare("SELECT * FROM users WHERE stripe_subscription_id = ? LIMIT 1")
+    .get(subscriptionId.trim()) as UserRow | undefined;
+  return row;
+}
+
+export function findUserByStripeCustomerId(customerId: string): UserRow | undefined {
+  const row = getDb()
+    .prepare("SELECT * FROM users WHERE stripe_customer_id = ? LIMIT 1")
+    .get(customerId.trim()) as UserRow | undefined;
+  return row;
 }
 
 export function attachRunToUser(runId: string, userId: string): void {
