@@ -84,6 +84,11 @@ body.page-simple-topbar > main {
   justify-self: center;
 }
 
+/** Logo + right actions only (no center links). Homepage uses default 3-column grid + .header-nav. */
+body.header-no-center-nav .header-inner {
+  grid-template-columns: 1fr auto;
+}
+
 .header-actions {
   flex-shrink: 0;
   display: flex;
