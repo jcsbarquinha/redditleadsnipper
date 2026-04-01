@@ -27,18 +27,15 @@
     }
     .dashboard-page .account-menu-btn:hover { border-color: rgba(255, 69, 0, 0.45); box-shadow: 0 1px 8px rgba(0,0,0,0.06); }
     .dashboard-page .account-menu-btn[aria-expanded="true"] { border-color: rgba(255, 69, 0, 0.5); }
-    .dashboard-page .account-avatar {
-      width: 2rem;
-      height: 2rem;
-      border-radius: 9999px;
-      background: linear-gradient(145deg, rgba(255, 69, 0, 0.15), rgba(255, 69, 0, 0.05));
-      color: #c2410c;
-      font-size: 0.75rem;
-      font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      letter-spacing: -0.02em;
+    .dashboard-page .account-email-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.25;
+      max-width: min(92vw, 420px);
+      word-break: break-word;
+      text-align: left;
+      padding: 0.2rem 0.35rem 0.2rem 0.45rem;
     }
     .dashboard-page .account-chevron { font-size: 0.65rem; color: var(--text-muted); margin-right: 0.15rem; }
     .dashboard-page .account-menu-panel {
@@ -805,7 +802,7 @@
       <div class="header-actions">
         <div id="accountMenuWrap" class="account-menu-wrap hidden">
           <button type="button" id="accountMenuBtn" class="account-menu-btn" aria-expanded="false" aria-haspopup="true" aria-label="Account menu">
-            <span class="account-avatar" id="accountAvatar">?</span>
+            <span class="account-email-label" id="accountEmailLabel"></span>
             <span class="account-chevron" aria-hidden="true">▾</span>
           </button>
           <div id="accountMenuPanel" class="account-menu-panel hidden" role="menu">
@@ -2511,12 +2508,13 @@
       if (accountMenuWrapEl) accountMenuWrapEl.classList.remove("hidden");
       var headerSignInBtnEl = document.getElementById("headerSignInBtn");
       if (headerSignInBtnEl) headerSignInBtnEl.classList.add("hidden");
-      var av = document.getElementById("accountAvatar");
-      if (av && me.email) {
+      var emailLabel = document.getElementById("accountEmailLabel");
+      if (emailLabel && me.email) {
         var em = String(me.email);
-        var local = em.split("@")[0].replace(/[^a-zA-Z0-9]/g, " ").trim().split(/\s+/);
-        var ini = local.length >= 2 ? (local[0][0] + local[1][0]).toUpperCase() : (local[0] || em).slice(0, 2).toUpperCase();
-        av.textContent = ini || "?";
+        emailLabel.textContent = em;
+        emailLabel.setAttribute("title", em);
+        var menuBtn = document.getElementById("accountMenuBtn");
+        if (menuBtn) menuBtn.setAttribute("aria-label", "Account menu — " + em);
       }
       if (typeof me.entitled === "boolean") {
         setDashEntitled(me.entitled);

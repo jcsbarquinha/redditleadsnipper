@@ -1330,8 +1330,17 @@ app.get("/dashboard", (_req, res) => {
   res.sendFile(join(publicDir, "dashboard.html"));
 });
 
-app.get("/account", (_req, res) => {
+function sendAccountPage(_req: express.Request, res: express.Response): void {
   res.sendFile(join(publicDir, "account.html"));
+}
+
+app.get("/account", sendAccountPage);
+app.get("/account/", (_req, res) => {
+  res.redirect(301, "/account");
+});
+/** Direct file URL → canonical path (helps local testing). */
+app.get("/account.html", (_req, res) => {
+  res.redirect(301, "/account");
 });
 
 // Login page (must be before static so /login serves the page)

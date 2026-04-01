@@ -27,18 +27,15 @@
     }
     .account-menu-btn:hover { border-color: rgba(255, 69, 0, 0.45); box-shadow: 0 1px 8px rgba(0,0,0,0.06); }
     .account-menu-btn[aria-expanded="true"] { border-color: rgba(255, 69, 0, 0.5); }
-    .account-avatar {
-      width: 2rem;
-      height: 2rem;
-      border-radius: 9999px;
-      background: linear-gradient(145deg, rgba(255, 69, 0, 0.15), rgba(255, 69, 0, 0.05));
-      color: #c2410c;
-      font-size: 0.75rem;
-      font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      letter-spacing: -0.02em;
+    .account-email-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.25;
+      max-width: min(92vw, 420px);
+      word-break: break-word;
+      text-align: left;
+      padding: 0.2rem 0.35rem 0.2rem 0.45rem;
     }
     .account-chevron { font-size: 0.65rem; color: var(--text-muted); margin-right: 0.15rem; }
     .account-menu-panel {
@@ -198,7 +195,7 @@
       <div class="header-actions">
         <div id="accountMenuWrap" class="account-menu-wrap hidden">
           <button type="button" id="accountMenuBtn" class="account-menu-btn" aria-expanded="false" aria-haspopup="true" aria-label="Account menu">
-            <span class="account-avatar" id="accountAvatar">?</span>
+            <span class="account-email-label" id="accountEmailLabel"></span>
             <span class="account-chevron" aria-hidden="true">▾</span>
           </button>
           <div id="accountMenuPanel" class="account-menu-panel hidden" role="menu">
@@ -255,20 +252,18 @@
   var manageBillingBtn = document.getElementById("manageBillingBtn");
   var billingHint = document.getElementById("billingPortalHint");
 
-  function initialsFromEmail(email) {
-    if (!email || typeof email !== "string") return "?";
-    var parts = email.split("@")[0].replace(/[^a-zA-Z0-9]/g, " ").trim().split(/\s+/);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    var s = parts[0] || email;
-    return s.length >= 2 ? s.slice(0, 2).toUpperCase() : (s[0] || "?").toUpperCase();
-  }
-
   function setLoggedInUi(email) {
     gateBanner.classList.add("hidden");
     accountMenuWrap.classList.remove("hidden");
     headerSignInBtn.classList.add("hidden");
-    var av = document.getElementById("accountAvatar");
-    if (av) av.textContent = initialsFromEmail(email);
+    var label = document.getElementById("accountEmailLabel");
+    var em = email && typeof email === "string" ? email : "";
+    if (label) {
+      label.textContent = em;
+      if (em) label.setAttribute("title", em);
+    }
+    var menuBtn = document.getElementById("accountMenuBtn");
+    if (menuBtn && em) menuBtn.setAttribute("aria-label", "Account menu — " + em);
   }
 
   function setLoggedOutUi() {
