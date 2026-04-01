@@ -1211,11 +1211,64 @@ export function getSavedSearchForUser(userId: string): SavedSearchRow | null {
 /** Max rows SQLite will return in one claim; “unlimited” uses this cap (enough for all real tenants). */
 const CLAIM_ALL_CAP = 2_147_483_647;
 
+/**
+ * Align one user's saved_searches row with their current search profile (id + query + context).
+ * If this drifts, claimDueSavedSearches skips them (it requires search_profile_id = is_current profile).
+ */
+export function syncSavedSearchRowToCurrentProfile(userId: string): void {
+  const database = getDb();
+  const row = database
+    .prepare(
+      `SELECT s.id AS saved_id, sp.id AS profile_id, sp.query, sp.context
+       FROM saved_searches s
+       INNER JOIN search_profiles sp ON sp.user_id = s.user_id AND sp.is_current = 1
+       WHERE s.user_id = ?
+         AND (s.search_profile_id IS NULL OR s.search_profile_id != sp.id)`
+    )
+    .get(userId) as { saved_id: string; profile_id: string; query: string; context: string | null } | undefined;
+  if (!row) return;
+  database
+    .prepare(
+      `UPDATE saved_searches
+       SET search_profile_id = ?, query = ?, context = ?, updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(row.profile_id, row.query, row.context, row.saved_id);
+}
+
+/** Align every saved_searches row (run before scheduler claim so all tenants are eligible). */
+export function syncSavedSearchesToCurrentProfiles(): void {
+  const database = getDb();
+  const mismatched = database
+    .prepare(
+      `SELECT s.id AS saved_id, sp.id AS profile_id, sp.query, sp.context
+       FROM saved_searches s
+       INNER JOIN search_profiles sp ON sp.user_id = s.user_id AND sp.is_current = 1
+       WHERE s.search_profile_id IS NULL OR s.search_profile_id != sp.id`
+    )
+    .all() as { saved_id: string; profile_id: string; query: string; context: string | null }[];
+
+  if (mismatched.length === 0) return;
+
+  const stmt = database.prepare(
+    `UPDATE saved_searches
+     SET search_profile_id = ?, query = ?, context = ?, updated_at = datetime('now')
+     WHERE id = ?`
+  );
+  const tx = database.transaction(() => {
+    for (const row of mismatched) {
+      stmt.run(row.profile_id, row.query, row.context, row.saved_id);
+    }
+  });
+  tx();
+}
+
 export function claimDueSavedSearches(
   limit: number = 0,
   leaseMinutes: number = 20,
   force: boolean = false
 ): SavedSearchRow[] {
+  syncSavedSearchesToCurrentProfiles();
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : CLAIM_ALL_CAP;
   const safeLease = Number.isFinite(leaseMinutes) && leaseMinutes > 0 ? Math.floor(leaseMinutes) : 20;
   const leaseIso = new Date(Date.now() + safeLease * 60_000).toISOString();

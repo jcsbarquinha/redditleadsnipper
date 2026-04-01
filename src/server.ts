@@ -54,6 +54,7 @@ import {
   parseEmailAlertTypesJson,
   ensureCurrentSearchProfileForInput,
   syncCurrentSearchProfileToLatestRun,
+  syncSavedSearchRowToCurrentProfile,
   setRunSearchProfile,
   insertServiceStatusCheck,
   getRecentServiceStatusChecks,
@@ -568,6 +569,7 @@ app.get("/api/dashboard/runs", requireAuth, (req, res) => {
 /** Saved search config for the current user. */
 app.get("/api/dashboard/saved-search", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string } }).user;
+  syncSavedSearchRowToCurrentProfile(user.id);
   const row = getSavedSearchForUser(user.id);
   res.json({
     savedSearch: row
