@@ -53,7 +53,7 @@ import {
   updateSavedSearchEmailPreferences,
   parseEmailAlertTypesJson,
   ensureCurrentSearchProfileForInput,
-  getCurrentSearchProfileForUser,
+  syncCurrentSearchProfileToLatestRun,
   setRunSearchProfile,
   insertServiceStatusCheck,
   getRecentServiceStatusChecks,
@@ -533,7 +533,7 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
   const runId = typeof req.query.runId === "string" ? req.query.runId.trim() : undefined;
   const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
   const includeDeleted = req.query.includeDeleted === "true" || req.query.includeDeleted === "1";
-  const currentProfile = getCurrentSearchProfileForUser(user.id);
+  const currentProfile = syncCurrentSearchProfileToLatestRun(user.id);
   if (!currentProfile) {
     res.json({ leads: [], entitled: true });
     return;
@@ -554,7 +554,7 @@ app.get("/api/dashboard/leads", requireAuth, (req, res) => {
 /** List runs for the current user (for dashboard query dropdown). */
 app.get("/api/dashboard/runs", requireAuth, (req, res) => {
   const user = (req as express.Request & { user: { id: string } }).user;
-  const currentProfile = getCurrentSearchProfileForUser(user.id);
+  const currentProfile = syncCurrentSearchProfileToLatestRun(user.id);
   const runs = getRunsForUser(user.id, 50, currentProfile?.id);
   res.json({ runs });
 });

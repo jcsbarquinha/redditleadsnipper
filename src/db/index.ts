@@ -1084,6 +1084,50 @@ export function getCurrentSearchProfileForUser(userId: string): SearchProfileRow
   return repairCurrentProfileFromSavedSearch(userId);
 }
 
+/**
+ * Keep dashboard view anchored to the latest run's profile (across login paths).
+ * Returns the effective current profile after sync.
+ */
+export function syncCurrentSearchProfileToLatestRun(userId: string): SearchProfileRow | null {
+  const database = getDb();
+  const latestRun = database
+    .prepare(
+      `SELECT search_profile_id FROM runs
+       WHERE user_id = ? AND search_profile_id IS NOT NULL
+       ORDER BY datetime(created_at) DESC
+       LIMIT 1`
+    )
+    .get(userId) as { search_profile_id: string | null } | undefined;
+  if (!latestRun?.search_profile_id?.trim()) {
+    return getCurrentSearchProfileForUser(userId);
+  }
+  const latestProfileId = latestRun.search_profile_id.trim();
+  const latestProfile = database
+    .prepare("SELECT * FROM search_profiles WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(latestProfileId, userId) as SearchProfileRow | undefined;
+  if (!latestProfile) {
+    return getCurrentSearchProfileForUser(userId);
+  }
+
+  const current = getCurrentSearchProfileForUser(userId);
+  if (current?.id === latestProfile.id) return current;
+
+  const tx = database.transaction(() => {
+    database
+      .prepare("UPDATE search_profiles SET is_current = 0, updated_at = datetime('now') WHERE user_id = ?")
+      .run(userId);
+    database
+      .prepare("UPDATE search_profiles SET is_current = 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
+      .run(latestProfile.id, userId);
+    database.prepare("UPDATE users SET current_search_profile_id = ? WHERE id = ?").run(latestProfile.id, userId);
+  });
+  tx();
+
+  return database
+    .prepare("SELECT * FROM search_profiles WHERE user_id = ? AND is_current = 1 LIMIT 1")
+    .get(userId) as SearchProfileRow | null;
+}
+
 export function setRunSearchProfile(runId: string, searchProfileId: string): void {
   getDb()
     .prepare("UPDATE runs SET search_profile_id = ?, updated_at = datetime('now') WHERE id = ?")
