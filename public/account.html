@@ -349,14 +349,25 @@
       }
 
       var hasPortal = !!data.has_billing_portal;
+      var unlimited = !!data.has_unlimited_access;
       if (manageBillingBtn) {
         manageBillingBtn.disabled = !hasPortal;
         manageBillingBtn.style.display = hasPortal ? "inline-flex" : "none";
       }
       if (billingHint) {
-        billingHint.textContent = hasPortal
-          ? "Update payment method, view invoices, or cancel in Stripe’s secure portal."
-          : "After you subscribe, a billing link will appear here. You can also manage your plan from the dashboard.";
+        if (hasPortal) {
+          billingHint.textContent =
+            "Update your card, view receipts, or manage your plan in Stripe’s secure portal. (One-time purchases show invoices; recurring plans can be canceled there if applicable.)";
+        } else if (unlimited) {
+          billingHint.textContent =
+            "Your account has full complimentary access. There’s no Stripe subscription tied to this login—nothing to cancel here.";
+        } else if (entitled) {
+          billingHint.textContent =
+            "We couldn’t attach a Stripe billing profile to this account yet. If you paid with this email, open Manage after we link it automatically, or contact support. You can also run checkout again from the dashboard.";
+        } else {
+          billingHint.textContent =
+            "After you subscribe with Checkout, a Manage subscription button will appear here.";
+        }
       }
     })
     .catch(function (err) {

@@ -133,7 +133,7 @@ function applyPaidCheckoutFromSession(session: Stripe.Checkout.Session): { userI
   const stripeCustomerId =
     typeof session.customer === "string"
       ? session.customer
-      : (session.customer as Stripe.Customer)?.id ?? null;
+      : (session.customer as Stripe.Customer | null)?.id ?? null;
 
   let user = findUserByEmail(email);
   if (!user) {
@@ -427,6 +427,7 @@ app.post("/api/create-checkout", (req, res) => {
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
+        customer_creation: "always",
         line_items: [
           {
             price_data: {
@@ -480,7 +481,9 @@ app.get("/welcome", async (req, res) => {
 
   let session: Stripe.Checkout.Session;
   try {
-    session = await stripe.checkout.sessions.retrieve(sessionId, { expand: [] });
+    session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["customer"],
+    });
   } catch (err) {
     console.error("Stripe retrieve session error:", err);
     res.redirect(getBaseUrl() + "/?error=invalid_session");
@@ -528,15 +531,39 @@ app.get("/api/me", requireAuth, (req, res) => {
 });
 
 /** Account page: email, entitlement, Stripe Customer Portal eligibility. */
-app.get("/api/account/summary", requireAuth, (req, res) => {
+app.get("/api/account/summary", requireAuth, async (req, res) => {
   const user = (req as express.Request & { user: { id: string; email: string; entitled_until: string | null } }).user;
   const row = findUserById(user.id);
-  const hasBillingPortal = !!(row?.stripe_customer_id && String(row.stripe_customer_id).trim());
+  let hasBillingPortal = !!(row?.stripe_customer_id && String(row.stripe_customer_id).trim());
   const hasUnlimitedAccess = hasUnlimitedAccessByEmail(user.email);
+
+  /** Paid users sometimes had no customer id (older Checkout sessions). Link by email if Stripe has a customer. */
+  if (!hasBillingPortal && user.email?.trim()) {
+    const stripeKey = getStripeSecretKey();
+    if (stripeKey) {
+      try {
+        const stripe = new Stripe(stripeKey);
+        const list = await stripe.customers.list({
+          email: user.email.trim().toLowerCase(),
+          limit: 5,
+        });
+        const sorted = [...list.data].sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
+        const c = sorted[0];
+        if (c?.id) {
+          setStripeCustomerId(user.id, c.id);
+          hasBillingPortal = true;
+        }
+      } catch (e) {
+        console.warn("account summary: Stripe customer list failed:", e);
+      }
+    }
+  }
+
   res.json({
     email: user.email,
     entitled_until: user.entitled_until,
     entitled: hasUnlimitedAccess || isEntitled(user.entitled_until),
+    has_unlimited_access: hasUnlimitedAccess,
     has_billing_portal: hasBillingPortal,
   });
 });
