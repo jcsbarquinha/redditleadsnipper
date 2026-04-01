@@ -1208,12 +1208,15 @@ export function getSavedSearchForUser(userId: string): SavedSearchRow | null {
   return row ?? null;
 }
 
+/** Max rows SQLite will return in one claim; “unlimited” uses this cap (enough for all real tenants). */
+const CLAIM_ALL_CAP = 2_147_483_647;
+
 export function claimDueSavedSearches(
-  limit: number = 10,
+  limit: number = 0,
   leaseMinutes: number = 20,
   force: boolean = false
 ): SavedSearchRow[] {
-  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 10;
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : CLAIM_ALL_CAP;
   const safeLease = Number.isFinite(leaseMinutes) && leaseMinutes > 0 ? Math.floor(leaseMinutes) : 20;
   const leaseIso = new Date(Date.now() + safeLease * 60_000).toISOString();
   const database = getDb();

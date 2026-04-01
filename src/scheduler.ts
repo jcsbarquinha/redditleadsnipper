@@ -34,7 +34,11 @@ function toContext(context: string | null): string | undefined {
 export async function runSavedSearchSchedulerTick(
   options: SchedulerTickOptions = {}
 ): Promise<SchedulerTickResult> {
-  const limit = Number.isFinite(options.limit) && Number(options.limit) > 0 ? Math.floor(Number(options.limit)) : 10;
+  /** 0 / omitted = all eligible saved searches; positive = cap (optional). */
+  const limit =
+    options.limit !== undefined && options.limit !== null && Number.isFinite(Number(options.limit))
+      ? Math.floor(Number(options.limit))
+      : 0;
   const maxPagesPerKeyword =
     Number.isFinite(options.maxPagesPerKeyword) && Number(options.maxPagesPerKeyword) > 0
       ? Math.floor(Number(options.maxPagesPerKeyword))

@@ -9,8 +9,15 @@ loadConfig();
 
 const base = (process.env.APP_BASE_URL || "").trim().replace(/\/+$/, "");
 const secret = (process.env.CRON_SECRET || "").trim();
-const limitRaw = Number(process.env.SCHEDULER_LIMIT || "10");
-const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 10;
+/** Unset or 0 = process all eligible users; set a positive number to cap batch size. */
+const limitRaw = (process.env.SCHEDULER_LIMIT || "").trim();
+const limitParsed = Number(limitRaw);
+const limit =
+  limitRaw === "" || limitRaw === "0"
+    ? 0
+    : Number.isFinite(limitParsed) && limitParsed > 0
+      ? Math.floor(limitParsed)
+      : 0;
 const forceRaw = (process.env.SCHEDULER_FORCE || "").trim().toLowerCase();
 const force = forceRaw === "1" || forceRaw === "true" || forceRaw === "yes";
 

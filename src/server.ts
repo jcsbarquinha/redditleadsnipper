@@ -312,8 +312,14 @@ app.post("/api/internal/scheduler/tick", async (req, res) => {
     return;
   }
 
-  const limitRaw = Number(req.body?.limit);
-  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 10;
+  const limitBody = req.body?.limit;
+  const limitParsed = Number(limitBody);
+  const limit =
+    limitBody === undefined || limitBody === null || limitBody === ""
+      ? 0
+      : Number.isFinite(limitParsed) && limitParsed > 0
+        ? Math.floor(limitParsed)
+        : 0;
   const forceRaw = req.body?.force;
   const force =
     forceRaw === true ||

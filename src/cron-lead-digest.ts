@@ -43,6 +43,12 @@ function digestAlreadySentTodayUtc(lastDigestIso: string | null | undefined): bo
   );
 }
 
+/** When `true`, skip the ≤1 digest per UTC day cap (for local cron / Render testing). Default: cap on. */
+function isCronDigestDailyCapDisabled(): boolean {
+  const v = process.env.CRON_DIGEST_DISABLE_DAILY_CAP?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -190,7 +196,8 @@ function buildDigestMail(params: {
 }
 
 /**
- * After a successful saved-search cron run: optionally email the user (≤1 digest per UTC day).
+ * After a successful saved-search cron run: optionally email the user (≤1 digest per UTC day by default).
+ * Set `CRON_DIGEST_DISABLE_DAILY_CAP=true` to allow repeated sends the same UTC day (testing only).
  */
 export async function maybeSendCronLeadDigest(savedSearchId: string, userId: string, runId: string): Promise<void> {
   const saved = getSavedSearchForUser(userId);
@@ -224,7 +231,7 @@ export async function maybeSendCronLeadDigest(savedSearchId: string, userId: str
     return;
   }
 
-  if (digestAlreadySentTodayUtc(saved.last_digest_sent_at)) {
+  if (!isCronDigestDailyCapDisabled() && digestAlreadySentTodayUtc(saved.last_digest_sent_at)) {
     return;
   }
 
