@@ -785,60 +785,6 @@
       align-items: center;
       justify-content: center;
     }
-    .dashboard-billing-rail.hidden {
-      display: none !important;
-    }
-    .dashboard-billing-content {
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      line-height: 1.45;
-      margin-bottom: 0.65rem;
-    }
-    .dashboard-billing-content p {
-      margin: 0 0 0.4rem;
-    }
-    .dashboard-billing-content p:last-child {
-      margin-bottom: 0;
-    }
-    .dashboard-billing-content strong {
-      color: var(--text);
-      font-weight: 600;
-    }
-    .dashboard-billing-actions {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.45rem;
-    }
-    .dashboard-billing-portal-btn {
-      font-size: 0.85rem;
-      font-weight: 600;
-      padding: 0.45rem 0.85rem;
-      border-radius: 9999px;
-      border: 1px solid rgba(255, 69, 0, 0.45);
-      background: #fff;
-      color: var(--text);
-      cursor: pointer;
-      font-family: inherit;
-      transition: border-color 0.12s, background 0.12s;
-    }
-    .dashboard-billing-portal-btn:hover:not(:disabled) {
-      border-color: rgba(255, 69, 0, 0.75);
-      background: rgba(255, 69, 0, 0.06);
-    }
-    .dashboard-billing-portal-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .dashboard-billing-account-link {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: #0079d3;
-      text-decoration: none;
-    }
-    .dashboard-billing-account-link:hover {
-      text-decoration: underline;
-    }
   </style>
 </head>
 <body class="dashboard-page">
@@ -890,14 +836,6 @@
 
     <div class="dashboard-layout">
       <aside class="dashboard-rail" aria-label="Inbox filters">
-        <div class="rail-section dashboard-billing-rail hidden" id="dashboardBillingRail" aria-label="Plan and billing">
-          <h2 class="rail-section-title">Plan &amp; billing</h2>
-          <div id="dashboardBillingContent" class="dashboard-billing-content"></div>
-          <div class="dashboard-billing-actions">
-            <button type="button" class="dashboard-billing-portal-btn" id="dashboardBillingPortalBtn">Manage subscription</button>
-            <a href="/account" class="dashboard-billing-account-link">Account &amp; billing</a>
-          </div>
-        </div>
         <div class="rail-section">
           <h2 class="rail-section-title">Search input</h2>
           <div class="rail-control">
@@ -1448,86 +1386,6 @@
   var defaultOnboardingEmptyHtml =
     'No searches on your account yet. Run a free search on the <a href="/">home page</a>, then sign in — we’ll attach it here. Or unlock below to run searches from the dashboard.';
 
-  function formatDashEntitledUntil(iso) {
-    if (!iso) return "";
-    try {
-      var d = new Date(iso);
-      if (!isFinite(d.getTime())) return "";
-      return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-    } catch (e) {
-      return "";
-    }
-  }
-
-  function formatDashInterval(iv) {
-    if (iv === "month") return "monthly";
-    if (iv === "year") return "yearly";
-    return iv ? String(iv) : "";
-  }
-
-  function refreshDashboardBilling() {
-    var rail = document.getElementById("dashboardBillingRail");
-    var el = document.getElementById("dashboardBillingContent");
-    var portalBtn = document.getElementById("dashboardBillingPortalBtn");
-    if (!rail || !el) return;
-    if (!dashUserEntitled || dashboardLoggedOut) {
-      rail.classList.add("hidden");
-      return;
-    }
-    rail.classList.remove("hidden");
-    el.textContent = "Loading…";
-    if (portalBtn) {
-      portalBtn.disabled = true;
-      portalBtn.style.display = "inline-flex";
-    }
-    fetch("/api/account/summary", { credentials: "same-origin" })
-      .then(function (r) {
-        if (!r.ok) throw new Error("billing");
-        return r.json();
-      })
-      .then(function (data) {
-        while (el.firstChild) el.removeChild(el.firstChild);
-        var sub = data.subscription || null;
-        var cancelAtEnd = sub
-          ? !!sub.cancel_at_period_end
-          : !!data.subscription_cancel_at_period_end;
-        var hasPortal = !!data.has_billing_portal;
-        if (portalBtn) {
-          portalBtn.disabled = !hasPortal;
-          portalBtn.style.display = hasPortal ? "inline-flex" : "none";
-        }
-        function appendLine(text) {
-          var p = document.createElement("p");
-          p.textContent = text;
-          el.appendChild(p);
-        }
-        if (sub) {
-          var iv = formatDashInterval(sub.interval);
-          appendLine(iv ? "Plan: " + sub.plan_name + " (" + iv + ")" : "Plan: " + (sub.plan_name || "Subscription"));
-          if (cancelAtEnd) {
-            appendLine("Canceled — no further charges. Access until " + formatDashEntitledUntil(data.entitled_until) + ".");
-          } else if (sub.current_period_end) {
-            appendLine("Next billing: " + formatDashEntitledUntil(sub.current_period_end) + ".");
-            if (data.entitled_until) {
-              appendLine("Access through " + formatDashEntitledUntil(data.entitled_until) + ".");
-            }
-          }
-        } else if (data.has_stripe_subscription && data.entitled_until) {
-          if (cancelAtEnd) {
-            appendLine("Canceled — access until " + formatDashEntitledUntil(data.entitled_until) + ".");
-          } else {
-            appendLine("Current period ends " + formatDashEntitledUntil(data.entitled_until) + ".");
-          }
-        } else if (data.entitled_until) {
-          appendLine("Access through " + formatDashEntitledUntil(data.entitled_until) + ".");
-        }
-      })
-      .catch(function () {
-        el.textContent = "Could not load billing details.";
-        if (portalBtn) portalBtn.disabled = false;
-      });
-  }
-
   function setDashEntitled(v) {
     dashUserEntitled = !!v;
     var banner = document.getElementById("dashboardEntitlementBanner");
@@ -1535,12 +1393,6 @@
     var exportBtn = document.getElementById("exportCsvBtn");
     if (exportBtn) exportBtn.disabled = !dashUserEntitled;
     syncRunButtonUI();
-    if (dashUserEntitled && !dashboardLoggedOut) {
-      refreshDashboardBilling();
-    } else {
-      var billingRail = document.getElementById("dashboardBillingRail");
-      if (billingRail) billingRail.classList.add("hidden");
-    }
   }
 
   function syncOnboardingEmpty() {
@@ -2756,38 +2608,6 @@
   if (getStartedUnlockBtn && dashboardUnlockBtn) {
     getStartedUnlockBtn.addEventListener("click", function () {
       dashboardUnlockBtn.click();
-    });
-  }
-
-  var dashboardBillingPortalBtn = document.getElementById("dashboardBillingPortalBtn");
-  if (dashboardBillingPortalBtn) {
-    dashboardBillingPortalBtn.addEventListener("click", function () {
-      if (dashboardBillingPortalBtn.disabled) return;
-      dashboardBillingPortalBtn.disabled = true;
-      fetch("/api/billing/portal", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      })
-        .then(function (r) {
-          return r.json().then(function (body) {
-            return { ok: r.ok, body: body };
-          });
-        })
-        .then(function (result) {
-          dashboardBillingPortalBtn.disabled = false;
-          var url = result.body && result.body.url;
-          if (url) {
-            window.location.href = url;
-            return;
-          }
-          alert((result.body && result.body.error) || "Could not open billing portal.");
-        })
-        .catch(function () {
-          dashboardBillingPortalBtn.disabled = false;
-          alert("Network error.");
-        });
     });
   }
 
