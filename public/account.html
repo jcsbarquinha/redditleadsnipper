@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account – Leadsnipe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .account-page .header-actions { display: flex; align-items: center; gap: 0.75rem; justify-self: end; }
+    .account-menu-wrap { position: relative; }
+    .account-menu-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      color: var(--text);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .account-menu-btn:hover { border-color: rgba(255, 69, 0, 0.45); box-shadow: 0 1px 8px rgba(0,0,0,0.06); }
+    .account-menu-btn[aria-expanded="true"] { border-color: rgba(255, 69, 0, 0.5); }
+    .account-avatar {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 9999px;
+      background: linear-gradient(145deg, rgba(255, 69, 0, 0.15), rgba(255, 69, 0, 0.05));
+      color: #c2410c;
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      letter-spacing: -0.02em;
+    }
+    .account-chevron { font-size: 0.65rem; color: var(--text-muted); margin-right: 0.15rem; }
+    .account-menu-panel {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      min-width: 220px;
+      padding: 0.45rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+      z-index: 200;
+    }
+    .account-menu-panel.hidden { display: none !important; }
+    .account-menu-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.65rem 0.85rem;
+      border: none;
+      background: none;
+      border-radius: 10px;
+      font: inherit;
+      font-size: 0.92rem;
+      color: var(--text);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .account-menu-item:hover { background: rgba(0, 0, 0, 0.04); }
+    .account-menu-item--danger { color: #b91c1c; }
+    .account-menu-item--danger:hover { background: rgba(185, 28, 28, 0.08); }
+    .header-sign-in-btn {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.5rem 1rem;
+    }
+    .header-sign-in-btn:hover { color: var(--reddit-orange); }
+
+    .account-main {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 2rem var(--header-margin-x, 2rem) 4rem;
+    }
+    .account-title {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 0.35rem;
+      color: var(--text);
+    }
+    .account-sub {
+      margin: 0 0 2rem;
+      font-size: 1rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .account-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 16px;
+      padding: 1.35rem 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+    .account-card--plan {
+      border-left: 4px solid rgba(255, 69, 0, 0.65);
+      background: linear-gradient(180deg, rgba(255, 69, 0, 0.04) 0%, #fff 48%);
+    }
+    .account-card h2 {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin: 0 0 1rem;
+    }
+    .account-email-value {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .account-hint {
+      margin: 0.75rem 0 0;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .account-plan-status {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.35rem;
+    }
+    .account-plan-meta {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      margin-bottom: 1.25rem;
+    }
+    .account-primary-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.7rem 1.35rem;
+      border-radius: 9999px;
+      border: none;
+      background: #ff4500;
+      color: #fff !important;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: filter 0.15s, transform 0.1s;
+    }
+    .account-primary-btn:hover { filter: brightness(1.05); }
+    .account-primary-btn:disabled { opacity: 0.55; cursor: not-allowed; filter: none; }
+    .account-secondary-link {
+      display: inline-block;
+      margin-top: 0.85rem;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: #0079d3;
+      text-decoration: none;
+    }
+    .account-secondary-link:hover { text-decoration: underline; }
+    .account-banner {
+      padding: 1rem 1.15rem;
+      border-radius: 12px;
+      border: 1px solid rgba(234, 179, 8, 0.45);
+      background: rgba(254, 243, 199, 0.45);
+      font-size: 0.92rem;
+      color: var(--text);
+      margin-bottom: 1.5rem;
+    }
+    .account-banner.hidden { display: none !important; }
+    .account-loading { color: var(--text-muted); padding: 3rem 0; text-align: center; }
+  </style>
+</head>
+<body class="account-page">
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <img src="/logo.png" alt="" class="logo-mark" />
+        <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
+      </a>
+      <nav class="header-nav" aria-label="Main">
+        <a href="/#how-it-works" class="header-link">How it Works</a>
+        <a href="/#pricing" class="header-link">Pricing</a>
+        <a href="/dashboard" class="header-link">Dashboard</a>
+      </nav>
+      <div class="header-actions">
+        <div id="accountMenuWrap" class="account-menu-wrap hidden">
+          <button type="button" id="accountMenuBtn" class="account-menu-btn" aria-expanded="false" aria-haspopup="true" aria-label="Account menu">
+            <span class="account-avatar" id="accountAvatar">?</span>
+            <span class="account-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div id="accountMenuPanel" class="account-menu-panel hidden" role="menu">
+            <a href="/dashboard" class="account-menu-item" role="menuitem">Dashboard</a>
+            <a href="/account" class="account-menu-item" role="menuitem" aria-current="page">Account &amp; billing</a>
+            <button type="button" class="account-menu-item account-menu-item--danger" id="accountLogoutBtn" role="menuitem">Log out</button>
+          </div>
+        </div>
+        <button type="button" class="header-sign-in-btn hidden" id="headerSignInBtn">Sign in</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="account-main">
+    <h1 class="account-title">Account</h1>
+    <p class="account-sub">Manage your profile and Leadsnipe plan.</p>
+
+    <div id="accountGateBanner" class="account-banner hidden">
+      Please <a href="/login?return=%2Faccount">sign in</a> to view this page.
+    </div>
+
+    <div id="accountLoading" class="account-loading">Loading…</div>
+
+    <div id="accountContent" class="hidden">
+      <section class="account-card" aria-labelledby="profile-heading">
+        <h2 id="profile-heading">Profile</h2>
+        <div class="account-email-value" id="accountEmailDisplay">—</div>
+        <p class="account-hint">This is the email on your account. Sign-in links and receipts go here.</p>
+      </section>
+
+      <section class="account-card account-card--plan" aria-labelledby="plan-heading">
+        <h2 id="plan-heading">Plan &amp; billing</h2>
+        <div class="account-plan-status" id="planStatusLine">—</div>
+        <div class="account-plan-meta" id="planMetaLine"></div>
+        <button type="button" class="account-primary-btn" id="manageBillingBtn">Manage subscription</button>
+        <p class="account-hint" id="billingPortalHint">
+          Update payment method, view invoices, or cancel in Stripe’s secure portal.
+        </p>
+        <a href="/dashboard" class="account-secondary-link" id="dashboardLinkFromAccount">← Back to dashboard</a>
+      </section>
+    </div>
+  </main>
+
+  <script>
+(function () {
+  var menuBtn = document.getElementById("accountMenuBtn");
+  var menuPanel = document.getElementById("accountMenuPanel");
+  var accountMenuWrap = document.getElementById("accountMenuWrap");
+  var headerSignInBtn = document.getElementById("headerSignInBtn");
+  var accountLogoutBtn = document.getElementById("accountLogoutBtn");
+  var loadingEl = document.getElementById("accountLoading");
+  var contentEl = document.getElementById("accountContent");
+  var gateBanner = document.getElementById("accountGateBanner");
+  var manageBillingBtn = document.getElementById("manageBillingBtn");
+  var billingHint = document.getElementById("billingPortalHint");
+
+  function initialsFromEmail(email) {
+    if (!email || typeof email !== "string") return "?";
+    var parts = email.split("@")[0].replace(/[^a-zA-Z0-9]/g, " ").trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    var s = parts[0] || email;
+    return s.length >= 2 ? s.slice(0, 2).toUpperCase() : (s[0] || "?").toUpperCase();
+  }
+
+  function setLoggedInUi(email) {
+    gateBanner.classList.add("hidden");
+    accountMenuWrap.classList.remove("hidden");
+    headerSignInBtn.classList.add("hidden");
+    var av = document.getElementById("accountAvatar");
+    if (av) av.textContent = initialsFromEmail(email);
+  }
+
+  function setLoggedOutUi() {
+    if (loadingEl) loadingEl.classList.add("hidden");
+    gateBanner.classList.remove("hidden");
+    contentEl.classList.add("hidden");
+    accountMenuWrap.classList.add("hidden");
+    headerSignInBtn.classList.remove("hidden");
+  }
+
+  if (menuBtn && menuPanel) {
+    menuBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var open = menuPanel.classList.contains("hidden");
+      menuPanel.classList.toggle("hidden", !open);
+      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", function () {
+      menuPanel.classList.add("hidden");
+      menuBtn.setAttribute("aria-expanded", "false");
+    });
+    menuPanel.addEventListener("click", function (e) {
+      e.stopPropagation();
+    });
+  }
+
+  if (headerSignInBtn) {
+    headerSignInBtn.addEventListener("click", function () {
+      window.location.href = "/login?return=" + encodeURIComponent("/account");
+    });
+  }
+
+  if (accountLogoutBtn) {
+    accountLogoutBtn.addEventListener("click", function () {
+      fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
+        window.location.href = "/";
+      });
+    });
+  }
+
+  function formatEntitledUntil(iso) {
+    if (!iso) return "";
+    try {
+      var d = new Date(iso);
+      if (!isFinite(d.getTime())) return "";
+      return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    } catch (e) {
+      return "";
+    }
+  }
+
+  fetch("/api/account/summary", { credentials: "same-origin" })
+    .then(function (r) {
+      if (r.status === 401) {
+        setLoggedOutUi();
+        return Promise.reject(new Error("auth"));
+      }
+      if (!r.ok) throw new Error("load");
+      return r.json();
+    })
+    .then(function (data) {
+      loadingEl.classList.add("hidden");
+      contentEl.classList.remove("hidden");
+      setLoggedInUi(data.email);
+
+      var emailDisp = document.getElementById("accountEmailDisplay");
+      if (emailDisp) emailDisp.textContent = data.email || "—";
+
+      var statusLine = document.getElementById("planStatusLine");
+      var metaLine = document.getElementById("planMetaLine");
+      var entitled = !!data.entitled;
+      if (statusLine) {
+        statusLine.textContent = entitled ? "Leadsnipe access active" : "No active plan";
+      }
+      if (metaLine) {
+        if (entitled && data.entitled_until) {
+          metaLine.textContent = "Access through " + formatEntitledUntil(data.entitled_until) + ".";
+        } else if (!entitled) {
+          metaLine.textContent = "Unlock from the dashboard to see ranked leads and run saved searches.";
+        } else {
+          metaLine.textContent = "";
+        }
+      }
+
+      var hasPortal = !!data.has_billing_portal;
+      if (manageBillingBtn) {
+        manageBillingBtn.disabled = !hasPortal;
+        manageBillingBtn.style.display = hasPortal ? "inline-flex" : "none";
+      }
+      if (billingHint) {
+        billingHint.textContent = hasPortal
+          ? "Update payment method, view invoices, or cancel in Stripe’s secure portal."
+          : "After you subscribe, a billing link will appear here. You can also manage your plan from the dashboard.";
+      }
+    })
+    .catch(function (err) {
+      if (err && err.message === "auth") return;
+      loadingEl.textContent = "Could not load account.";
+    });
+
+  if (manageBillingBtn) {
+    manageBillingBtn.addEventListener("click", function () {
+      if (manageBillingBtn.disabled) return;
+      manageBillingBtn.disabled = true;
+      fetch("/api/billing/portal", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      })
+        .then(function (r) {
+          return r.json().then(function (body) {
+            return { ok: r.ok, body: body };
+          });
+        })
+        .then(function (result) {
+          manageBillingBtn.disabled = false;
+          var url = result.body && result.body.url;
+          if (url) {
+            window.location.href = url;
+            return;
+          }
+          alert((result.body && result.body.error) || "Could not open billing portal.");
+        })
+        .catch(function () {
+          manageBillingBtn.disabled = false;
+          alert("Network error.");
+        });
+    });
+  }
+})();
+  </script>
+</body>
+</html>

@@ -64,6 +64,7 @@ import {
   getRunProgressForHomepage,
   getHomepageRunRow,
   getPostCountForRun,
+  findUserById,
   type LeadRow,
   type ServiceStatusState,
 } from "./db/index.js";
@@ -524,6 +525,50 @@ app.get("/api/me", requireAuth, (req, res) => {
     entitled: hasUnlimitedAccess || isEntitled(user.entitled_until),
     manualSearch: hasUnlimitedAccess ? getUnlimitedManualSearchQuota() : getManualSearchQuota(user.id),
   });
+});
+
+/** Account page: email, entitlement, Stripe Customer Portal eligibility. */
+app.get("/api/account/summary", requireAuth, (req, res) => {
+  const user = (req as express.Request & { user: { id: string; email: string; entitled_until: string | null } }).user;
+  const row = findUserById(user.id);
+  const hasBillingPortal = !!(row?.stripe_customer_id && String(row.stripe_customer_id).trim());
+  const hasUnlimitedAccess = hasUnlimitedAccessByEmail(user.email);
+  res.json({
+    email: user.email,
+    entitled_until: user.entitled_until,
+    entitled: hasUnlimitedAccess || isEntitled(user.entitled_until),
+    has_billing_portal: hasBillingPortal,
+  });
+});
+
+/** Stripe Customer Portal — payment method, invoices, cancel (configure portal in Stripe Dashboard). */
+app.post("/api/billing/portal", requireAuth, async (req, res) => {
+  const user = (req as express.Request & { user: { id: string; email: string; entitled_until: string | null } }).user;
+  const stripeKey = getStripeSecretKey();
+  if (!stripeKey) {
+    res.status(503).json({ error: "Billing is not configured." });
+    return;
+  }
+  const row = findUserById(user.id);
+  const customerId = row?.stripe_customer_id?.trim();
+  if (!customerId) {
+    res.status(400).json({
+      error: "No billing profile yet. Subscribe from the dashboard first.",
+    });
+    return;
+  }
+  try {
+    const stripe = new Stripe(stripeKey);
+    const base = getBaseUrl();
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${base}/account`,
+    });
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error("Stripe billing portal:", err);
+    res.status(500).json({ error: "Could not open billing portal." });
+  }
 });
 
 /** All leads for the current user (requires auth). Query params: subreddit, days, minScore, query, includeArchived, includeDeleted, runId. */
@@ -1285,6 +1330,10 @@ app.get("/dashboard", (_req, res) => {
   res.sendFile(join(publicDir, "dashboard.html"));
 });
 
+app.get("/account", (_req, res) => {
+  res.sendFile(join(publicDir, "account.html"));
+});
+
 // Login page (must be before static so /login serves the page)
 app.get("/login", (_req, res) => {
   res.sendFile(join(publicDir, "login.html"));
@@ -1318,7 +1367,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`  Base URL (for Stripe redirects): ${baseUrl}`);
   console.log(`  Stripe: ${stripeEnabled ? "enabled" : "not configured (set STRIPE_SECRET_KEY in .env)"}`);
   console.log("  Search API: no IP rate limit (add middleware in production if needed)");
-  console.log("  Landing: GET /");
+  console.log("  Landing: GET /  ·  Account: GET /account");
   console.log("  API:     POST /api/search → 202 + poll GET /api/search/run-progress → GET /api/search/result");
   if (stripeEnabled) console.log("  Unlock:   POST /api/create-checkout → Stripe → GET /welcome → /dashboard");
   const wh = getStripeWebhookSecret();

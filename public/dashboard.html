@@ -10,10 +10,78 @@
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
   <style>
-    .dashboard-page .header-actions { display: flex; align-items: center; gap: 0.75rem; }
-    .dashboard-page .header-actions .user-email { font-size: 0.9rem; color: var(--text-muted); }
-    .dashboard-page .logout-btn { font-size: 0.95rem; font-weight: 600; color: var(--text); background: none; border: none; cursor: pointer; padding: 0.5rem 1rem; text-decoration: none; }
-    .dashboard-page .logout-btn:hover { color: var(--reddit-orange); }
+    .dashboard-page .header-actions { display: flex; align-items: center; gap: 0.75rem; justify-self: end; }
+    .dashboard-page .account-menu-wrap { position: relative; }
+    .dashboard-page .account-menu-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      color: var(--text);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .dashboard-page .account-menu-btn:hover { border-color: rgba(255, 69, 0, 0.45); box-shadow: 0 1px 8px rgba(0,0,0,0.06); }
+    .dashboard-page .account-menu-btn[aria-expanded="true"] { border-color: rgba(255, 69, 0, 0.5); }
+    .dashboard-page .account-avatar {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 9999px;
+      background: linear-gradient(145deg, rgba(255, 69, 0, 0.15), rgba(255, 69, 0, 0.05));
+      color: #c2410c;
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      letter-spacing: -0.02em;
+    }
+    .dashboard-page .account-chevron { font-size: 0.65rem; color: var(--text-muted); margin-right: 0.15rem; }
+    .dashboard-page .account-menu-panel {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      min-width: 220px;
+      padding: 0.45rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+      z-index: 200;
+    }
+    .dashboard-page .account-menu-panel.hidden { display: none !important; }
+    .dashboard-page .account-menu-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.65rem 0.85rem;
+      border: none;
+      background: none;
+      border-radius: 10px;
+      font: inherit;
+      font-size: 0.92rem;
+      color: var(--text);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .dashboard-page .account-menu-item:hover { background: rgba(0, 0, 0, 0.04); }
+    .dashboard-page .account-menu-item--danger { color: #b91c1c; }
+    .dashboard-page .account-menu-item--danger:hover { background: rgba(185, 28, 28, 0.08); }
+    .dashboard-page .header-sign-in-btn {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.5rem 1rem;
+    }
+    .dashboard-page .header-sign-in-btn:hover { color: var(--reddit-orange); }
     .dashboard-main { max-width: var(--header-max-width); margin-left: auto; margin-right: auto; padding: 2rem var(--header-margin-x, 2rem) 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
     .dashboard-layout { display: grid; grid-template-columns: 380px 1fr; gap: 1.5rem; align-items: start; }
     .dashboard-rail {
@@ -735,8 +803,18 @@
         <a href="/dashboard" class="header-link" aria-current="page">Dashboard</a>
       </nav>
       <div class="header-actions">
-        <span id="userEmail" class="user-email"></span>
-        <button type="button" class="logout-btn" id="logoutBtn">Log out</button>
+        <div id="accountMenuWrap" class="account-menu-wrap hidden">
+          <button type="button" id="accountMenuBtn" class="account-menu-btn" aria-expanded="false" aria-haspopup="true" aria-label="Account menu">
+            <span class="account-avatar" id="accountAvatar">?</span>
+            <span class="account-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div id="accountMenuPanel" class="account-menu-panel hidden" role="menu">
+            <a href="/dashboard" class="account-menu-item" role="menuitem" aria-current="page">Dashboard</a>
+            <a href="/account" class="account-menu-item" role="menuitem">Account &amp; billing</a>
+            <button type="button" class="account-menu-item account-menu-item--danger" id="accountLogoutBtn" role="menuitem">Log out</button>
+          </div>
+        </div>
+        <button type="button" class="header-sign-in-btn hidden" id="headerSignInBtn">Sign in</button>
       </div>
     </div>
   </header>
@@ -1355,16 +1433,10 @@
     dashboardLoggedOut = true;
     var loBanner = document.getElementById("dashboardLoggedOutBanner");
     if (loBanner) loBanner.classList.remove("hidden");
-    var userEmailSpan = document.getElementById("userEmail");
-    if (userEmailSpan) {
-      userEmailSpan.textContent = "";
-      userEmailSpan.style.display = "none";
-    }
-    var logoutBtn = document.getElementById("logoutBtn");
-    if (logoutBtn) {
-      logoutBtn.textContent = "Sign in";
-      logoutBtn.setAttribute("aria-label", "Sign in");
-    }
+    var accountMenuWrap = document.getElementById("accountMenuWrap");
+    if (accountMenuWrap) accountMenuWrap.classList.add("hidden");
+    var headerSignInBtn = document.getElementById("headerSignInBtn");
+    if (headerSignInBtn) headerSignInBtn.classList.remove("hidden");
     var entBanner = document.getElementById("dashboardEntitlementBanner");
     if (entBanner) entBanner.classList.add("hidden");
     setDashEntitled(false);
@@ -2435,15 +2507,17 @@
     .then(function (me) {
       var loBanner = document.getElementById("dashboardLoggedOutBanner");
       if (loBanner) loBanner.classList.add("hidden");
-      var userEmailSpan = document.getElementById("userEmail");
-      if (userEmailSpan) userEmailSpan.style.display = "";
-      var logoutBtnEl = document.getElementById("logoutBtn");
-      if (logoutBtnEl) {
-        logoutBtnEl.textContent = "Log out";
-        logoutBtnEl.setAttribute("aria-label", "Log out");
+      var accountMenuWrapEl = document.getElementById("accountMenuWrap");
+      if (accountMenuWrapEl) accountMenuWrapEl.classList.remove("hidden");
+      var headerSignInBtnEl = document.getElementById("headerSignInBtn");
+      if (headerSignInBtnEl) headerSignInBtnEl.classList.add("hidden");
+      var av = document.getElementById("accountAvatar");
+      if (av && me.email) {
+        var em = String(me.email);
+        var local = em.split("@")[0].replace(/[^a-zA-Z0-9]/g, " ").trim().split(/\s+/);
+        var ini = local.length >= 2 ? (local[0][0] + local[1][0]).toUpperCase() : (local[0] || em).slice(0, 2).toUpperCase();
+        av.textContent = ini || "?";
       }
-      var emailEl = document.getElementById("userEmail");
-      if (emailEl) emailEl.textContent = me.email || "";
       if (typeof me.entitled === "boolean") {
         setDashEntitled(me.entitled);
       }
@@ -2828,15 +2902,39 @@
   syncAllFromHotWarmRecent();
   updateDropdownLabel();
 
-  document.getElementById("logoutBtn").addEventListener("click", function () {
-    if (dashboardLoggedOut) {
-      window.location.href = "/login?return=" + encodeURIComponent("/dashboard");
-      return;
+  (function setupAccountMenu() {
+    var menuBtn = document.getElementById("accountMenuBtn");
+    var menuPanel = document.getElementById("accountMenuPanel");
+    if (menuBtn && menuPanel) {
+      menuBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var open = menuPanel.classList.contains("hidden");
+        menuPanel.classList.toggle("hidden", !open);
+        menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      document.addEventListener("click", function () {
+        menuPanel.classList.add("hidden");
+        menuBtn.setAttribute("aria-expanded", "false");
+      });
+      menuPanel.addEventListener("click", function (e) {
+        e.stopPropagation();
+      });
     }
-    fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
-      redirectHome();
-    });
-  });
+    var headerSignInBtn = document.getElementById("headerSignInBtn");
+    if (headerSignInBtn) {
+      headerSignInBtn.addEventListener("click", function () {
+        window.location.href = "/login?return=" + encodeURIComponent("/dashboard");
+      });
+    }
+    var accountLogoutBtn = document.getElementById("accountLogoutBtn");
+    if (accountLogoutBtn) {
+      accountLogoutBtn.addEventListener("click", function () {
+        fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
+          redirectHome();
+        });
+      });
+    }
+  })();
 })();
   </script>
 </body>
