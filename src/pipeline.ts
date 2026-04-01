@@ -30,7 +30,11 @@ export type RedditListingSort = "new" | "relevance";
 import { type SearchMode, getSearchModeRedditParams } from "./search-modes.js";
 import { InvalidSearchInputError, validateUserInput } from "./input-validation.js";
 import type { RedditPost } from "./types.js";
-import { CRON_MAX_POST_AGE_DAYS, POST_DISCOVERY_MAX_AGE_DAYS } from "./constants.js";
+import {
+  CRON_MAX_POST_AGE_DAYS,
+  HOMEPAGE_MAX_POST_AGE_DAYS,
+  POST_DISCOVERY_MAX_AGE_DAYS,
+} from "./constants.js";
 
 const DEFAULT_MAX_PAGES_PER_KEYWORD = 1;
 /** Drop posts older than this many days (independent of Reddit `t=` window). */
@@ -270,7 +274,7 @@ export interface PipelineOptions {
   maxPagesPerKeyword?: number;
   /** Overrides mode default (e.g. dashboard uses 2000 ms; cron uses 5000 ms). */
   delayMs?: number;
-  /** Overrides mode default keyword count (homepage 3, dashboard 6, cron 10). */
+  /** Overrides mode default keyword count (homepage 3, dashboard 10, cron 10). */
   keywordCount?: number;
   /** Defaults to `dashboard` when omitted (CLI / scripts). */
   searchMode?: SearchMode;
@@ -286,7 +290,7 @@ export interface HomepageFunnelStats {
   redditSearchCalls: number;
   /** Unique post ids after merging all fetches (before max-age / self-promo). */
   redditPostsExtractedUnique: number;
-  /** Raw posts older than `POST_DISCOVERY_MAX_AGE_DAYS`. */
+  /** Raw posts older than homepage max age ({@link HOMEPAGE_MAX_POST_AGE_DAYS}). */
   droppedTooOld: number;
   /** In-age posts dropped as likely self-promo vs input. */
   droppedSelfPromo: number;
@@ -416,6 +420,7 @@ function buildHomepageFunnelStats(
   userInput: string,
   recentCandidatesLen: number,
   scorableLen: number,
+  maxPostAgeDays: number,
   extras?: {
     miniRanked?: Array<{ mini: number }>;
     finalistsFor4o?: number;
@@ -428,7 +433,7 @@ function buildHomepageFunnelStats(
   let droppedTooOld = 0;
   let droppedSelfPromo = 0;
   for (const [, post] of postById) {
-    if (!isPostWithinMaxAge(post)) {
+    if (!isPostWithinMaxAge(post, maxPostAgeDays)) {
       droppedTooOld++;
       continue;
     }
@@ -483,7 +488,7 @@ function logHomepageRunDebug(runId: string, funnel: HomepageFunnelStats): void {
   console.log(JSON.stringify({ event: "homepage_run_debug", runId, ...funnel }));
 }
 
-/** Landing-only: Reddit per keyword × sorts, t=week → full intent prompt on mini model → persist top 1. */
+/** Landing-only: Reddit per keyword × sorts (`relevance` only), t=week → mini intent → persist top 1. */
 async function executeHomepageFastPipeline(params: {
   runId: string;
   userInput: string;
@@ -555,7 +560,7 @@ async function executeHomepageFastPipeline(params: {
     searchQueries,
     userInput,
     redditSorts,
-    MAX_POST_AGE_DAYS
+    HOMEPAGE_MAX_POST_AGE_DAYS
   );
   const uniqueAfterDedupe = postById.size;
 
@@ -574,6 +579,7 @@ async function executeHomepageFastPipeline(params: {
       userInput,
       recentCandidates.length,
       0,
+      HOMEPAGE_MAX_POST_AGE_DAYS,
       { finalLeadsPersisted: 0, winner4oScore: null }
     );
     const timings: PipelineTimings = {
@@ -667,6 +673,7 @@ async function executeHomepageFastPipeline(params: {
       userInput,
       recentCandidates.length,
       scorableCandidates.length,
+      HOMEPAGE_MAX_POST_AGE_DAYS,
       {
         miniRanked,
         finalistsFor4o: 0,
@@ -728,6 +735,7 @@ async function executeHomepageFastPipeline(params: {
     userInput,
     recentCandidates.length,
     scorableCandidates.length,
+    HOMEPAGE_MAX_POST_AGE_DAYS,
     {
       miniRanked,
       finalistsFor4o: 1,
@@ -827,7 +835,7 @@ export async function runPipelineFromRunId(
         keywords: searchQueries,
         redditSorts,
         redditTimeFilter,
-        maxPostAgeDays: MAX_POST_AGE_DAYS,
+        maxPostAgeDays: HOMEPAGE_MAX_POST_AGE_DAYS,
       })
     );
   }

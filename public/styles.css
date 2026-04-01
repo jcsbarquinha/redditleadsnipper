@@ -14,6 +14,8 @@
   /* Header only: horizontal margin so logo/login don’t sit at viewport edge */
   --header-margin-x: 2rem;
   --header-max-width: 1500px;
+  /* Same as .search-form; analysis box + hero search share this ruler */
+  --search-row-width: 46rem;
 }
 
 html {
@@ -159,13 +161,16 @@ body.header-no-center-nav .header-inner {
   line-height: 1;
 }
 
+/* Match .hero-inner max-width so teaser + analysis align with the search row above */
 .main {
-  max-width: 800px;
+  width: 100%;
+  max-width: 1000px;
   margin-left: auto;
   margin-right: auto;
-  padding: 2rem 2rem 2rem;
+  padding: 2rem var(--header-margin-x) 2rem;
   margin-top: 1rem;
   margin-bottom: 3rem;
+  box-sizing: border-box;
 }
 
 .hero {
@@ -282,7 +287,6 @@ body.header-no-center-nav .header-inner {
 
 .search-form {
   --search-control-height: 5rem;
-  --search-row-width: 46rem;
   display: block;
   margin-bottom: 0;
   width: min(100%, var(--search-row-width));
@@ -478,10 +482,10 @@ body.header-no-center-nav .header-inner {
 }
 
 /* Grey box around entire analysis: loading stages, progress bar, scanning counter, skeleton/result cards */
-/* Match search bar row width (see .search-form --search-row-width) */
 .analysis-box {
   margin-top: 0;
-  width: min(100%, 46rem);
+  width: 100%;
+  max-width: var(--search-row-width);
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
@@ -505,6 +509,7 @@ body.header-no-center-nav .header-inner {
 
 .analysis-box .loading-section {
   margin-top: 0;
+  width: 100%;
 }
 
 .analysis-box .results-section {
@@ -520,23 +525,39 @@ body.header-no-center-nav .header-inner {
 /* Loading */
 .loading-section {
   margin-top: 2rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
+/* Equal columns so ✓ marks don’t change total width (no “growing” strip) */
 .loading-steps {
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: center;
-  gap: 0.6rem 1rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem 0.65rem;
   margin-bottom: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 520px) {
+  .loading-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .step {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
   font-size: 0.96rem; /* was 0.8rem; ~20% larger for readability */
   color: var(--text-muted);
-  white-space: nowrap;
+  min-width: 0;
+  text-align: center;
+}
+
+.step .step-label {
+  line-height: 1.25;
 }
 
 .step.active {
@@ -555,10 +576,12 @@ body.header-no-center-nav .header-inner {
 }
 
 .loading-bar {
+  width: 100%;
   height: 4px;
   background: var(--border);
   border-radius: 2px;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .loading-bar-fill {
@@ -581,6 +604,8 @@ body.header-no-center-nav .header-inner {
 
 /* Subline + time hint share one breathe so phase stays synced when subline text updates */
 .loading-breathe-group {
+  width: 100%;
+  box-sizing: border-box;
   margin-top: 1.25rem;
   text-align: center;
   animation: loading-subline-breathe 2s ease-in-out infinite;
@@ -675,6 +700,8 @@ body.header-no-center-nav .header-inner {
   flex-direction: column;
   gap: 0.75rem;
   margin-top: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Dashboard run overlay: generous vertical rhythm (in-panel loading feels cramped otherwise) */
@@ -768,6 +795,9 @@ body.header-no-center-nav .header-inner {
   display: flex;
   flex-direction: column;
   gap: 0;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /* Reddit-style card */

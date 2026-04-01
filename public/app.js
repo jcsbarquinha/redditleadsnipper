@@ -1,6 +1,6 @@
 (function () {
-  /** Must match server `POST_DISCOVERY_MAX_AGE_DAYS` in src/constants.ts */
-  const POST_DISCOVERY_MAX_AGE_DAYS = 4;
+  /** Must match server `HOMEPAGE_MAX_POST_AGE_DAYS` in src/constants.ts (homepage search only). */
+  const HOMEPAGE_MAX_POST_AGE_DAYS = 7;
   /** Landing UX only: shown thread counts = real `totalPosts` × this (API totals unchanged). */
   const HOMEPAGE_THREADS_SCANNED_DISPLAY_MULTIPLIER = 7;
 
@@ -568,7 +568,7 @@
         ? hotCount === 1
           ? 'We found a <span class="results-count">Hot Lead</span> waiting for your reply \uD83D\uDD25'
           : `We found ${hotCount} <span class="results-count">Hot Leads</span> waiting for your reply \uD83D\uDD25`
-        : `No Hot leads found in posts from the last ${POST_DISCOVERY_MAX_AGE_DAYS} days for that query.`;
+        : `No Hot leads found in posts from the last ${HOMEPAGE_MAX_POST_AGE_DAYS} days for that query.`;
     resultsList.innerHTML = "";
 
     var teaserLead = hotLeads.length > 0 ? hotLeads[0] : (highIntentLeads.length > 0 ? highIntentLeads[0] : null);

@@ -1,6 +1,6 @@
 /**
  * Search mode matrix: keyword depth, Reddit pacing, sorts, and `t=` window.
- * App-side max post age ({@link POST_DISCOVERY_MAX_AGE_DAYS}) stays separate.
+ * Reddit `t=` window here; homepage pipeline also caps post age (see `HOMEPAGE_MAX_POST_AGE_DAYS` in constants).
  */
 
 import type { RedditTimeFilter } from "./reddit-search.js";
@@ -20,9 +20,9 @@ export function getSearchModeRedditParams(mode: SearchMode): SearchModeRedditPar
   switch (mode) {
     case "homepage":
       return {
-        keywordCount: 5,
+        keywordCount: 3,
         delayMs: 2500,
-        redditSorts: ["relevance", "new"],
+        redditSorts: ["relevance"],
         redditTimeFilter: "week",
       };
     case "dashboard":

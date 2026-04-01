@@ -1,8 +1,10 @@
 /**
- * Max age (days) for Reddit posts entering the pipeline.
- * Keep landing copy in `public/app.js` (POST_DISCOVERY_MAX_AGE_DAYS) in sync.
+ * Max age (days) for Reddit posts in non-homepage discovery paths (default in {@link ./pipeline.ts}).
  */
 export const POST_DISCOVERY_MAX_AGE_DAYS = 4;
+
+/** Homepage `/api/search` only: max post age after Reddit fetch (stricter/wider than global default). */
+export const HOMEPAGE_MAX_POST_AGE_DAYS = 7;
 
 /** Saved-search cron: cap post age to match Reddit `t=day` in {@link import("./search-modes.js").getSearchModeRedditParams}. */
 export const CRON_MAX_POST_AGE_DAYS = 1;

@@ -95,7 +95,18 @@
       height: calc(100vh - 190px);
       overflow-y: auto;
     }
-    .dashboard-content { min-width: 0; }
+    .dashboard-content {
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #leadsList.results-list {
+      width: 100%;
+      min-width: 0;
+    }
+    #dashboardLoadingSection.loading-section {
+      width: 100%;
+    }
     .dashboard-title {
       font-size: 2.15rem;
       font-weight: 700;
@@ -634,6 +645,9 @@
 
     /* Scroll area for posts */
     .dashboard-list-wrap {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
       overflow-y: auto;
       height: calc(100vh - 190px);
       border: 1px solid rgba(0, 0, 0, 0.12);
