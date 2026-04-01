@@ -1,6 +1,7 @@
 /** Shared dashboard / email eligibility (Stripe + internal allowlist). */
 
-const UNLIMITED_ACCESS_EMAILS = new Set<string>(["jcsbarquinha@gmail.com"]);
+/** Optional internal allowlist (empty = access only via Stripe entitlement dates). */
+const UNLIMITED_ACCESS_EMAILS = new Set<string>();
 
 export function hasUnlimitedAccessByEmail(email: string | null | undefined): boolean {
   if (!email) return false;

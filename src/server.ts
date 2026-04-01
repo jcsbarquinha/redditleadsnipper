@@ -13,7 +13,6 @@ import {
   getStripeUnlockYearlyAmountCents,
   getStripeCurrency,
   getSessionCookieName,
-  getStripeTestPromoCode,
   getStripePriceIdMonthly,
   getStripePriceIdYearly,
   useStripeSubscriptionCheckout,
@@ -467,22 +466,9 @@ app.post("/api/create-checkout", (req, res) => {
 
   const baseUrl = getBaseUrl();
   const stripe = new Stripe(stripeKey);
-  const testPromoCode = getStripeTestPromoCode();
 
   (async () => {
     try {
-      let discounts: Array<{ promotion_code: string }> | undefined;
-      if (testPromoCode) {
-        const promos = await stripe.promotionCodes.list({ code: testPromoCode, active: true });
-        const promoId = promos.data[0]?.id;
-        if (promoId) {
-          discounts = [{ promotion_code: promoId }];
-          console.log("[Checkout] Pre-applied promo code:", testPromoCode);
-        } else {
-          console.warn("[Checkout] Promo code not found or inactive:", testPromoCode, "- checkout will show promo field instead");
-        }
-      }
-
       if (useStripeSubscriptionCheckout()) {
         const priceId =
           billing === "yearly" ? getStripePriceIdYearly()! : getStripePriceIdMonthly()!;
@@ -497,7 +483,7 @@ app.post("/api/create-checkout", (req, res) => {
               ? { run_id: runId, query: run?.user_input ?? "" }
               : { checkout_kind: "dashboard_only" }),
           },
-          ...(discounts ? { discounts } : { allow_promotion_codes: true }),
+          allow_promotion_codes: false,
         });
         res.json({ url: subSession.url });
         return;
@@ -546,7 +532,7 @@ app.post("/api/create-checkout", (req, res) => {
             ? { run_id: runId, query: run?.user_input ?? "" }
             : { checkout_kind: "dashboard_only" }),
         },
-        ...(discounts ? { discounts } : { allow_promotion_codes: true }),
+        allow_promotion_codes: false,
       });
       res.json({ url: session.url });
     } catch (err) {
@@ -632,10 +618,10 @@ app.get("/api/account/summary", requireAuth, async (req, res) => {
   const row = findUserById(user.id);
   let hasBillingPortal = !!(row?.stripe_customer_id && String(row.stripe_customer_id).trim());
   const hasUnlimitedAccess = hasUnlimitedAccessByEmail(user.email);
+  const stripeKey = getStripeSecretKey();
 
   /** Paid users sometimes had no customer id (older Checkout sessions). Link by email if Stripe has a customer. */
   if (!hasBillingPortal && user.email?.trim()) {
-    const stripeKey = getStripeSecretKey();
     if (stripeKey) {
       try {
         const stripe = new Stripe(stripeKey);
@@ -655,6 +641,46 @@ app.get("/api/account/summary", requireAuth, async (req, res) => {
     }
   }
 
+  let subscription: {
+    plan_name: string | null;
+    interval: string | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean;
+    status: string | null;
+  } | null = null;
+
+  const subId = row?.stripe_subscription_id?.trim();
+  if (subId && stripeKey) {
+    try {
+      const stripe = new Stripe(stripeKey);
+      const sub = await stripe.subscriptions.retrieve(subId, {
+        expand: ["items.data.price.product"],
+      });
+      const item = sub.items.data[0];
+      const price = item?.price;
+      const periodEndUnix = item?.current_period_end ?? null;
+      let planName: string | null = null;
+      if (price?.product && typeof price.product === "object") {
+        const p = price.product as Stripe.Product;
+        if (!p.deleted) planName = p.name ?? null;
+      }
+      if (!planName && price?.nickname) planName = price.nickname;
+      const interval = price?.recurring?.interval ?? null;
+      if (!planName) {
+        planName = interval === "year" ? "Yearly" : interval === "month" ? "Monthly" : "Subscription";
+      }
+      subscription = {
+        plan_name: planName,
+        interval,
+        current_period_end: periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : null,
+        cancel_at_period_end: !!sub.cancel_at_period_end,
+        status: sub.status ?? null,
+      };
+    } catch (e) {
+      console.warn("account summary: subscription retrieve failed:", e);
+    }
+  }
+
   res.json({
     email: user.email,
     entitled_until: user.entitled_until,
@@ -664,6 +690,7 @@ app.get("/api/account/summary", requireAuth, async (req, res) => {
     subscription_status: row?.subscription_status ?? null,
     subscription_cancel_at_period_end: row?.subscription_cancel_at_period_end === 1,
     has_stripe_subscription: !!(row?.stripe_subscription_id?.trim()),
+    subscription,
   });
 });
 

@@ -71,12 +71,6 @@ export function getStripeCurrency(): string {
   return (process.env.STRIPE_CURRENCY?.trim() || "usd").toLowerCase();
 }
 
-/** Optional: promotion code to pre-apply at checkout (e.g. FREETEST). When set, checkout shows $0 and no promo field. For testing. */
-export function getStripeTestPromoCode(): string | undefined {
-  const s = process.env.STRIPE_TEST_PROMO_CODE?.trim();
-  return s || undefined;
-}
-
 /**
  * Recurring Price IDs from Stripe Dashboard (Products → monthly/yearly prices).
  * When **both** are set, Checkout uses `mode: "subscription"`. Otherwise the app keeps one-time `payment` mode (legacy).

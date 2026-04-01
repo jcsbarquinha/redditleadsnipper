@@ -63,7 +63,6 @@ Set these in the host’s dashboard (not committed to git):
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | | Add **authorized redirect URI**: `https://yourdomain.com/api/auth/google/callback` (or whatever your routes use) |
 | `SMTP_*` / `EMAIL_FROM` | | Resend or other — for magic links |
 | `CORS_ORIGIN` | `https://yourdomain.com` | Tighter than `*` in prod |
-| `STRIPE_TEST_PROMO_CODE` | *(omit in prod)* | Remove test promos when going live |
 
 Copy values from your local `.env`; **never** commit `.env`.
 

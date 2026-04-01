@@ -141,6 +141,18 @@
       color: var(--text-muted);
       margin-bottom: 1.25rem;
     }
+    .account-plan-details {
+      margin-bottom: 1.25rem;
+    }
+    .account-plan-details p {
+      margin: 0 0 0.5rem;
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .account-plan-details p:last-child {
+      margin-bottom: 0;
+    }
     .account-primary-btn {
       display: inline-flex;
       align-items: center;
@@ -229,7 +241,7 @@
       <section class="account-card account-card--plan" aria-labelledby="plan-heading">
         <h2 id="plan-heading">Plan &amp; billing</h2>
         <div class="account-plan-status" id="planStatusLine">—</div>
-        <div class="account-plan-meta" id="planMetaLine"></div>
+        <div id="planDetails" class="account-plan-details" aria-live="polite"></div>
         <button type="button" class="account-primary-btn" id="manageBillingBtn">Manage subscription</button>
         <p class="account-hint" id="billingPortalHint">
           Update payment method, view invoices, or cancel in Stripe’s secure portal.
@@ -315,6 +327,24 @@
     }
   }
 
+  function formatIntervalLabel(iv) {
+    if (iv === "month") return "monthly";
+    if (iv === "year") return "yearly";
+    return iv ? String(iv) : "";
+  }
+
+  function appendPlanDetail(container, text) {
+    if (!container || !text) return;
+    var p = document.createElement("p");
+    p.textContent = text;
+    container.appendChild(p);
+  }
+
+  function clearPlanDetails(container) {
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+  }
+
   fetch("/api/account/summary", { credentials: "same-origin" })
     .then(function (r) {
       if (r.status === 401) {
@@ -333,33 +363,80 @@
       if (emailDisp) emailDisp.textContent = data.email || "—";
 
       var statusLine = document.getElementById("planStatusLine");
-      var metaLine = document.getElementById("planMetaLine");
+      var planDetails = document.getElementById("planDetails");
       var entitled = !!data.entitled;
+      var sub = data.subscription || null;
+      var cancelAtEnd = sub
+        ? !!sub.cancel_at_period_end
+        : !!data.subscription_cancel_at_period_end;
+
       if (statusLine) {
-        statusLine.textContent = entitled ? "Leadsnipe access active" : "No active plan";
-      }
-      if (metaLine) {
-        if (entitled && data.entitled_until) {
-          if (data.subscription_cancel_at_period_end && data.has_stripe_subscription) {
-            metaLine.textContent =
-              "Your subscription is canceled and won’t renew. You keep full access until " +
-              formatEntitledUntil(data.entitled_until) +
-              ".";
-          } else if (data.has_stripe_subscription) {
-            metaLine.textContent =
-              "Current period ends " + formatEntitledUntil(data.entitled_until) + " (renews automatically unless canceled).";
-          } else {
-            metaLine.textContent = "Access through " + formatEntitledUntil(data.entitled_until) + ".";
-          }
-        } else if (!entitled) {
-          metaLine.textContent = "Unlock from the dashboard to see ranked leads and run saved searches.";
+        if (!entitled) {
+          statusLine.textContent = "No active plan";
+        } else if (sub && sub.status === "past_due") {
+          statusLine.textContent = "Payment issue — update your card";
         } else {
-          metaLine.textContent = "";
+          statusLine.textContent = "Leadsnipe access active";
+        }
+      }
+
+      clearPlanDetails(planDetails);
+      if (planDetails) {
+        if (!entitled) {
+          appendPlanDetail(
+            planDetails,
+            "Unlock from the dashboard to see ranked leads and run saved searches."
+          );
+        } else if (sub) {
+          var iv = formatIntervalLabel(sub.interval);
+          appendPlanDetail(
+            planDetails,
+            iv ? "Plan: " + sub.plan_name + " (" + iv + ")" : "Plan: " + (sub.plan_name || "Subscription")
+          );
+          if (cancelAtEnd) {
+            appendPlanDetail(
+              planDetails,
+              "Subscription canceled — no further charges. You keep access until " +
+                formatEntitledUntil(data.entitled_until) +
+                "."
+            );
+          } else if (sub.current_period_end) {
+            appendPlanDetail(
+              planDetails,
+              "Next billing date: " + formatEntitledUntil(sub.current_period_end) + "."
+            );
+            if (data.entitled_until) {
+              appendPlanDetail(
+                planDetails,
+                "Access through " + formatEntitledUntil(data.entitled_until) + "."
+              );
+            }
+          }
+        } else if (data.has_stripe_subscription && data.entitled_until) {
+          if (cancelAtEnd) {
+            appendPlanDetail(
+              planDetails,
+              "Your subscription is canceled and won’t renew. Access until " +
+                formatEntitledUntil(data.entitled_until) +
+                "."
+            );
+          } else {
+            appendPlanDetail(
+              planDetails,
+              "Current period ends " +
+                formatEntitledUntil(data.entitled_until) +
+                " (renews automatically unless canceled)."
+            );
+          }
+        } else if (data.entitled_until) {
+          appendPlanDetail(
+            planDetails,
+            "Access through " + formatEntitledUntil(data.entitled_until) + "."
+          );
         }
       }
 
       var hasPortal = !!data.has_billing_portal;
-      var unlimited = !!data.has_unlimited_access;
       if (manageBillingBtn) {
         manageBillingBtn.disabled = !hasPortal;
         manageBillingBtn.style.display = hasPortal ? "inline-flex" : "none";
@@ -367,13 +444,10 @@
       if (billingHint) {
         if (hasPortal) {
           billingHint.textContent =
-            "Update your card, view receipts, or manage your plan in Stripe’s secure portal. (One-time purchases show invoices; recurring plans can be canceled there if applicable.)";
-        } else if (unlimited) {
-          billingHint.textContent =
-            "Your account has full complimentary access. There’s no Stripe subscription tied to this login—nothing to cancel here.";
+            "Use Manage subscription to update your payment method, view invoices, or cancel your plan in Stripe’s secure customer portal.";
         } else if (entitled) {
           billingHint.textContent =
-            "We couldn’t attach a Stripe billing profile to this account yet. If you paid with this email, open Manage after we link it automatically, or contact support. You can also run checkout again from the dashboard.";
+            "We couldn’t attach a Stripe billing profile to this account yet. If you paid with this email, it may link automatically shortly—or run checkout again from the dashboard.";
         } else {
           billingHint.textContent =
             "After you subscribe with Checkout, a Manage subscription button will appear here.";
