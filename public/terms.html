@@ -7,6 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
   <style>
     :root {
       --text: #1a1a1a;
@@ -87,8 +89,8 @@
     }
   </style>
 </head>
-<body>
-  <div class="wrap">
+<body class="page-simple-topbar">
+  <main class="wrap">
     <div class="topbar">
       <a href="/" class="brand">leadsnipe<span class="brand-dot">.</span></a>
       <a href="/" class="home-link">Back to home</a>
@@ -211,6 +213,37 @@
       These Terms are provided as a practical standard template for SaaS operations and should be reviewed by legal counsel
       to match your jurisdiction and business model.
     </p>
-  </div>
+  </main>
+
+  <footer class="site-footer" aria-labelledby="footer-heading-terms">
+    <div class="site-footer-inner">
+      <div class="site-footer-brand">
+        <a href="/" class="logo site-footer-logo">
+          <img src="/logo.png" alt="" class="logo-mark" />
+          <span class="logo-wordmark"><span class="logo-text">leadsnipe</span><span class="logo-period">.</span></span>
+        </a>
+        <h2 id="footer-heading-terms" class="site-footer-h1">
+          Find your next customers on Subreddits.
+        </h2>
+      </div>
+
+      <div class="site-footer-links">
+        <section class="site-footer-column" aria-label="Product links">
+          <h3 class="site-footer-title">Product</h3>
+          <a href="/#how-it-works" class="site-footer-link">How it works</a>
+          <a href="/#pricing" class="site-footer-link">Pricing</a>
+          <a href="/login" class="site-footer-link">Sign in</a>
+        </section>
+
+        <section class="site-footer-column" aria-label="Information links">
+          <h3 class="site-footer-title">Information</h3>
+          <a href="/faq" class="site-footer-link">FAQs</a>
+          <a href="/status" class="site-footer-link">System status</a>
+          <a href="/privacy" class="site-footer-link">Privacy policy</a>
+          <a href="/terms" class="site-footer-link">Terms &amp; Conditions</a>
+        </section>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

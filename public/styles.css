@@ -33,6 +33,22 @@ body {
   color: var(--text);
   background: var(--bg);
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/** Push footer to the bottom on short pages (requires a direct child <main>). */
+body > main {
+  flex: 1 0 auto;
+}
+
+/** Pages that do not use the fixed global header (simple local top bar only). */
+body.page-simple-topbar {
+  padding-top: 0 !important;
+}
+
+body.page-simple-topbar > main {
+  flex: 1 0 auto;
 }
 
 .header {
