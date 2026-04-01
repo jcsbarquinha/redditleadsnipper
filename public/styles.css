@@ -15,7 +15,7 @@
   --header-margin-x: 2rem;
   --header-max-width: 1500px;
   /* Same as .search-form; analysis box + hero search share this ruler */
-  --search-row-width: 46rem;
+  --search-row-width: 50rem;
 }
 
 html {
