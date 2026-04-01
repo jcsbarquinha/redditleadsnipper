@@ -23,19 +23,24 @@ Core task:
 Assign a 0-100 score to each post based on its potential as a lead.
 
 CRITICAL PRINCIPLES (BE OPTIMISTIC BUT AVOID SELLERS):
-- Score on PROBLEM MATCH. If they are complaining about the exact pain point this product solves, score them 70+.
+- Score on PROBLEM MATCH, but only when the pain matches what THIS product actually does — infer that strictly from the product context you are given (what it does + problem it solves). Shared words like "leads", "sales", or "growth" are NOT enough if the author's situation describes a different workflow, stack, or job-to-be-done than this product addresses. In those cases cap below 70 (0-55 clearly off-mechanism; 56-69 only if a plausible bridge appears in the post).
+
 - THE "AUTHOR IDENTITY" CHECK: Is the author looking for a solution, or selling one? If the author is explicitly pitching, launching, or selling a tool they built that solves the problem, hard-cap their score at 50. We want buyers, not sellers.
 - SELLER SIGNALS (strong clues): "for hire", "I built", "we built", "my service", "our service", "launching", "available for work", "$/hr", "DM me", "portfolio", "book a call".
 - CAP RULE (STRICT): If seller signals are present, score must be <= 50 even if problem-match is strong.
+
+- THE "SOFT RECOMMENDATION / STORY PROMO" CHECK: If the post is mostly a personal story whose payoff is recommending or showcasing one named product or service in a promotional way ("I've been trying X", "been using Y lately", "it basically…") and it is NOT primarily an authentic question to the community (asking for alternatives, validation, or neutral comparison), cap at 0-50. Casual tone still counts as promo if the arc sells one named offering.
+
 - THE "NATIVE AD" CHECK: If the post is a glowing, overly positive success story about how one specific tool "changed their life" or "solved everything" (often with a link), score it 0-39. This is a disguised ad.
-- BRAND MENTIONS ARE GOOD: Do NOT penalize a post just because it names a software tool. If they are asking *if* a tool is good, complaining about a tool, or asking for alternatives, that is a HOT LEAD (80+).
+
+- BRAND MENTIONS ARE GOOD when the author is shopping or comparing: Do NOT penalize naming a tool if they are asking whether it's good, complaining, or asking for alternatives — those can be 80+.
 
 Scoring Rubric:
-- 80-100: Active buyer, explicitly stating the core problem, or asking for an alternative to a competitor.
-- 70-79: Venting about related workflows or adjacent pain points.
-- 40-50: The Competitor Pitch. The author is launching or selling their own competing product (Warm, but not a direct buyer).
-- 51-69: Adjacent interest, general industry talk, no clear personal pain point.
-- 0-39: Wrong fit, unrelated, pure spam, or a glowing disguised ad for another product.
+- 80-100: Active buyer, explicitly stating the core problem this product solves, or asking for an alternative — with mechanism fit to this product.
+- 70-79: Strong pain aligned with this product's job-to-be-done; not merely adjacent industry talk.
+- 40-50: The Competitor Pitch or soft promo / story sell; author is not a buyer for us.
+- 51-69: Adjacent interest, wrong mechanism, or weak fit.
+- 0-39: Wrong fit, unrelated, pure spam, or disguised ad.
 
 Output requirements (STRICT):
 - Return JSON only.
@@ -72,31 +77,36 @@ Core task:
 For EACH post independently, score how strong a lead they are for THIS product.
 
 CRITICAL PRINCIPLES:
-- PROBLEM MATCH IS KING: A user does NOT need to be asking for a software tool to be a high-intent lead. If they are complaining about the exact pain point this product solves, they are a HOT lead (70+).
+- PROBLEM MATCH IS KING, BUT MECHANISM FIT MATTERS: Infer this product's core job-to-be-done only from the product context (what it does + problem it solves). A user does NOT need to name software to be high-intent — but they DO need a situation that this product could plausibly solve. If the post describes a different workflow, channel, or tool category than this product addresses, do not score 70+ just because words overlap (e.g. generic "leads" or "sales" pain). Cap below 70 for mismatched mechanism; use 0-55 when clearly wrong, 56-69 only if the post plausibly bridges toward this product's job.
+
 - THE "AUTHOR IDENTITY" RULE (BUYER VS SELLER): Check who is writing the post. If the author built, sells, or is launching a product that does exactly what our product does, they are NOT a hot lead.
 - SELLER SIGNALS (strong clues): "for hire", "I built", "we built", "my service", "our service", "launching", "available for work", "$/hr", "DM me", "portfolio", "book a call".
-- CAP RULE (STRICT): If seller signals are present, score must be <= 50 even when problem-match is strong.
-- THE "WATERING HOLE" RULE: If a user mentions a competitor but is complaining about it, comparing it, or asking for neutral opinions on it, SCORE IT HIGH (80+). Do not confuse a genuine question about a brand with a disguised ad.
+- CAP RULE (STRICT): If seller signals are present, score must be <= 50 even when problem-match sounds strong.
+
+- THE "SOFT RECOMMENDATION / STORY PROMO" CHECK: If the post reads as a narrative whose main effect is recommending one named product or service (including casual phrasing: "I've been messing with X", "using Y lately", "it basically…") and it is not primarily a genuine community question (asking for alternatives, comparing options, or neutral opinions), cap at 0-50. Do not confuse that with real buyers who mention brands while asking what to use.
+
+- THE "WATERING HOLE" RULE: If a user mentions a competitor but is complaining about it, comparing it, or asking for neutral opinions on it, SCORE IT HIGH (80+) when mechanism fit to this product is clear. Do not confuse that with a disguised ad.
+
 - THE "NATIVE AD" FILTER: Disregard (0-39) disguised native ads. These read like glowing success stories heavily promoting a single named vendor ("I struggled until a friend told me about X, it's amazing!").
 
 Scoring Rubric (0-100):
-- 90-100 (Screaming Pain / Active Buyer): The author is explicitly asking for a tool recommendation, begging for an alternative to a competitor, or experiencing a critical bottleneck that this product perfectly solves.
-- 70-89 (Strong Problem Match): The author is venting about a workflow or asking for strategy advice related to the problem this product addresses. They might not know a software solution exists yet, but they NEED it.
-- 40-50 (The Competitor Pitch): The author is launching, pitching, or selling a tool that solves the problem. They are a seller, not a buyer.
-- 51-69 (Adjacent / Weak): General industry talk, no clear personal pain point.
-- 0-39 (Trash): Wrong fit, unrelated, spam, or a glowing disguised advertisement for another tool.
+- 90-100 (Screaming Pain / Active Buyer): Explicitly seeking a solution, alternative, or fix that this product's stated job-to-be-done actually addresses.
+- 70-89 (Strong Problem Match): Venting or asking for advice where the pain maps to this product's mechanism — not merely adjacent industry chat.
+- 40-50 (The Competitor Pitch or soft promo): Seller, story-sell, or named-tool showcase without a real buyer question.
+- 51-69 (Adjacent / Weak): Related topic but wrong mechanism or unclear fit.
+- 0-39 (Trash): Wrong fit, unrelated, spam, or glowing disguised advertisement for another tool.
 
 Examples (Calibration):
 
 Example A — The "Unaware but Bleeding" Lead (Target band: 80-89):
 Title: "How do I grow my SaaS faster? Spreadsheets for outreach aren't scaling."
 Body: "Been at it 6 months. Tried content and ads. Feeling stuck with manual cold email tracking. What's the playbook people actually use?"
-Why this scores ~85: Explicit statement of the exact pain point a Cold Email/CRM SaaS solves. Highly actionable.
+Why this scores ~85: Explicit pain that matches a product whose job is that workflow — if this product is that, high score; if this product solves something else, score lower per mechanism fit.
 
 Example B — The "Active Shopper" Lead (Target band: 90-100):
 Title: "Need a lightweight CRM for a 3-person agency — Hubspot is too heavy"
 Body: "Looking for something under $50/mo with simple pipelines. What do you actually use?"
-Why this scores ~95: Explicit buyer intent, naming a competitor they dislike. Perfect match.
+Why this scores ~95: Explicit buyer intent and comparison — high if this product is CRM-like; not high if this product is unrelated.
 
 Output requirements (STRICT):
 - Return JSON only (no markdown, no prose).
